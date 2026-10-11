@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#E2D6C0">
+    <title>ISS | International Space Station</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/app.css?v=1b5d33c7a0">
+    <script
+        type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+</head>
+
+<body>
+    <main id="app" data-backdrop="space">
+        <header class="header">
+            <div class="identity">
+                <div class="monogram" aria-hidden="true">ISS</div>
+                <div>
+                    <div class="eyebrow">Orbital architecture / No. 01</div>
+                    <h1>International Space Station</h1>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="edition eyebrow">Low Earth orbit<strong>Assembly atlas / 1998 - 2023</strong></div>
+                <nav class="view-switch" aria-label="Camera views"><button data-view="overview"
+                        aria-pressed="false">Port</button><button data-view="reverse"
+                        aria-pressed="true">Starboard</button><button data-view="zenith"
+                        aria-pressed="false">Zenith</button><button data-view="forward"
+                        aria-pressed="false">Forward</button></nav>
+            </div>
+        </header>
+        <nav class="timeline" aria-label="Assembly milestones">
+            <div class="timeline-caption"><b>25 YEARS</b><span>IN ASSEMBLY</span></div>
+            <div class="milestones">
+                <button class="milestone" data-part="unity" aria-pressed="false"><span class="year">1998</span><span
+                        class="event">First connection</span></button>
+                <button class="milestone" data-part="zvezda" aria-pressed="false"><span class="year">2000</span><span
+                        class="event">A permanent crew</span></button>
+                <button class="milestone" data-part="kibo" aria-pressed="false"><span class="year">2008</span><span
+                        class="event">Laboratories expand</span></button>
+                <button class="milestone" data-part="truss" aria-pressed="false"><span class="year">2009</span><span
+                        class="event">Truss completed</span></button>
+                <button class="milestone" data-part="nauka" aria-pressed="false"><span class="year">2021</span><span
+                        class="event">Nauka &amp; Prichal</span></button>
+                <button class="milestone" data-part="irosa" aria-pressed="false"><span class="year">2023</span><span
+                        class="event">Six new solar arrays</span></button>
+            </div>
+        </nav>
+        <section id="viewport" aria-label="Interactive three-dimensional International Space Station">
+            <div id="scene"></div><svg id="leaders" aria-hidden="true"></svg>
+            <div id="labels"></div>
+            <svg id="approach-hud" aria-hidden="true">
+                <line id="approach-dist-line"></line>
+                <circle id="approach-port-dot" r="2.5"></circle>
+                <circle id="approach-dragon-dot" r="2.5"></circle>
+            </svg>
+            <button id="approach-distance-badge" class="approach-dist-badge" type="button" aria-label="Docking distance"
+                title="Docking distance / Click to inspect Crew Dragon"></button>
+            <div id="crew-thought" class="crew-thought" aria-hidden="true" hidden><i></i><i></i><b>Claude code + Ultra code 😐</b></div>
+            <div class="viewport-chrome">
+                <div class="viewport-meta"><b id="view-name">02 / STARBOARD FORWARD</b><span
+                        id="configuration-name">JUNE
+                        2023 / ILLUSTRATIVE CONFIGURATION</span></div>
+                <div class="orientation"><i data-lucide="compass"></i><span id="orientation-text">ZENITH +Y / FORWARD
+                        -Z</span>
+                </div>
+                <div class="approach-status">
+                    <button class="approach-readout" id="dragon-focus" aria-label="Inspect Crew Dragon docking approach"
+                        title="Inspect Crew Dragon"><i data-lucide="focus"></i><span><b>CREW DRAGON</b><small
+                                id="approach-state">18.0
+                                m / HOLD</small></span></button>
+                    <button class="tool" id="replay-approach" aria-label="Restart docking approach"
+                        data-tip="Replay approach"><i data-lucide="rotate-ccw"></i></button>
+                </div>
+                <button class="interior-focus" id="interior-focus" aria-label="Inspect Columbus laboratory interior"
+                    aria-pressed="false" title="Columbus laboratory interior"><i
+                        data-lucide="box"></i><span><b>COLUMBUS</b><small>LABORATORY / CLEAR
+                            HULL</small></span></button>
+                <div class="component-picker">
+                    <label for="component-select">Explore the fine details</label>
+                    <select id="component-select" aria-label="Inspect a station component">
+                        <option value="">Choose a component…</option>
+                    </select>
+                </div>
+                <div class="scale">
+                    <div class="scale-line" id="scale-line"></div><span id="scale-label">10 m</span>
+                </div>
+                <div class="drawing-note">2023 CONFIGURATION STUDY<br>SCHEMATIC / ILLUSTRATIVE POSES</div>
+            </div>
+        </section>
+        <aside id="inspector" aria-label="Component details" aria-live="polite" hidden>
+            <button class="tool" id="close-detail" aria-label="Close component details" title="Close"><i
+                    data-lucide="x"></i></button>
+            <div id="detail-code"></div>
+            <h2 id="detail-title"></h2>
+            <div id="destiny-tools" class="detail-tools" hidden>
+                <div class="detail-tabs" role="group" aria-label="Destiny close-up">
+                    <button id="destiny-supports" type="button" aria-pressed="true">S0 supports</button>
+                    <button id="destiny-window" type="button" aria-pressed="false">Window &amp; shutter</button>
+                </div>
+                <div id="shutter-controls" hidden>
+                    <button id="shutter-toggle" class="detail-action" type="button">Close shutter</button>
+                    <span id="shutter-state" role="status">Open</span>
+                    <small>Illustrative mechanism &middot; use Scene animation to pause.</small>
+                </div>
+            </div>
+            <div id="dragon-tools" class="detail-tools" hidden>
+                <div class="detail-tabs" role="group" aria-label="Crew Dragon view">
+                    <button id="dragon-approach" type="button" aria-pressed="true">Docking approach</button>
+                    <button id="dragon-cabin" type="button" aria-pressed="false">Crew cabin</button>
+                </div>
+            </div>
+            <p id="detail-description"></p>
+            <dl id="detail-facts"></dl>
+            <a class="detail-reference" id="detail-reference" target="_blank" rel="noopener noreferrer">Read the source
+                ↗</a>
+            <small id="eva-asset-credit" hidden style="margin-top:8px;font-size:10px;line-height:1.5;color:var(--muted)">Astronaut by <a href="https://sketchfab.com/3d-models/animated-floating-astronaut-in-space-suit-loop-e2c4b146e58141e4b87917456a9970b1" target="_blank" rel="noopener noreferrer">LasquetiSpice</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>. Adapted pose, materials and animation.</small>
+            <small id="columbus-asset-credit" hidden style="margin-top:8px;font-size:10px;line-height:1.5;color:var(--muted)">Crew figures from <a href="https://sketchfab.com/3d-models/human-5913acb8485d4ef09d0770d8d7d831ba" target="_blank" rel="noopener noreferrer">Human</a> by <a href="https://sketchfab.com/doctortex" target="_blank" rel="noopener noreferrer">doctortex</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>. Simplified mesh, baked colours, new poses and animation.</small>
+            <small id="dragon-asset-credit" hidden style="margin-top:8px;font-size:10px;line-height:1.5;color:var(--muted)">Crew Dragon geometry from <a href="https://sketchfab.com/3d-models/spacex-dragon-2-1b125e30a2cb442288580290536fbe5d" target="_blank" rel="noopener noreferrer">SpaceX - Dragon 2</a> by <a href="https://sketchfab.com/KUBAHA" target="_blank" rel="noopener noreferrer">KUBAHA</a>; crew suit from <a href="https://sketchfab.com/3d-models/space-x-dragon-suit-c600b853268249bdb9dd59bac7ead0b9" target="_blank" rel="noopener noreferrer">Space X Dragon Suit</a> by <a href="https://sketchfab.com/Diuis" target="_blank" rel="noopener noreferrer">Diuis</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>. Restyled materials, seated pose, docking animation.</small>
+            <button class="tool" id="focus-detail" aria-label="Focus on selected component"
+                data-tip="Focus component"><i data-lucide="focus"></i></button>
+        </aside>
+        <nav class="dock" aria-label="Station tools">
+            <button class="tool" id="zoom-in" aria-label="Zoom in" data-tip="Zoom in"><i
+                    data-lucide="plus"></i></button>
+            <button class="tool" id="zoom-out" aria-label="Zoom out" data-tip="Zoom out"><i
+                    data-lucide="minus"></i></button>
+            <button class="tool" id="reset" aria-label="Reset view" data-tip="Reset view"><i
+                    data-lucide="rotate-ccw"></i></button>
+            <span class="divider"></span>
+            <button class="tool" id="labels-toggle" aria-label="Component labels" aria-pressed="false"
+                data-tip="Component labels"><i data-lucide="tags"></i></button>
+            <button class="tool" id="rotate-toggle" aria-label="Auto rotate" aria-pressed="false"
+                data-tip="Auto rotate"><i data-lucide="rotate-3d"></i></button>
+            <button class="tool" id="motion-toggle" aria-label="Animate station and docking approach"
+                aria-pressed="true" data-tip="Scene animation"><i data-lucide="orbit"></i></button>
+            <span class="divider"></span>
+            <button class="tool" id="configuration-toggle" aria-label="2023 additions" aria-pressed="false"
+                data-tip="2023 additions"><i data-lucide="layers-2"></i></button>
+            <button class="tool" id="backdrop-toggle" aria-label="Earth backdrop" aria-pressed="false"
+                data-tip="Earth backdrop"><i data-lucide="earth"></i></button>
+            <button class="tool" id="capture" aria-label="Download station image" data-tip="Download PNG"><i
+                    data-lucide="download"></i></button>
+        </nav>
+        <footer class="footer">
+            <div class="metrics">
+                <div class="metric">
+                    <div class="caption">End-to-end span</div>
+                    <div class="value">109<span class="unit">m</span></div>
+                    <div class="sub">Integrated truss &amp; arrays</div>
+                </div>
+                <div class="metric">
+                    <div class="caption">Station mass</div>
+                    <div class="value">~420<span class="unit">t</span></div>
+                    <div class="sub">On-orbit assembly</div>
+                </div>
+                <div class="metric">
+                    <div class="caption">Orbital altitude</div>
+                    <div class="value">~400<span class="unit">km</span></div>
+                    <div class="sub">Above mean sea level</div>
+                </div>
+                <div class="metric">
+                    <div class="caption">One orbit</div>
+                    <div class="value">~92<span class="unit">min</span></div>
+                    <div class="sub">~16 sunrises every day</div>
+                </div>
+                <div class="metric orbit-metric">
+                    <div class="caption">Orbital inclination</div>
+                    <div class="value"><span class="orbit-symbol" aria-hidden="true"></span><span>51.6<span
+                                class="unit">deg</span></span></div>
+                    <div class="sub">Relative to the equator</div>
+                </div>
+            </div>
+            <div class="colophon"><span><span class="legend-key"></span>A multinational laboratory, continuously
+                    inhabited
+                    since 2000.</span><span class="signature"><b>MICHAEL TRAN</b></span><span>NOMINAL VALUES &middot; NOT LIVE TELEMETRY &nbsp; / &nbsp; <a
+                        href="https://www.nasa.gov/international-space-station/space-station-facts-and-figures/"
+                        target="_blank" rel="noopener noreferrer">NASA / ISS FACTS</a></span></div>
+        </footer>
+        <div id="toast" role="status" hidden></div>
+        <div id="loading">
+            <div class="load-mark">ISS</div>
+            <div class="load-label">ASSEMBLING ORBITAL SYSTEMS</div>
+            <div class="load-line"></div>
+            <div id="error" role="alert" hidden></div>
+        </div>
+    </main>
+    <!-- dựng trạm + hoạt cảnh; dữ liệu mô hình nạp từ data/ và assets/ -->
+    <script type="module" src="js/app.js?v=0f22db09aa"></script>
+</body>
+
+</html>
