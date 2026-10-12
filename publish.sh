@@ -1,10 +1,10 @@
 #!/bin/bash
 # Đưa bản mới lên GitHub Pages: ./publish.sh "mô tả thay đổi"
-# 1) tách lại từ "../02 ISS Space Station 3D.html" (bản gốc 1 tệp — nơi sửa mã) · 2) commit + push.
-# Mỗi tệp đóng dấu ?v=<băm nội dung> ⇒ trình duyệt chỉ tải lại tệp nào thật sự đổi.
+# Repo này là bản gốc để sửa (index.html, css/, js/, data/, assets/).
+# 1) đóng dấu lại ?v=<băm nội dung> cho mọi tệp được tham chiếu · 2) commit + push.
 set -e
 cd "$(dirname "$0")"
-python3 build.py
+python3 stamp.py
 git add -A
 if git diff --cached --quiet; then echo "Không có thay đổi."; exit 0; fi
 git commit -q -m "${1:-Cập nhật trang}"

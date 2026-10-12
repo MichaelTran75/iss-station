@@ -1,7 +1,7 @@
         const loading = document.getElementById('loading');
         try {
             // Model data lives in data/*.json and its textures in assets/; fetch it while three.js loads.
-            const assetFiles = {"pmaReferenceData": "data/pma-2.json?v=beb18c0530", "payloadReference": "data/payloads.json?v=e3df59b776", "columbusCrewHuman": "data/columbus-crew.json?v=2dc54df3a1", "columbusCrewMotion": "data/columbus-crew-motion.json?v=de8d0eec90", "zaryaReference": "data/zarya.json?v=b2d1a5f9db", "dragonReference": "data/crew-dragon.json?v=7def71e643", "dragonCrewSuit": "data/crew-dragon-suit.json?v=d795e5d772", "evaAsset": "data/eva-astronaut.json?v=dcefd7f1a5"};
+            const assetFiles = {"pmaReferenceData": "data/pma-2.json?v=9bc51550c5", "payloadReference": "data/payloads.json?v=e3df59b776", "columbusCrewHuman": "data/columbus-crew.json?v=2dc54df3a1", "columbusCrewMotion": "data/columbus-crew-motion.json?v=de8d0eec90", "zaryaReference": "data/zarya.json?v=b2d1a5f9db", "dragonReference": "data/crew-dragon.json?v=7def71e643", "dragonCrewSuit": "data/crew-dragon-suit.json?v=d795e5d772"};
             const assetDataReady = Promise.all(Object.entries(assetFiles).map(async ([name, path]) => {
                 const response = await fetch(path);
                 if (!response.ok) throw new Error('Could not load ' + path + ' (HTTP ' + response.status + ').');
@@ -54,6 +54,62 @@
             scene.add(inspectionLight, inspectionLight.target);
             const station = new THREE.Group();
             scene.add(station);
+            // Quality tiers. The first tier follows the device: small touch screens, few cores or little memory start at
+            // "medium". The measured frame rate then steps the tier down when frames run long, and back up (never above
+            // the first tier) when there is room. ?quality=high|medium|low fixes a tier; ?stats shows the live figures.
+            const query = new URLSearchParams(location.search);
+            const qualityTiers = {
+                high: { pixelRatio: 2, shadows: true, shadowSize: 2048, shadowInterval: 1 / 15 },
+                medium: { pixelRatio: 1.5, shadows: true, shadowSize: 1024, shadowInterval: 1 / 8 },
+                low: { pixelRatio: 1, shadows: false, shadowSize: 1024, shadowInterval: 1 / 4 }
+            };
+            const tierNames = ['low', 'medium', 'high'];
+            const smallTouchScreen = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 820;
+            const modestDevice = (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+            const requestedTier = qualityTiers[query.get('quality')] ? query.get('quality') : null;
+            const quality = { tier: requestedTier || (smallTouchScreen || modestDevice ? 'medium' : 'high'), fixed: !!requestedTier, frames: [], slow: 0, fast: 0, settle: 0 };
+            quality.ceiling = quality.tier;
+            // The station is static apart from slow wings, dishes, Dragon and the crew, so the sun's shadow map is redrawn a
+            // few times a second while things move (and at once after a selection or visibility change), not every frame.
+            renderer.shadowMap.autoUpdate = false;
+            let shadowDirty = true, shadowClock = 0;
+            function applyQuality(name) {
+                const tier = qualityTiers[name]; quality.tier = name; quality.settle = 90; quality.frames.length = 0;
+                renderer.setPixelRatio(Math.min(devicePixelRatio, tier.pixelRatio));
+                if (renderer.shadowMap.enabled !== tier.shadows) {
+                    renderer.shadowMap.enabled = tier.shadows;
+                    scene.traverse(object => { if (object.material) for (const surface of [].concat(object.material)) surface.needsUpdate = true; });
+                }
+                if (sunlight.shadow.mapSize.x !== tier.shadowSize) { sunlight.shadow.mapSize.set(tier.shadowSize, tier.shadowSize); sunlight.shadow.map?.dispose(); sunlight.shadow.map = null; }
+                shadowDirty = true;
+            }
+            function watchFrames(delta) {
+                if (quality.fixed || document.hidden || !motion) return;
+                if (quality.settle > 0) { quality.settle--; return; }
+                quality.frames.push(delta);
+                if (quality.frames.length < 60) return;
+                const average = quality.frames.reduce((sum, value) => sum + value, 0) / quality.frames.length; quality.frames.length = 0;
+                const index = tierNames.indexOf(quality.tier);
+                if (average > 1 / 40) { quality.fast = 0; if (++quality.slow >= 2 && index > 0) { quality.slow = 0; applyQuality(tierNames[index - 1]); resize(); } }
+                else if (average < 1 / 56) { quality.slow = 0; if (++quality.fast >= 5 && index < tierNames.indexOf(quality.ceiling)) { quality.fast = 0; applyQuality(tierNames[index + 1]); resize(); } }
+                else { quality.slow = 0; quality.fast = 0; }
+            }
+            const statsPanel = query.has('stats') ? document.createElement('div') : null, statsWindow = { frames: 0, time: 0, work: 0 };
+            if (statsPanel) {
+                statsPanel.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:60;padding:5px 8px;border-radius:6px;background:rgba(10,14,16,.72);color:#d8eadf;font:10px/1.45 "IBM Plex Mono",monospace;white-space:pre;pointer-events:none';
+                document.body.appendChild(statsPanel);
+            }
+            function updateStats(delta, work) {
+                if (!statsPanel) return;
+                statsWindow.frames++; statsWindow.time += delta; statsWindow.work += work;
+                if (statsWindow.time < .5) return;
+                const heap = performance.memory ? ' · JS ' + Math.round(performance.memory.usedJSHeapSize / 1e6) + ' MB' : '';
+                statsPanel.textContent = Math.round(statsWindow.frames / statsWindow.time) + ' fps · ' + (statsWindow.work / statsWindow.frames).toFixed(1) + ' ms CPU/frame\n'
+                    + renderer.info.render.calls + ' draws · ' + Math.round(renderer.info.render.triangles / 1000) + 'k triangles\n'
+                    + 'quality ' + quality.tier + (quality.fixed ? ' (fixed)' : '') + ' · ' + renderer.getPixelRatio() + '× px · shadows ' + (renderer.shadowMap.enabled ? 'on' : 'off') + heap
+                    + (typeof evaWorkerState === 'string' ? '\nanimation ' + evaWorkerState : '');
+                statsWindow.frames = 0; statsWindow.time = 0; statsWindow.work = 0;
+            }
             const palette = { hull: 0xc9ceca, white: 0xe8eae5, silver: 0xa6aeac, dark: 0x292b32, rail: 0x8b918f, foil: 0xaaa087, gold: 0xa18c58, glass: 0x163442, accent: 0x247c6f, radiator: 0xbec3bf, black: 0x16171d, blue: 0x313544 };
             const materials = new Map();
             function material(color, roughness = .62, metalness = .25, map = null) {
@@ -65,14 +121,29 @@
             const transform = new THREE.Object3D();
             const vertical = new THREE.Vector3(0, 1, 0);
             const temporaryVector = new THREE.Vector3();
+            // Kit merges keep each source's index buffer (shared corners are stored once, about a third of the expanded size), and
+            // a source geometry's outline edges are found once and then only copied and moved. Both give identical geometry.
+            const outlineCache = new WeakMap();
+            function outlineEdges(geometry) {
+                const version = geometry.attributes.position.version + ':' + (geometry.index ? geometry.index.version : -1);
+                let cached = outlineCache.get(geometry);
+                if (!cached || cached.version !== version) { cached = { version, edges: new THREE.EdgesGeometry(geometry, 32) }; outlineCache.set(geometry, cached); }
+                return cached.edges;
+            }
+            function sequentialIndex(count) {
+                const index = new (count > 65535 ? Uint32Array : Uint16Array)(count);
+                for (let i = 0; i < count; i++) index[i] = i;
+                return new THREE.BufferAttribute(index, 1);
+            }
             class Kit {
                 constructor() { this.batches = new Map(); this.outlines = []; }
                 add(geometry, surface, position = [0, 0, 0], scale = [1, 1, 1], rotation = [0, 0, 0], outlined = true) {
                     transform.position.fromArray(position); transform.scale.fromArray(scale); transform.rotation.set(...rotation); transform.updateMatrix();
                     const placed = geometry.clone().applyMatrix4(transform.matrix);
+                    if (!placed.index) placed.setIndex(sequentialIndex(placed.attributes.position.count));
                     if (!this.batches.has(surface)) this.batches.set(surface, []);
-                    this.batches.get(surface).push(placed.index ? placed.toNonIndexed() : placed);
-                    if (outlined) { const edges = new THREE.EdgesGeometry(geometry, 32).applyMatrix4(transform.matrix); if (edges.attributes.position.count) this.outlines.push(edges); }
+                    this.batches.get(surface).push(placed);
+                    if (outlined) { const edges = outlineEdges(geometry); if (edges.attributes.position.count) this.outlines.push(edges.clone().applyMatrix4(transform.matrix)); }
                 }
                 box(position, scale, color = palette.hull, rotation = [0, 0, 0], outlined = true) { this.add(shapes.box, material(color), position, scale, rotation, outlined); }
                 cylinder(position, radius, length, color = palette.hull, rotation = [Math.PI / 2, 0, 0]) { this.add(shapes.cylinder, material(color), position, [radius, length, radius], rotation); }
@@ -4891,6 +4962,7 @@
             const dragonShell = { opacity: 0, copies: new Map() };
             function setDragonShell(opacity) {
                 if (dragonShell.opacity === opacity) return;
+                shadowDirty = true;
                 dragonShell.opacity = opacity; dragonCabin.visible = opacity > 0;
                 dragon.group.traverse(child => {
                     if (child.userData.lineArt) { child.visible = opacity === ghostOpacity; return; }
@@ -6400,13 +6472,17 @@
             z1Group.scale.setScalar(z1Scale);
             z1Group.position.copy(z1Mount).multiplyScalar(1 - z1Scale);
 
-            // Animated EVA figure from the supplied USDZ. The source skeleton and loop remain editable here.
-            const evaAsset = assetData.evaAsset;
-            async function createZ1Maintenance() {
-                const frame = new THREE.Group(); frame.name = 'Z1 / EVA maintenance';
+            // Animated EVA figure from the supplied USDZ (LasquetiSpice, CC BY 4.0). Its motion model is js/sim/eva.js, run by
+            // the animation worker (js/sim/worker.js) and, where workers are unavailable, on this thread. This side only draws:
+            // each frame it copies the latest pose (89 joints, tool, hook, three tether tubes) into the meshes. The figure and
+            // its 4 MB of mesh data load after the station's first frame, so they never delay the page.
+            let evaWorkerState = 'loading';
+            async function createZ1Maintenance(evaAsset, simulation) {
+                const { evaScene: S, evaTubes, evaLayout, evaPhases } = simulation;
+                const frame = new THREE.Group(); frame.name = 'Z1 / EVA maintenance'; frame.visible = false;
                 // Author the EVA in station metres while inheriting Z1 selection and visibility.
                 frame.scale.setScalar(1 / z1Scale);
-                frame.position.copy(z1Group.position).multiplyScalar(-1 / z1Scale); z1Group.add(frame);
+                frame.position.copy(z1Group.position).multiplyScalar(-1 / z1Scale);
                 const textures = {};
                 await Promise.all(Object.entries(evaAsset.images).map(async ([name, url]) => {
                     const map = await new THREE.TextureLoader().loadAsync(url);
@@ -6442,21 +6518,6 @@
                     rig.add(mesh); mesh.bind(skeleton, new THREE.Matrix4()); mesh.frustumCulled = false;
                     mesh.castShadow = mesh.receiveShadow = true; return mesh;
                 });
-                const tracks = [];
-                for (const [channel, definition] of Object.entries(evaAsset.animation)) {
-                    const times = pmaArray(definition.times, Float32Array), packed = pmaArray(definition.values, Float32Array);
-                    for (let joint = 0; joint < bones.length; joint++) {
-                        const values = [];
-                        for (let sample = 0; sample < times.length; sample++) for (let axis = 0; axis < definition.size; axis++) values.push(packed[(sample * bones.length + joint) * definition.size + axis]);
-                        const name = bones[joint].name + '.' + ({rotations: 'quaternion', translations: 'position', scales: 'scale'}[channel]);
-                        tracks.push(channel === 'rotations' ? new THREE.QuaternionKeyframeTrack(name, times, values) : new THREE.VectorKeyframeTrack(name, times, values));
-                    }
-                }
-                const clip = new THREE.AnimationClip('Supplied floating loop', evaAsset.duration, tracks);
-                const mixer = new THREE.AnimationMixer(rig); mixer.clipAction(clip).play(); mixer.setTime(0);
-                const calmJoints = [0, 1, 2, 3, 4, 36, 38];
-                const calmPose = calmJoints.map(i => bones[i].quaternion.clone());
-                const restRotations = bones.map((_, i) => new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().fromArray(rest, i * 16)));
                 const metal = new THREE.MeshStandardMaterial({color: 0xb9c1bc, roughness: .49, metalness: .46});
                 const dark = new THREE.MeshStandardMaterial({color: 0x36433e, roughness: .73, metalness: .18});
                 const ivory = new THREE.MeshStandardMaterial({color: 0xe2e6df, roughness: .76, metalness: .08});
@@ -6468,21 +6529,6 @@
                     const object = new THREE.Mesh(geometry, surface); object.position.fromArray(p);
                     object.castShadow = object.receiveShadow = true; parent.add(object); return object;
                 }
-                const smooth = value => { const t = THREE.MathUtils.clamp(value, 0, 1); return t * t * t * (t * (t * 6 - 15) + 10); };
-                const ramp = (t, start, end) => smooth((t - start) / (end - start));
-                // Monotone cubic through keys, so no segment overshoots its neighbours.
-                function monotone(times, values, t) {
-                    if (t <= times[0]) return values[0];
-                    const last = times.length - 1; if (t >= times[last]) return values[last];
-                    let i = 0; while (t > times[i + 1]) i++;
-                    const slope = k => (values[k + 1] - values[k]) / (times[k + 1] - times[k]);
-                    const tangent = k => {
-                        if (k === 0 || k === last) return 0;
-                        const a = slope(k - 1), b = slope(k); return a * b <= 0 ? 0 : 2 * a * b / (a + b);
-                    };
-                    const h = times[i + 1] - times[i], s = (t - times[i]) / h, s2 = s * s, s3 = s2 * s;
-                    return (2 * s3 - 3 * s2 + 1) * values[i] + (s3 - 2 * s2 + s) * h * tangent(i) + (-2 * s3 + 3 * s2) * values[i + 1] + (s3 - s2) * h * tangent(i + 1);
-                }
                 const workPoint = new THREE.Vector3(-1.16, 5.42, 10.631);
                 const panel = new THREE.Group(); panel.name = 'Z1 EVA service panel'; panel.position.set(-1.16, 5.42, 10.682); frame.add(panel);
                 mesh(panel, new THREE.BoxGeometry(.28, .34, .048), metal);
@@ -6490,7 +6536,7 @@
                 for (const x of [-.095, .095]) for (const y of [-.12, .12]) mesh(panel, new THREE.CylinderGeometry(.013, .013, .016, 8).rotateX(Math.PI / 2), dark, [x, y, -.044]);
                 mesh(panel, new THREE.CylinderGeometry(.025, .025, .012, 12).rotateX(Math.PI / 2), metal, [0, 0, -.045]);
                 // The four corner bolts are driven in a cross pattern; each target is a bolt head face.
-                const bolts = [[.095, .12], [-.095, -.12], [-.095, .12], [.095, -.12]].map(([x, y]) => new THREE.Vector3(-1.16 + x, 5.42 + y, 10.630));
+                const bolts = S.bolts.map(p => new THREE.Vector3(...p));
                 const tool = new THREE.Group(); tool.name = 'EVA pistol grip tool'; frame.add(tool);
                 mesh(tool, new THREE.BoxGeometry(.09, .09, .16), ivory, [0, .028, .05]);
                 mesh(tool, new THREE.BoxGeometry(.056, .14, .065), dark, [0, -.065, 0]);
@@ -6499,8 +6545,7 @@
                 mesh(tool, new THREE.BoxGeometry(.043, .015, .08), gold, [0, .080, .025]);
                 // Put the handle centre at the palm attachment, with the bit above it.
                 tool.children.forEach(child => { child.position.y += .065; });
-                const toolTipLocal = new THREE.Vector3(0, .093, .32);
-                const drillTip = new THREE.Object3D(); drillTip.name = 'Pistol grip tool socket'; drillTip.position.copy(toolTipLocal); tool.add(drillTip);
+                const drillTip = new THREE.Object3D(); drillTip.name = 'Pistol grip tool socket'; drillTip.position.fromArray(S.toolTipLocal); tool.add(drillTip);
                 // A helical flute makes rotation visible without spinning the glove.
                 const flutePoints = Array.from({length: 49}, (_, i) => {
                     const angle = i / 48 * Math.PI * 6;
@@ -6509,16 +6554,15 @@
                 mesh(bit, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(flutePoints), 48, .0025, 5, false), metal);
                 // Three gold handholds in a line up the port edge of the forward face. The crew member climbs hand over
                 // hand on the lower two and works from the top one, which also takes the waist tether.
-                const railX = -1.43, railZ = 10.60, holds = [[3.88, 4.24], [4.42, 4.80], [5.00, 5.40]];
                 const handrail = new THREE.Group(); handrail.name = 'Z1 forward-face EVA handholds'; frame.add(handrail);
-                for (const [low, high] of holds) {
+                for (const [low, high] of S.holds) {
                     for (const y of [low, high]) {
-                        mesh(handrail, new THREE.BoxGeometry(.105, .105, .035), metal, [railX, y, 10.715]);
-                        mesh(handrail, new THREE.CylinderGeometry(.018, .018, .115, 12).rotateX(Math.PI / 2), gold, [railX, y, 10.66]);
+                        mesh(handrail, new THREE.BoxGeometry(.105, .105, .035), metal, [S.railX, y, 10.715]);
+                        mesh(handrail, new THREE.CylinderGeometry(.018, .018, .115, 12).rotateX(Math.PI / 2), gold, [S.railX, y, 10.66]);
                     }
-                    mesh(handrail, new THREE.CylinderGeometry(.020, .020, high - low, 16), gold, [railX, (low + high) / 2, railZ]);
+                    mesh(handrail, new THREE.CylinderGeometry(.020, .020, high - low, 16), gold, [S.railX, (low + high) / 2, S.railZ]);
                 }
-                const railPoint = y => new THREE.Vector3(railX, y, railZ);
+                const railPoint = y => new THREE.Vector3(S.railX, y, S.railZ);
                 // 85-ft safety tether. The reel rides on the left D-ring extender; its steel line is hooked to the handrail
                 // ring around Quest's EVA hatch and fairleaded under both forward Unity handrails and under the lowest
                 // handhold. Reel tension keeps every span taut, so only the span to the crew member moves.
@@ -6526,12 +6570,11 @@
                 const onUnity = (radius, degrees, z) => { const a = THREE.MathUtils.degToRad(degrees); return new THREE.Vector3(radius * Math.cos(a), radius * Math.sin(a), z); };
                 for (let degrees = 45; degrees <= 135; degrees += 10) tetherRoute.push(onUnity(2.26, degrees, 10.17));
                 // Up the port edge of the face, then sideways behind the lowest handhold bar, which turns it toward the reel.
-                const fairlead = new THREE.Vector3(railX, 3.97, 10.645);
+                const fairlead = new THREE.Vector3(...S.fairlead);
                 tetherRoute.push(onUnity(2.27, 139.5, 10.18), onUnity(2.43, 140, 10.24), new THREE.Vector3(-1.74, 2.30, 10.50), new THREE.Vector3(-1.54, 3.30, 10.62),
                     new THREE.Vector3(-1.505, 3.86, 10.642), new THREE.Vector3(-1.475, 3.95, 10.645), fairlead);
                 const routeCurve = new THREE.CatmullRomCurve3(tetherRoute, false, 'centripetal');
-                const tetherRadius = .006;
-                const routedLine = mesh(frame, new THREE.TubeGeometry(routeCurve, 640, tetherRadius, 6, false), steel);
+                const routedLine = mesh(frame, new THREE.TubeGeometry(routeCurve, 640, evaTubes.tetherSpan.radius, 6, false), steel);
                 routedLine.name = 'Safety tether / routed line'; routedLine.castShadow = false;
                 const fairleadTangent = routeCurve.getTangentAt(1);
                 // The hook gate closes round the hatch ring tube, which runs along x at its forward point.
@@ -6543,336 +6586,122 @@
                     const group = new THREE.Group(); group.position.fromArray(local); group.scale.setScalar(1 / evaAsset.modelScale);
                     bone.add(group); return group;
                 }
-                const leftRing = onBone(bones[2], [26.5, -5.4, 8.0]), rightRing = onBone(bones[2], [-26.5, -5.4, 8.0]);
+                const leftRing = onBone(bones[2], S.leftRing), rightRing = onBone(bones[2], S.rightRing);
                 for (const ring of [leftRing, rightRing]) mesh(ring, new THREE.TorusGeometry(.019, .0045, 6, 18).rotateY(Math.PI / 2), metal);
-                const reel = onBone(bones[2], [37.5, -15.3, 5.6]); reel.name = '85-ft safety tether reel';
+                const reel = onBone(bones[2], S.reel); reel.name = '85-ft safety tether reel';
                 mesh(reel, new THREE.BoxGeometry(.066, .125, .105), new THREE.MeshStandardMaterial({color: 0xd2d6cf, roughness: .7, metalness: .1}));
                 mesh(reel, new THREE.BoxGeometry(.068, .022, .107), dark, [0, -.035, 0]);
                 mesh(reel, new THREE.BoxGeometry(.04, .045, .02), metal, [0, .072, .02]);
-                const reelExit = new THREE.Object3D(); reelExit.position.set(.004, -.066, .028); reel.add(reelExit);
-                const toolMount = onBone(bones[3], [15.0, -18.2, 29.1]); toolMount.name = 'Mini-workstation tool mount';
+                const reelExit = new THREE.Object3D(); reelExit.position.fromArray(S.reelExit); reel.add(reelExit);
+                const toolMount = onBone(bones[3], S.toolMount); toolMount.name = 'Mini-workstation tool mount';
                 mesh(toolMount, new THREE.BoxGeometry(.05, .03, .04), dark, [0, -.02, -.035]);
-                // Stowed, the tool hangs bit-down on the mini-workstation, grip toward the crew member.
-                const stowRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(1.2, .3, 0));
                 // Waist tether: webbing from the right D-ring to a large hook, stowed on the ring for the climb.
                 const waistHook = new THREE.Group(); waistHook.name = 'Waist tether hook'; frame.add(waistHook);
                 mesh(waistHook, new THREE.TorusGeometry(.042, .0065, 8, 28, Math.PI * 1.7), metal);
                 mesh(waistHook, new THREE.CylinderGeometry(.0045, .0045, .038, 6).rotateZ(-.47), metal, [.0334, -.017, 0]);
-                const hookStow = new THREE.Object3D(); hookStow.position.set(0, -.075, .02); rightRing.add(hookStow);
-                // Clipped, the handhold bar runs through the hook loop.
-                const hookClip = new THREE.Vector3(railX, 5.06, railZ - .012), hookClipRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
-                function flexibleLine(name, count, radius, surface) {
-                    const points = Array.from({length: 4}, (_, i) => new THREE.Vector3(0, i * .1, 0));
-                    const curve = new THREE.CubicBezierCurve3(...points);
-                    const geometry = new THREE.TubeGeometry(curve, count, radius, 6, false);
-                    const line = mesh(frame, geometry, surface); line.name = name; line.frustumCulled = false; line.castShadow = false;
-                    return {curve, geometry, line, count, radius};
-                }
-                const tetherSpan = flexibleLine('Safety tether / free span', 48, tetherRadius, steel);
-                const waistStrap = flexibleLine('Waist tether webbing', 32, .0075, webbing);
-                const toolTether = flexibleLine('Tool tether to mini-workstation', 24, .0028, steel);
-                // Rebuild a tube in place along its curve (the same parallel-transport frames TubeGeometry uses).
-                function refresh(flex) {
-                    const {curve, geometry, count, radius} = flex; curve.updateArcLengths();
-                    const frames = curve.computeFrenetFrames(count, false), positions = geometry.attributes.position, normals = geometry.attributes.normal;
-                    for (let segment = 0; segment <= count; segment++) {
-                        const center = curve.getPointAt(segment / count);
-                        for (let side = 0; side <= 6; side++) {
-                            const a = side / 6 * Math.PI * 2, normal = frames.normals[segment].clone().multiplyScalar(-Math.cos(a)).addScaledVector(frames.binormals[segment], Math.sin(a));
-                            const index = segment * 7 + side;
-                            positions.setXYZ(index, center.x + normal.x * radius, center.y + normal.y * radius, center.z + normal.z * radius);
-                            normals.setXYZ(index, normal.x, normal.y, normal.z);
-                        }
-                    }
-                    positions.needsUpdate = normals.needsUpdate = true;
-                }
-                // Source anatomy: +X arm 5/6/7 is LEFT; -X arm 39/40/41 is RIGHT.
-                // The legacy asset field rightGrip names the +X arm; keep asset bytes intact.
-                const leftGripLocal = new THREE.Vector3(...evaAsset.rightGrip);
-                const rightGripLocal = new THREE.Vector3(14.1289751, .3173805, -.0742860);
+                const surfacesByTube = { tetherSpan: [steel, 'Safety tether / free span'], waistStrap: [webbing, 'Waist tether webbing'], toolTether: [steel, 'Tool tether to mini-workstation'] };
+                const tubes = Object.fromEntries(Object.entries(evaTubes).map(([name, { count, radius }]) => {
+                    const curve = new THREE.CubicBezierCurve3(...Array.from({length: 4}, (_, i) => new THREE.Vector3(0, i * .1, 0)));
+                    const line = mesh(frame, new THREE.TubeGeometry(curve, count, radius, 6, false), surfacesByTube[name][0]);
+                    line.name = surfacesByTube[name][1]; line.frustumCulled = false; line.castShadow = false;
+                    return [name, line];
+                }));
+                const rightGripLocal = new THREE.Vector3(14.1289751, .3173805, -.0742860), leftGripLocal = new THREE.Vector3(...evaAsset.rightGrip);
                 const rightHand = bones[41], leftHand = bones[7];
-                const axisX = new THREE.Vector3(1, 0, 0), axisY = new THREE.Vector3(0, 1, 0), axisZ = new THREE.Vector3(0, 0, 1), parentRotation = new THREE.Quaternion();
                 const worldPoint = (bone, point = new THREE.Vector3()) => bone.localToWorld(point.clone());
-                // Rail and pistol grips are both upright bars: the hand points at the face, thumb up.
-                const rightOrientation = new THREE.Quaternion().setFromAxisAngle(axisZ, Math.PI / 2)
-                    .multiply(new THREE.Quaternion().setFromUnitVectors(rightGripLocal.clone().normalize(), axisZ));
-                const leftOrientation = new THREE.Quaternion().setFromAxisAngle(axisZ, -Math.PI / 2)
-                    .multiply(new THREE.Quaternion().setFromUnitVectors(leftGripLocal.clone().normalize(), axisZ));
-                const rightDown = new THREE.Quaternion().setFromAxisAngle(axisX, Math.PI / 2).multiply(rightOrientation);
-                // In the glove the hook sits just ahead of the fist, so pushing the fist to the bar seats the hook on it.
-                const clipGrip = hookClip.clone().add(new THREE.Vector3(0, 0, -.055));
-                const hookInGlove = hookClip.clone().sub(clipGrip).applyQuaternion(rightOrientation.clone().invert());
-                const hookInGloveRotation = rightOrientation.clone().invert().multiply(hookClipRotation);
-                function turnBone(bone, from, to) {
-                    const delta = new THREE.Quaternion().setFromUnitVectors(from.normalize(), to.normalize());
-                    const current = bone.getWorldQuaternion(new THREE.Quaternion());
-                    bone.parent.getWorldQuaternion(parentRotation);
-                    bone.quaternion.copy(parentRotation.invert().multiply(delta.multiply(current))).normalize();
-                    bone.updateWorldMatrix(false, true);
-                }
-                const actorRotation = new THREE.Quaternion(), worldAxis = new THREE.Vector3(), turn = new THREE.Quaternion();
-                // Rotate a bone about an axis given in the crew member's own frame (x left, y up, z forward).
-                function bend(bone, axis, angle) {
-                    if (!angle) return;
-                    worldAxis.copy(axis).applyQuaternion(actorRotation);
-                    const current = bone.getWorldQuaternion(new THREE.Quaternion());
-                    bone.parent.getWorldQuaternion(parentRotation);
-                    bone.quaternion.copy(parentRotation.invert().multiply(turn.setFromAxisAngle(worldAxis, angle).multiply(current))).normalize();
-                    bone.updateWorldMatrix(false, true);
-                }
-                function reachHand(chain, gripLocal, target, orientation, poleLocal) {
-                    const desired = frame.getWorldQuaternion(new THREE.Quaternion()).multiply(orientation);
-                    const wristTarget = target.clone().sub(gripLocal.clone().multiplyScalar(evaAsset.modelScale).applyQuaternion(desired));
-                    const shoulder = worldPoint(bones[chain[0]]), elbow = worldPoint(bones[chain[1]]), wrist = worldPoint(bones[chain[2]]);
-                    const upper = shoulder.distanceTo(elbow), lower = elbow.distanceTo(wrist);
-                    const direction = wristTarget.clone().sub(shoulder);
-                    const distance = Math.min(upper + lower - .003, Math.max(Math.abs(upper - lower) + .003, direction.length()));
-                    direction.normalize();
-                    const pole = new THREE.Vector3(...poleLocal).transformDirection(frame.matrixWorld);
-                    pole.addScaledVector(direction, -pole.dot(direction)).normalize();
-                    const along = (upper * upper - lower * lower + distance * distance) / (2 * distance);
-                    const height = Math.sqrt(Math.max(0, upper * upper - along * along));
-                    const elbowTarget = shoulder.clone().addScaledVector(direction, along).addScaledVector(pole, height);
-                    turnBone(bones[chain[0]], elbow.clone().sub(shoulder), elbowTarget.sub(shoulder));
-                    const elbowNow = worldPoint(bones[chain[1]]), wristNow = worldPoint(bones[chain[2]]);
-                    turnBone(bones[chain[1]], wristNow.sub(elbowNow), wristTarget.sub(elbowNow));
-                    const hand = bones[chain[2]]; hand.parent.getWorldQuaternion(parentRotation);
-                    hand.quaternion.copy(parentRotation.invert().multiply(desired)); hand.updateWorldMatrix(false, true);
-                }
-                const fingerAxis = new THREE.Vector3(0, 0, -1);
-                function closeGlove(chains, thumb, amount) {
-                    for (const chain of chains) chain.forEach((index, joint) => {
-                        const rotation = restRotations[index].clone().multiply(new THREE.Quaternion().setFromAxisAngle(fingerAxis, [1.02, 1.14, .22][joint]));
-                        bones[index].quaternion.slerp(rotation, amount);
-                    });
-                    // The thumb opposes the fingers without crushing the palm.
-                    thumb.forEach((index, joint) => {
-                        const rotation = restRotations[index].clone().multiply(new THREE.Quaternion().setFromAxisAngle(fingerAxis, [.48, .55, .18][joint]));
-                        bones[index].quaternion.slerp(rotation, amount);
-                    });
-                }
-                // Timeline after NASA EVA practice: translate hand over hand (one hand always on a rail), stop and clip the
-                // waist tether to the worksite handhold, take the pistol grip tool from the mini-workstation, then drive the
-                // panel bolts in a cross pattern. Motions stay slow: no quick grabs, kicks or swings against the tethers.
-                const timings = {climb: 9.8, tether: 13.6, tool: 16.4, bolt: 6.5, workCycle: 28};
-                // The climb keeps the handhold line near the body's midline; at the worksite the body settles left of it,
-                // so the right hand holds on its own side and the left hand works the panel without crossing the chest.
-                const hipKeys = {
-                    t: [0, 2.3, 4.7, 7.2, 9.8, 11.4, 12.8, 14.6],
-                    x: [-1.43, -1.42, -1.44, -1.41, -1.42, -1.40, -1.33, -1.31],
-                    y: [3.80, 3.83, 4.15, 4.46, 4.76, 4.76, 4.76, 4.76],
-                    z: [10.14, 10.15, 10.15, 10.14, 10.10, 10.08, 10.07, 10.07]
-                };
-                const hipsAt = (t, out) => out.set(monotone(hipKeys.t, hipKeys.x, t), monotone(hipKeys.t, hipKeys.y, t), monotone(hipKeys.t, hipKeys.z, t));
-                const stowPose = (position, rotation) => {
-                    position.copy(frame.worldToLocal(toolMount.getWorldPosition(new THREE.Vector3())));
-                    return rotation.copy(frameRotation()).invert().multiply(actor.getWorldQuaternion(new THREE.Quaternion())).multiply(stowRotation);
-                };
-                const frameRotation = () => frame.getWorldQuaternion(new THREE.Quaternion());
-                const standoff = bolt => bolt.clone().add(new THREE.Vector3(0, 0, -.07));
-                const identity = new THREE.Quaternion();
-                // Tool pose in frame space. Returns the handle centre and rotation, the bit angle and the work phase.
-                function toolPose(t, position, rotation) {
-                    const state = {spin: 0, running: false, reading: 0, torque: 0, phase: 'stowed', bolt: -1};
-                    if (t < 14.9) { stowPose(position, rotation); return state; }
-                    const tip = new THREE.Vector3();
-                    if (t < timings.tool) {
-                        const s = ramp(t, 14.9, timings.tool), from = new THREE.Vector3(), fromRotation = new THREE.Quaternion();
-                        stowPose(from, fromRotation);
-                        tip.copy(standoff(bolts[0])).sub(toolTipLocal);
-                        position.lerpVectors(from, tip, s).add(new THREE.Vector3(.02, .06, -.06).multiplyScalar(Math.sin(Math.PI * s)));
-                        rotation.copy(fromRotation).slerp(identity, s);
-                        state.phase = 'tool'; return state;
+                // Pose buffer → meshes.
+                const layout = evaLayout(bones.length);
+                let shown = { time: 0, phase: 'climb', drilling: false };
+                function apply(pose) {
+                    const read = (object, offset) => { object.position.fromArray(pose, offset); object.quaternion.fromArray(pose, offset + 3); };
+                    read(actor, layout.actor); read(tool, layout.tool); read(waistHook, layout.hook);
+                    for (let i = 0; i < bones.length; i++) {
+                        const offset = layout.bones + i * 10;
+                        bones[i].position.fromArray(pose, offset); bones[i].quaternion.fromArray(pose, offset + 3); bones[i].scale.fromArray(pose, offset + 7);
                     }
-                    const work = t - timings.tool, cycle = Math.floor(work / timings.workCycle), w = work - cycle * timings.workCycle;
-                    const k = Math.min(3, Math.floor(w / timings.bolt)), u = w - k * timings.bolt;
-                    const previous = cycle === 0 && k === 0 ? bolts[0] : bolts[(k + 3) % 4];
-                    const target = bolts[k], seat = new THREE.Vector3();
-                    let tilt = 0, roll = 0, reading = 0;
-                    if (w >= 4 * timings.bolt) {
-                        // Report torque and turns: the tool is tipped up toward the visor, then back.
-                        reading = ramp(w, 26.0, 26.5) * (1 - ramp(w, 27.3, 27.9));
-                        tip.copy(standoff(bolts[3])).add(new THREE.Vector3(0, -.03, -.05).multiplyScalar(reading)); tilt = .32 * reading;
-                    } else if (u < 1.3) {
-                        const s = smooth(u / 1.3);
-                        tip.lerpVectors(standoff(previous), standoff(target), s).add(new THREE.Vector3(0, .015, -.035).multiplyScalar(Math.sin(Math.PI * s)));
-                        tilt = .04 * Math.sin(Math.PI * s);
-                    } else if (u < 2.2) {
-                        tip.lerpVectors(standoff(target), target, smooth((u - 1.3) / .9));
-                    } else if (u < 5.2) {
-                        tip.copy(target);
-                        // Seat the socket with two small turns, then hold against the drive reaction.
-                        roll = u < 2.5 ? .05 * Math.sin((u - 2.2) / .3 * Math.PI * 4) * (1 - smooth((u - 2.2) / .3)) : -.025 * ramp(u, 2.5, 2.8) * (1 - ramp(u, 4.3, 4.7));
-                        state.running = u >= 2.5 && u < 4.5; state.torque = ramp(u, 2.5, 2.8) * (1 - ramp(u, 4.3, 4.7));
-                        if (u >= 4.5) reading = .35 * ramp(u, 4.5, 4.8) * (1 - ramp(u, 4.9, 5.2));
-                    } else tip.lerpVectors(target, standoff(target), smooth((u - 5.2) / 1.3));
-                    rotation.setFromEuler(new THREE.Euler(tilt, 0, roll));
-                    position.copy(tip).sub(toolTipLocal.clone().applyQuaternion(rotation));
-                    // Bit time: two seconds per bolt, accumulated only while the tool runs.
-                    const done = cycle * 4 + (w >= 4 * timings.bolt ? 4 : k + (u >= 4.5 ? 1 : 0));
-                    state.spin = done * 2 + (k < 4 && w < 4 * timings.bolt ? THREE.MathUtils.clamp(u - 2.5, 0, 2) * (u < 4.5 ? 1 : 0) : 0);
-                    state.reading = reading; state.phase = 'drive'; state.bolt = k;
-                    return state;
-                }
-                // Hand keys: [time, target, orientation, grip, swing, hold]. A target may follow the body; the swing bows
-                // the path clear of the rail and the other hand; hold keeps the glove closed on what it carries.
-                const leftKeys = [
-                    [0, railPoint(4.02), leftOrientation, 1], [1.0, railPoint(4.02), leftOrientation, 1],
-                    [2.5, railPoint(4.66), leftOrientation, 1, [.06, 0, -.09]], [6.1, railPoint(4.66), leftOrientation, 1],
-                    [7.6, railPoint(5.32), leftOrientation, 1, [.06, 0, -.09]], [13.6, railPoint(5.32), leftOrientation, 1],
-                    [14.6, 'tool', 'tool', .15, [.05, -.04, -.12]], [14.9, 'tool', 'tool', 1]
-                ];
-                const rightKeys = [
-                    [0, railPoint(4.50), rightOrientation, 1], [3.6, railPoint(4.50), rightOrientation, 1],
-                    [5.1, railPoint(5.08), rightOrientation, 1, [-.06, 0, -.09]], [10.0, railPoint(5.08), rightOrientation, 1],
-                    [11.0, 'hook', rightDown, .2, [-.08, .02, -.14]], [11.3, 'hook', rightDown, .85],
-                    [12.4, 'clip', rightOrientation, .85, [-.05, .04, -.12], true], [12.7, 'clip', rightOrientation, .85],
-                    [13.6, railPoint(5.18), rightOrientation, 1, [-.04, .02, -.07]]
-                ];
-                const hookPoint = () => frame.worldToLocal(hookStow.getWorldPosition(new THREE.Vector3())).sub(hookInGlove.clone().applyQuaternion(rightDown));
-                const resolve = (target, t, toolPosition) => target === 'tool' ? toolPosition.clone() : target === 'hook' ? hookPoint() : target === 'clip' ? clipGrip.clone() : target.clone();
-                function handAt(keys, t, toolPosition, toolOrientation) {
-                    let i = 0; while (i < keys.length - 1 && t >= keys[i + 1][0]) i++;
-                    const key = keys[i], next = keys[Math.min(i + 1, keys.length - 1)];
-                    const orient = value => value === 'tool' ? toolOrientation : value;
-                    if (i === keys.length - 1 || next === key) return {point: resolve(key[1], t, toolPosition), orientation: orient(key[2]).clone(), grip: key[3]};
-                    const s = (t - key[0]) / (next[0] - key[0]), e = smooth(s);
-                    const point = resolve(key[1], t, toolPosition).lerp(resolve(next[1], t, toolPosition), e);
-                    if (next[4]) point.add(new THREE.Vector3(...next[4]).multiplyScalar(Math.sin(Math.PI * e)));
-                    const orientation = orient(key[2]).clone().slerp(orient(next[2]), e);
-                    const moving = key[1] !== next[1] || next[4];
-                    // Release fast, travel half open, close as the glove arrives.
-                    let grip = THREE.MathUtils.lerp(key[3], next[3], smooth((s - .7) / .3));
-                    if (moving && next[4] && !next[5]) grip = Math.min(grip, 1 - .78 * smooth(s / .16) * (1 - smooth((s - .74) / .26)));
-                    return {point, orientation, grip};
-                }
-                const hips = new THREE.Vector3(), hipsBefore = new THREE.Vector3(), hipsAfter = new THREE.Vector3();
-                const toolPosition = new THREE.Vector3(), toolRotation = new THREE.Quaternion();
-                const acceleration = (t, out) => {
-                    hipsAt(t - .12, hipsBefore); hipsAt(t + .12, hipsAfter); hipsAt(t, out);
-                    return out.multiplyScalar(-2).add(hipsBefore).add(hipsAfter).divideScalar(.0144);
-                };
-                // Gaze leads the hands: the next handhold, the clip point, then the bolt; each change eases over 0.6 s.
-                const gazeKeys = [[0, railPoint(4.66)], [2.6, railPoint(5.08)], [5.2, railPoint(5.32)], [8.6, hookClip], [13.4, bolts[0]]];
-                function gazeAt(t, toolPosition) {
-                    if (t >= timings.tool) return toolPosition.clone().add(toolTipLocal);
-                    let i = 0; while (i < gazeKeys.length - 1 && t >= gazeKeys[i + 1][0] - .6) i++;
-                    const [time, point] = gazeKeys[i];
-                    const previous = gazeKeys[Math.max(0, i - 1)][1];
-                    return previous.clone().lerp(point, i === 0 ? 1 : ramp(t, time - .6, time));
-                }
-                let time = 0, initialized = false, phase = 'climb', drilling = false;
-                const update = delta => {
-                    if (initialized && delta <= 0) return;
-                    time += Math.max(0, delta);
-                    const t = time;
-                    // Base posture: the supplied loop slowed right down for the limbs, the torso held calm.
-                    mixer.setTime(t * .22);
-                    calmJoints.forEach((index, i) => bones[index].quaternion.copy(calmPose[i].clone().slerp(bones[index].quaternion, .24)));
-                    bones[0].position.fromArray(evaAsset.rootPivot);
-                    // Body: pulled up between grips, then settled at the worksite. Lean, roll and drift stay small,
-                    // and the body eases toward whichever bolt the tool is on.
-                    hipsAt(t, hips);
-                    const climbing = 1 - ramp(t, 9.4, 11.4), working = ramp(t, 14.9, timings.tool + 1.2);
-                    const toolState = toolPose(t, toolPosition, toolRotation);
-                    const lagged = new THREE.Vector3(), lagRotation = new THREE.Quaternion();
-                    toolPose(Math.max(0, t - .45), lagged, lagRotation);
-                    const reach = lagged.sub(new THREE.Vector3(-1.16, 5.32, 10.31)).multiplyScalar(working);
-                    const sway = new THREE.Vector3(Math.sin(t * .29) * .012, Math.sin(t * .41 + 1) * .010, Math.sin(t * .23 + 2) * .008);
-                    actor.position.copy(hips).add(sway).add(new THREE.Vector3(reach.x * .2, reach.y * .25, 0));
-                    const pull = new THREE.Vector3(); acceleration(t, pull);
-                    // Roll eases toward the reaching hand; the drive reaction yaws the body slightly while the tool runs.
-                    const bump = (start, end) => { const s = THREE.MathUtils.clamp((t - start) / (end - start), 0, 1); return Math.sin(Math.PI * s) ** 2; };
-                    const side = bump(1.0, 2.5) - bump(3.6, 5.1) + bump(6.1, 7.6);
-                    const reaction = .010 * toolState.torque;
-                    actor.rotation.set(-.03 - .03 * climbing - THREE.MathUtils.clamp(pull.y * .15, -.03, .03) + Math.sin(t * .32) * .008,
-                        .07 + .025 * Math.sin(t * .27) + reaction - .03 * reach.x,
-                        .06 + .025 * side * climbing + Math.sin(t * .35) * .008);
-                    actor.updateWorldMatrix(true, true); actor.getWorldQuaternion(actorRotation);
-                    // Waist bearing: a slight bend toward the face while pulling and while reaching for the bolts.
-                    bend(bones[1], axisX, .03 * climbing + .05 * working * ramp(reach.y, -.2, .2));
-                    // Pressurised legs stay nearly straight; they hang soft and lag the pulls, flexing a little more as the body is drawn up.
-                    const lagPull = new THREE.Vector3(); acceleration(Math.max(0, t - .35), lagPull);
-                    const swing = THREE.MathUtils.clamp(lagPull.y * .35, -.08, .08);
-                    for (const [thigh, shin, foot, phaseOffset, flex] of [[77, 78, 79, 0, .07], [83, 84, 85, 1.7, .12]]) {
-                        bend(bones[thigh], axisX, -(flex + swing * .6 + .035 * Math.sin(t * .37 + phaseOffset)));
-                        bend(bones[shin], axisX, .14 + flex * .5 + swing + .035 * Math.sin(t * .31 + phaseOffset * 1.3));
-                        bend(bones[foot], axisX, .12 + .03 * Math.sin(t * .43 + phaseOffset));
+                    bit.rotation.z = pose[3]; tubes.toolTether.visible = pose[4] > .5;
+                    for (const [name, line] of Object.entries(tubes)) {
+                        // A hidden tube keeps an empty box, so it never stretches Z1's bounds (and the camera framing) to its rest place.
+                        if (!line.visible) { line.geometry.boundingBox = new THREE.Box3(); continue; }
+                        const slot = layout.tubes[name], attributes = line.geometry.attributes;
+                        attributes.position.array.set(pose.subarray(slot.positions, slot.positions + slot.floats));
+                        attributes.normal.array.set(pose.subarray(slot.normals, slot.normals + slot.floats));
+                        attributes.position.needsUpdate = attributes.normal.needsUpdate = true;
+                        line.geometry.computeBoundingBox(); line.geometry.computeBoundingSphere();
                     }
-                    // The helmet is fixed to the hard upper torso, so gaze shows mostly through the body; the head turns a few
-                    // degrees toward the next handhold or the bolt.
-                    const gaze = gazeAt(t, toolPosition);
-                    const look = frame.localToWorld(gaze).sub(bones[37].getWorldPosition(new THREE.Vector3())).applyQuaternion(actorRotation.clone().invert());
-                    bend(bones[37], axisY, THREE.MathUtils.clamp(Math.atan2(look.x, look.z), -.5, .5) * .18);
-                    bend(bones[37], axisX, -THREE.MathUtils.clamp(Math.atan2(look.y, Math.hypot(look.x, look.z)), -.6, .6) * .16 - toolState.reading * .12);
-                    frame.updateWorldMatrix(true, true);
-                    if (t < timings.tool) toolPose(t, toolPosition, toolRotation);
-                    const toolOrientation = toolRotation.clone().multiply(leftOrientation);
-                    const right = handAt(rightKeys, t, toolPosition, toolOrientation), left = handAt(leftKeys, t, toolPosition, toolOrientation);
-                    closeGlove([[45,46,47],[48,49,50],[51,52,53],[54,55,56]], [42,43,44], right.grip);
-                    closeGlove([[11,12,13],[14,15,16],[17,18,19],[20,21,22]], [8,9,10], left.grip);
-                    reachHand([39,40,41], rightGripLocal, frame.localToWorld(right.point), right.orientation, [-.70, -.55, -.18]);
-                    reachHand([5,6,7], leftGripLocal, frame.localToWorld(left.point), left.orientation, [.70, -.55, -.18]);
-                    // The tool follows the glove once taken; before that it rides on the mini-workstation.
-                    if (t >= 14.9) {
-                        tool.position.copy(frame.worldToLocal(worldPoint(leftHand, leftGripLocal)));
-                        tool.quaternion.copy(frameRotation().invert().multiply(leftHand.getWorldQuaternion(new THREE.Quaternion()))).multiply(leftOrientation.clone().invert());
-                    } else { tool.position.copy(toolPosition); tool.quaternion.copy(toolRotation); }
-                    bit.rotation.z = toolState.spin * 18;
-                    phase = t < timings.climb ? 'climb' : t < timings.tether ? 'tether' : t < timings.tool ? 'tool' : 'drive';
-                    drilling = toolState.running;
-                    // Waist tether hook: stowed on the right D-ring, carried in the right glove, then clipped to the handhold.
-                    const stowed = frame.worldToLocal(hookStow.getWorldPosition(new THREE.Vector3()));
-                    const stowedRotation = frameRotation().invert().multiply(hookStow.getWorldQuaternion(new THREE.Quaternion()));
-                    const gloveRotation = frameRotation().invert().multiply(rightHand.getWorldQuaternion(new THREE.Quaternion()));
-                    const inGlove = frame.worldToLocal(worldPoint(rightHand, rightGripLocal)).add(hookInGlove.clone().applyQuaternion(gloveRotation));
-                    const taken = ramp(t, 11.0, 11.3), clipped = ramp(t, 12.4, 12.7);
-                    waistHook.position.copy(stowed).lerp(inGlove, taken).lerp(hookClip, clipped);
-                    waistHook.quaternion.copy(stowedRotation).slerp(gloveRotation.clone().multiply(hookInGloveRotation), taken).slerp(hookClipRotation, clipped);
-                    // Webbing: slack bows out to the right side, clear of the suit; stowed, it is a short loop beside the ring.
-                    const ringPoint = frame.worldToLocal(rightRing.getWorldPosition(new THREE.Vector3()));
-                    const hookEnd = waistHook.position.clone().add(new THREE.Vector3(-.042, 0, 0).applyQuaternion(waistHook.quaternion));
-                    const strapLength = THREE.MathUtils.lerp(.13, .75, taken), gap = ringPoint.distanceTo(hookEnd);
-                    const bow = Math.sqrt(Math.max(0, strapLength * strapLength - gap * gap)) * .55;
-                    const away = new THREE.Vector3(-.75, -.35, .45).applyQuaternion(actor.quaternion).normalize().multiplyScalar(bow);
-                    waistStrap.curve.v0.copy(ringPoint); waistStrap.curve.v3.copy(hookEnd);
-                    waistStrap.curve.v1.lerpVectors(ringPoint, hookEnd, .3).add(away); waistStrap.curve.v2.lerpVectors(ringPoint, hookEnd, .7).add(away);
-                    refresh(waistStrap);
-                    // Safety tether span: leaves the reel downward, enters the fairlead along the routed line, and bows a
-                    // little against the motion because the reel takes up slack with a delay.
-                    const exit = frame.worldToLocal(reelExit.getWorldPosition(new THREE.Vector3()));
-                    const exitDirection = new THREE.Vector3(0, -1, .25).applyQuaternion(frameRotation().invert().multiply(reel.getWorldQuaternion(new THREE.Quaternion()))).normalize();
-                    const span = exit.distanceTo(fairlead);
-                    const velocity = new THREE.Vector3(); hipsAt(t + .2, velocity); velocity.sub(hipsAt(Math.max(0, t - .2), new THREE.Vector3())).divideScalar(.4);
-                    const lag = velocity.multiplyScalar(-.22).clampLength(0, .06).add(new THREE.Vector3(.012 * Math.sin(t * .5), 0, -.015));
-                    tetherSpan.curve.v0.copy(fairlead); tetherSpan.curve.v3.copy(exit);
-                    tetherSpan.curve.v1.copy(fairlead).addScaledVector(fairleadTangent, Math.min(.12, span * .1)).add(lag.clone().multiplyScalar(.6));
-                    tetherSpan.curve.v2.copy(exit).addScaledVector(exitDirection, Math.min(.18, span * .14)).add(lag);
-                    refresh(tetherSpan);
-                    // Tool tether: retracts into the mini-workstation while the tool is stowed.
-                    toolTether.line.visible = t >= 14.9;
-                    if (toolTether.line.visible) {
-                        const mount = frame.worldToLocal(toolMount.getWorldPosition(new THREE.Vector3()));
-                        const butt = frame.worldToLocal(tool.localToWorld(new THREE.Vector3(0, -.075, -.02)));
-                        toolTether.curve.v0.copy(mount); toolTether.curve.v3.copy(butt);
-                        toolTether.curve.v1.lerpVectors(mount, butt, .33).add(new THREE.Vector3(0, -.03, -.01));
-                        toolTether.curve.v2.lerpVectors(mount, butt, .66).add(new THREE.Vector3(0, -.03, -.01));
-                        refresh(toolTether);
-                    }
-                    frame.updateWorldMatrix(true, true); skeleton.update(); initialized = true;
-                };
-                update(0);
+                    shown = { time: pose[0], phase: evaPhases[pose[1]], drilling: pose[2] > .5 };
+                    frame.visible = true; frame.updateWorldMatrix(true, true);
+                }
+                z1Group.add(frame);
+                // Motion source: the animation worker when it starts, otherwise the same model on this thread.
+                const assetForWorker = { parents: evaAsset.parents, rest: evaAsset.rest, animation: evaAsset.animation, duration: evaAsset.duration, modelScale: evaAsset.modelScale, rootPivot: evaAsset.rootPivot, rightGrip: evaAsset.rightGrip };
+                const driver = { mode: 'local', worker: null, buffers: [], busy: false, local: null, pose: new Float32Array(layout.size) };
+                let time = 0;
+                function useMainThread(reason) {
+                    if (driver.worker) { driver.worker.terminate(); driver.worker = null; }
+                    if (reason) console.warn('EVA animation runs on the main thread:', reason);
+                    driver.mode = 'local'; driver.local ||= simulation.createEvaSimulation(assetForWorker, fairleadTangent.toArray());
+                    evaWorkerState = 'main thread'; stepNow();
+                }
+                function stepNow() {
+                    if (driver.mode === 'local') { apply(driver.local.step(time, driver.pose)); return; }
+                    if (driver.busy || !driver.buffers.length) return;
+                    const buffer = driver.buffers.pop(); driver.busy = true;
+                    driver.worker.postMessage({ type: 'step', id: 'eva', time, buffer }, [buffer]);
+                }
+                if (query.get('worker') !== '0' && typeof Worker === 'function') {
+                    try {
+                        const worker = new Worker(new URL('./sim/worker.js?v=18dcb99032', import.meta.url), { type: 'module' });
+                        driver.mode = 'starting'; driver.worker = worker; evaWorkerState = 'starting worker';
+                        worker.onmessage = ({ data }) => {
+                            if (data.type === 'ready') {
+                                driver.mode = 'worker'; evaWorkerState = 'worker';
+                                driver.buffers = [new ArrayBuffer(data.size * 4), new ArrayBuffer(data.size * 4)]; stepNow();
+                            } else if (data.type === 'pose') {
+                                apply(new Float32Array(data.buffer)); driver.buffers.push(data.buffer); driver.busy = false;
+                                if (data.time !== time) stepNow();
+                            } else if (data.type === 'error') useMainThread(data.message);
+                        };
+                        worker.onerror = event => { event.preventDefault(); useMainThread(event.message || 'worker failed to load'); };
+                        worker.postMessage({ type: 'init', id: 'eva', kind: 'eva', payload: { asset: assetForWorker, fairleadTangent: fairleadTangent.toArray() } });
+                    } catch (error) { useMainThread(error.message); }
+                } else useMainThread();
                 for (const skin of skins) { skin.computeBoundingBox(); skin.boundingBox.expandByScalar(30); skin.computeBoundingSphere(); skin.boundingSphere.radius += 30; }
-                frame.userData = {role: 'Z1 hand-over-hand climb, waist tether clipped at the worksite, pistol grip tool on four panel bolts', asset: evaAsset.source, author: evaAsset.author, animationDuration: evaAsset.duration, safetyTether: 'Quest EVA hatch handrail ring', timings};
-                return {frame, actor, rig, skeleton, skins, mixer, tool, bit, drillTip, handrail, panel, bones, bolts, workPoint, rightHand, leftHand, timings, update,
-                    routedLine, tetherSpan: tetherSpan.line, waistStrap: waistStrap.line, waistHook, toolTether: toolTether.line, reel, anchor, routeCurve, fairlead,
+                frame.userData = {role: 'Z1 hand-over-hand climb, waist tether clipped at the worksite, pistol grip tool on four panel bolts', asset: evaAsset.source, author: evaAsset.author, animationDuration: evaAsset.duration, safetyTether: 'Quest EVA hatch handrail ring', timings: S.timings};
+                return {frame, actor, rig, skeleton, skins, tool, bit, drillTip, handrail, panel, bones, bolts, workPoint, rightHand, leftHand, timings: S.timings,
+                    routedLine, tetherSpan: tubes.tetherSpan, waistStrap: tubes.waistStrap, waistHook, toolTether: tubes.toolTether, reel, anchor, routeCurve, fairlead,
+                    update: delta => { time += Math.max(0, delta); stepNow(); },
+                    restart: () => { time = 0; stepNow(); },
+                    // Tests and captures: compute on this thread so a pose is in place as soon as update() returns.
+                    useMainThread: () => useMainThread(),
                     rightGripWorld: () => worldPoint(rightHand, rightGripLocal), leftGripWorld: () => worldPoint(leftHand, leftGripLocal),
                     railPointWorld: y => frame.localToWorld(railPoint(y)), drillTipWorld: () => drillTip.getWorldPosition(new THREE.Vector3()),
                     boltWorld: k => frame.localToWorld(bolts[k].clone()), reelExitWorld: () => reelExit.getWorldPosition(new THREE.Vector3()),
-                    restart: () => { time = 0; initialized = false; update(0); },
-                    get time() {return time;}, get phase() {return phase;}, get drilling() {return drilling;}};
+                    get mode() {return driver.mode;}, get time() {return time;}, get phase() {return shown.phase;}, get drilling() {return shown.drilling;}};
             }
-            const z1EVA = await createZ1Maintenance();
+            // Until the figure has loaded, the Z1 EVA calls are no-ops.
+            let evaFigure = null;
+            const evaIdle = { update() {}, restart() {}, useMainThread() {}, mode: 'loading', time: 0, phase: 'loading', drilling: false };
+            const z1EVA = new Proxy({}, { get: (_, key) => (evaFigure || evaIdle)[key] });
+            async function loadZ1Maintenance() {
+                try {
+                    const [response, simulation] = await Promise.all([fetch('data/eva-astronaut.json?v=64b1165037'), import('./sim/eva.js?v=2f04194c17')]);
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    evaFigure = await createZ1Maintenance(await response.json(), simulation);
+                    // The figure arrives after the first frame: give it Z1's current ghost or highlight state.
+                    if (parts.get('z1').ghost) evaFigure.frame.traverse(child => {
+                        if (!child.isMesh) return;
+                        child.userData.solidMaterial = child.material; child.userData.solidShadow = child.castShadow;
+                        child.material = Array.isArray(child.material) ? child.material.map(ghostMaterial) : ghostMaterial(child.material); child.castShadow = false;
+                    });
+                    if (selected === 'z1') {
+                        evaFigure.frame.traverse(child => { if (child.isMesh && child.material.emissive) { child.material.emissive.set(0x2e7c66); child.material.emissiveIntensity = .16; } });
+                        evaFigure.restart();
+                    }
+                    shadowDirty = true;
+                    render();
+                } catch (error) { evaWorkerState = 'unavailable'; console.warn('The EVA figure could not load:', error); }
+            }
 
             const orbitalGroup = new THREE.Group(); orbitalGroup.visible = false; scene.add(orbitalGroup);
             const earthMaterial = new THREE.MeshStandardMaterial({ color: 0x92b8c3, roughness: .95, metalness: 0 });
@@ -7008,6 +6837,27 @@
                     jobs.get(child.parent).meshes.push(child);
                 });
                 const queue = [...jobs.values()];
+                const attach = (job, geometry) => {
+                    const lines = new THREE.LineSegments(geometry, lineArtMaterial);
+                    lines.userData.lineArt = true; lines.layers.set(lineArtLayer); lines.visible = !!job.entry.ghost; job.parent.add(lines);
+                };
+                // The edges are found in a worker (js/workers/line-art.js), one parent group at a time; this thread only
+                // copies each group's vertex arrays across and adds the finished lines.
+                let worker = null, current = null;
+                if (query.get('worker') !== '0' && typeof Worker === 'function') {
+                    try { worker = new Worker(new URL('./workers/line-art.js?v=8b3d432c47', import.meta.url), { type: 'module' }); } catch (error) { worker = null; }
+                }
+                const send = () => {
+                    current = queue.shift();
+                    if (!current) { worker.terminate(); return; }
+                    const meshes = current.meshes.map(mesh => {
+                        mesh.updateMatrix();
+                        const geometry = mesh.geometry;
+                        return { position: geometry.attributes.position.array.slice(), index: geometry.index ? geometry.index.array.slice() : null, matrix: Float64Array.from(mesh.matrix.elements) };
+                    });
+                    worker.postMessage({ meshes, degrees: lineArtDegrees }, meshes.flatMap(mesh => mesh.index ? [mesh.position.buffer, mesh.index.buffer] : [mesh.position.buffer]));
+                };
+                // Without a worker the same search runs here in idle slices of at most 10 ms.
                 const build = job => {
                     const pieces = [];
                     for (const mesh of job.meshes) {
@@ -7016,9 +6866,7 @@
                         mesh.updateMatrix();
                         pieces.push(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(points, 3)).applyMatrix4(mesh.matrix));
                     }
-                    if (!pieces.length) return;
-                    const lines = new THREE.LineSegments(pieces.length > 1 ? mergeGeometries(pieces, false) : pieces[0], lineArtMaterial);
-                    lines.userData.lineArt = true; lines.layers.set(lineArtLayer); lines.visible = !!job.entry.ghost; job.parent.add(lines);
+                    if (pieces.length) attach(job, pieces.length > 1 ? mergeGeometries(pieces, false) : pieces[0]);
                 };
                 const later = step => window.requestIdleCallback ? requestIdleCallback(step, { timeout: 250 }) : setTimeout(step, 16);
                 const step = () => {
@@ -7026,10 +6874,18 @@
                     while (queue.length && performance.now() - start < 10) build(queue.shift());
                     if (queue.length) later(step);
                 };
-                later(step);
+                if (worker) {
+                    worker.onmessage = ({ data }) => {
+                        if (data.points.length) attach(current, new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(data.points, 3)));
+                        send();
+                    };
+                    worker.onerror = event => { event.preventDefault(); worker.terminate(); worker = null; if (current) queue.unshift(current); later(step); };
+                    send();
+                } else later(step);
             }
             // Ghost every visible part except the selection (Dragon keeps Harmony solid, its docking target).
             function applyGhost() {
+                shadowDirty = true;
                 const solid = selected ? new Set(selected === 'dragon' ? dragonDetail === 'cabin' ? ['dragon'] : ['dragon', 'harmony'] : [selected]) : null;
                 for (const entry of parts.values()) {
                     const ghost = solid !== null && !solid.has(entry.id);
@@ -7104,7 +6960,7 @@
             }
             const stationBounds = new THREE.Box3();
             function setConfiguration(name) {
-                configuration = name;
+                configuration = name; shadowDirty = true;
                 for (const entry of parts.values()) entry.group.visible = !modernParts.has(entry.id) || name === 'modern';
                 stationBounds.makeEmpty();
                 for (const entry of parts.values()) if (entry.group.visible) stationBounds.expandByObject(entry.group);
@@ -7381,6 +7237,7 @@
             reducedMotion.addEventListener('change', event => { if (event.matches) { motion = false; updateShutter(destinyShutter.duration); controls.autoRotate = false; setPressed('motion-toggle', false); setPressed('rotate-toggle', false); } });
             new ResizeObserver(resize).observe(viewport);
             function advance(delta) {
+                const started = performance.now();
                 if (motion) {
                     elapsed += delta; updateApproach(delta); updateShutter(delta); z1EVA.update(delta); updateDragonCrew(elapsed); updateColumbusCrew(elapsed);
                     for (const wing of wings) { wing.group.rotation.z = wing.base + Math.sin(elapsed * .07) * .035 * wing.direction; if (wing.overlay) wing.overlay.quaternion.copy(wing.group.quaternion); }
@@ -7391,14 +7248,21 @@
                     }
                     earth.rotation.y = elapsed * .008;
                 }
+                shadowClock += delta;
+                if (renderer.shadowMap.enabled && (shadowDirty || shadowClock >= (motion ? qualityTiers[quality.tier].shadowInterval : .5))) { renderer.shadowMap.needsUpdate = true; shadowDirty = false; shadowClock = 0; }
                 controls.update(delta); render();
+                watchFrames(delta); updateStats(delta, performance.now() - started);
             }
             window.issAtlas = { z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get earthTextureState() { return earthTextureState; }, get currentView() { return currentView; } };
-            setConfiguration('modern'); resize(); setView('reverse'); advance(0); scheduleLineArt();
+            applyQuality(quality.tier); setConfiguration('modern');
+            // Shader programs link in parallel (KHR_parallel_shader_compile) so the page keeps responding while they build.
+            try { await renderer.compileAsync(scene, camera); } catch (error) { console.warn('Shader precompile skipped:', error); }
+            resize(); setView('reverse'); advance(0); scheduleLineArt();
             window.lucide?.createIcons();
             if (!window.lucide) window.addEventListener('load', () => window.lucide?.createIcons(), { once: true });
             loading.style.opacity = '0'; loading.style.pointerEvents = 'none'; setTimeout(() => { loading.hidden = true; }, 400);
             app.dataset.ready = 'true';
+            loadZ1Maintenance();
             const clock = new THREE.Clock();
             renderer.setAnimationLoop(() => advance(Math.min(clock.getDelta(), .06)));
             document.fonts.ready.then(() => render());
