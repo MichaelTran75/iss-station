@@ -7256,7 +7256,9 @@
             window.issAtlas = { z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get earthTextureState() { return earthTextureState; }, get currentView() { return currentView; } };
             applyQuality(quality.tier); setConfiguration('modern');
             // Shader programs link in parallel (KHR_parallel_shader_compile) so the page keeps responding while they build.
-            try { await renderer.compileAsync(scene, camera); } catch (error) { console.warn('Shader precompile skipped:', error); }
+            // At most 1.5 s: a background tab slows the readiness polling to once a second or less, so after that the first
+            // frame goes ahead and finishes any remaining programs itself.
+            try { await Promise.race([renderer.compileAsync(scene, camera), new Promise(resolve => setTimeout(resolve, 1500))]); } catch (error) { console.warn('Shader precompile skipped:', error); }
             resize(); setView('reverse'); advance(0); scheduleLineArt();
             window.lucide?.createIcons();
             if (!window.lucide) window.addEventListener('load', () => window.lucide?.createIcons(), { once: true });
