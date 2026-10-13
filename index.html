@@ -12,8 +12,100 @@
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="css/app.css?v=1b5d33c7a0">
-    <script
-        type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script>
+    <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
+         trước mọi module theo thứ tự dựng. -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+        "./js/core/data.js": "./js/core/data.js?v=125ebf635a",
+        "./js/core/stage.js": "./js/core/stage.js?v=9483b17d36",
+        "./js/core/quality.js": "./js/core/quality.js?v=6bd2dc8886",
+        "./js/core/kit.js": "./js/core/kit.js?v=b41e843ce9",
+        "./js/core/station.js": "./js/core/station.js?v=9b89e755af",
+        "./js/core/cbm.js": "./js/core/cbm.js?v=ed68327318",
+        "./js/core/surfaces.js": "./js/core/surfaces.js?v=d171d10d21",
+        "./js/core/hull.js": "./js/core/hull.js?v=a8069295a6",
+        "./js/core/pma.js": "./js/core/pma.js?v=b53a6784a2",
+        "./js/core/payloads.js": "./js/core/payloads.js?v=54e08c33e0",
+        "./js/parts/truss.js": "./js/parts/truss.js?v=b142bb4419",
+        "./js/parts/power.js": "./js/parts/power.js?v=8fac7d6a70",
+        "./js/parts/irosa.js": "./js/parts/irosa.js?v=7de1fc2eea",
+        "./js/parts/thermal.js": "./js/parts/thermal.js?v=00b6998a38",
+        "./js/parts/destiny.js": "./js/parts/destiny.js?v=499ec5830a",
+        "./js/parts/unity.js": "./js/parts/unity.js?v=47b49c53de",
+        "./js/parts/harmony.js": "./js/parts/harmony.js?v=982e8e2e32",
+        "./js/parts/kibo.js": "./js/parts/kibo.js?v=dd94bdc5e2",
+        "./js/parts/columbus.js": "./js/parts/columbus.js?v=7d3f1f83b6",
+        "./js/parts/tranquility.js": "./js/parts/tranquility.js?v=8ed0d68c0a",
+        "./js/parts/quest.js": "./js/parts/quest.js?v=bc896ddbe3",
+        "./js/parts/leonardo.js": "./js/parts/leonardo.js?v=0ee41cebf1",
+        "./js/parts/zarya.js": "./js/parts/zarya.js?v=dc827acc68",
+        "./js/parts/zvezda.js": "./js/parts/zvezda.js?v=7272398135",
+        "./js/parts/nauka.js": "./js/parts/nauka.js?v=22abe4a613",
+        "./js/parts/prichal.js": "./js/parts/prichal.js?v=e8df7d74de",
+        "./js/parts/dragon.js": "./js/parts/dragon.js?v=9fb6f81518",
+        "./js/parts/soyuz.js": "./js/parts/soyuz.js?v=c2f348f5a2",
+        "./js/parts/robotics.js": "./js/parts/robotics.js?v=a1e546c82a",
+        "./js/parts/beam.js": "./js/parts/beam.js?v=c2c04d76ab",
+        "./js/parts/bishop.js": "./js/parts/bishop.js?v=afad66eaf0",
+        "./js/parts/poisk.js": "./js/parts/poisk.js?v=4a665d5ce5",
+        "./js/parts/rassvet.js": "./js/parts/rassvet.js?v=bdee54dbe4",
+        "./js/parts/z1.js": "./js/parts/z1.js?v=afd125c054",
+        "./js/parts/external-payloads.js": "./js/parts/external-payloads.js?v=50123c1b56",
+        "./js/parts/assembly.js": "./js/parts/assembly.js?v=495148cc5c",
+        "./js/figures/eva.js": "./js/figures/eva.js?v=35ce703c39",
+        "./js/ui/backdrop.js": "./js/ui/backdrop.js?v=e7a9fd0df4",
+        "./js/ui/ghost.js": "./js/ui/ghost.js?v=e02e8c564f",
+        "./js/ui/controller.js": "./js/ui/controller.js?v=1abb59222c",
+        "./js/main.js": "./js/main.js?v=fb6b24a8f9",
+        "./js/sim/eva.js": "./js/sim/eva.js?v=2f04194c17"
+      }
+    }
+    </script>
+    <link rel="modulepreload" href="js/core/data.js?v=125ebf635a">
+    <link rel="modulepreload" href="js/core/stage.js?v=9483b17d36">
+    <link rel="modulepreload" href="js/core/quality.js?v=6bd2dc8886">
+    <link rel="modulepreload" href="js/core/kit.js?v=b41e843ce9">
+    <link rel="modulepreload" href="js/core/station.js?v=9b89e755af">
+    <link rel="modulepreload" href="js/core/cbm.js?v=ed68327318">
+    <link rel="modulepreload" href="js/core/surfaces.js?v=d171d10d21">
+    <link rel="modulepreload" href="js/core/hull.js?v=a8069295a6">
+    <link rel="modulepreload" href="js/core/pma.js?v=b53a6784a2">
+    <link rel="modulepreload" href="js/core/payloads.js?v=54e08c33e0">
+    <link rel="modulepreload" href="js/parts/truss.js?v=b142bb4419">
+    <link rel="modulepreload" href="js/parts/power.js?v=8fac7d6a70">
+    <link rel="modulepreload" href="js/parts/irosa.js?v=7de1fc2eea">
+    <link rel="modulepreload" href="js/parts/thermal.js?v=00b6998a38">
+    <link rel="modulepreload" href="js/parts/destiny.js?v=499ec5830a">
+    <link rel="modulepreload" href="js/parts/unity.js?v=47b49c53de">
+    <link rel="modulepreload" href="js/parts/harmony.js?v=982e8e2e32">
+    <link rel="modulepreload" href="js/parts/kibo.js?v=dd94bdc5e2">
+    <link rel="modulepreload" href="js/parts/columbus.js?v=7d3f1f83b6">
+    <link rel="modulepreload" href="js/parts/tranquility.js?v=8ed0d68c0a">
+    <link rel="modulepreload" href="js/parts/quest.js?v=bc896ddbe3">
+    <link rel="modulepreload" href="js/parts/leonardo.js?v=0ee41cebf1">
+    <link rel="modulepreload" href="js/parts/zarya.js?v=dc827acc68">
+    <link rel="modulepreload" href="js/parts/zvezda.js?v=7272398135">
+    <link rel="modulepreload" href="js/parts/nauka.js?v=22abe4a613">
+    <link rel="modulepreload" href="js/parts/prichal.js?v=e8df7d74de">
+    <link rel="modulepreload" href="js/parts/dragon.js?v=9fb6f81518">
+    <link rel="modulepreload" href="js/parts/soyuz.js?v=c2f348f5a2">
+    <link rel="modulepreload" href="js/parts/robotics.js?v=a1e546c82a">
+    <link rel="modulepreload" href="js/parts/beam.js?v=c2c04d76ab">
+    <link rel="modulepreload" href="js/parts/bishop.js?v=afad66eaf0">
+    <link rel="modulepreload" href="js/parts/poisk.js?v=4a665d5ce5">
+    <link rel="modulepreload" href="js/parts/rassvet.js?v=bdee54dbe4">
+    <link rel="modulepreload" href="js/parts/z1.js?v=afd125c054">
+    <link rel="modulepreload" href="js/parts/external-payloads.js?v=50123c1b56">
+    <link rel="modulepreload" href="js/parts/assembly.js?v=495148cc5c">
+    <link rel="modulepreload" href="js/figures/eva.js?v=35ce703c39">
+    <link rel="modulepreload" href="js/ui/backdrop.js?v=e7a9fd0df4">
+    <link rel="modulepreload" href="js/ui/ghost.js?v=e02e8c564f">
+    <link rel="modulepreload" href="js/ui/controller.js?v=1abb59222c">
+    <link rel="modulepreload" href="js/main.js?v=fb6b24a8f9">
+    <!-- /modules -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
 </head>
 
@@ -192,8 +284,8 @@
             <div id="error" role="alert" hidden></div>
         </div>
     </main>
-    <!-- dựng trạm + hoạt cảnh; dữ liệu mô hình nạp từ data/ và assets/ -->
-    <script type="module" src="js/app.js?v=fc2383f52a"></script>
+    <!-- khởi động: boot.js nạp dữ liệu (core/data.js), rồi main.js dựng trạm theo thứ tự import -->
+    <script type="module" src="js/boot.js?v=a377c3600d"></script>
 </body>
 
 </html>
