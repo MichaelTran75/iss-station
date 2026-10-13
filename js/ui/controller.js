@@ -8,7 +8,7 @@ import { crewThought, updateColumbusCrew } from '../parts/columbus.js';
 import { approach, approachPhase, approachStartTime, dragon, dragonBounds, dragonFlightBounds, lvlhToStation, rendezvous,
     setDragonShell, updateApproach, updateDragonCrew } from '../parts/dragon.js';
 import { evaWorkerState, z1EVA } from '../figures/eva.js';
-import { atmosphere, earth, loadEarth, orbitalGroup } from './backdrop.js';
+import { atmosphere, earth, loadEarth, orbitalGroup, placeOrbitDots } from './backdrop.js';
 import { ghostMaterial } from './ghost.js';
 import { updateRendezvousGuide } from './rendezvous-guide.js';
 
@@ -429,11 +429,13 @@ function updateLabels() {
         label.dot.setAttribute('cx', anchorX.toFixed(1)); label.dot.setAttribute('cy', anchorY.toFixed(1));
     }
 }
+const stationCentre = new THREE.Vector3();
 function placeEarth() {
     const forward = camera.getWorldDirection(new THREE.Vector3());
     const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
     earth.position.copy(controls.target).addScaledVector(forward, 380).addScaledVector(up, -164).addScaledVector(right, 26);
     atmosphere.position.copy(earth.position);
+    placeOrbitDots(stationBounds.getCenter(stationCentre), forward);
 }
 export function render() {
     if (currentView === 'orbit') { if (orbitView) orbitView.render(); return; }

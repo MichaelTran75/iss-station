@@ -75,6 +75,8 @@ Nút **Orbit**: Trái Đất đúng tỉ lệ, ISS ở vị trí tính bằng SG
 
 Thêm vệ tinh: thêm mã NORAD vào `OBJECTS` trong `tle.py` và gọi `addOrbiter({ id, name, norad })` trong `js/orbit/view.js`. Chuyến tiếp tế (phóng → bám quỹ đạo → tiếp cận) có thể ghép `js/sim/orbit.js` cho chặng xa với `js/sim/rendezvous.js` cho chặng gần.
 
+Nút **Earth backdrop** (nền Trái Đất sau trạm) có vòng quỹ đạo chấm cùng kiểu: trạm ở đỉnh vòng, phía trạm bay tới sáng, phía sau mờ. Nền này đặt theo camera (Trái Đất luôn ở dưới trạm), nên vòng chấm cũng được vẽ theo màn hình; đây là hình minh họa, không đúng tỉ lệ.
+
 Ảnh Trái Đất (ngày, đèn đêm) đang lấy trực tiếp từ threejs.org; nên thay bằng ảnh NASA Blue Marble / Black Marble (miền công cộng) đặt trong `assets/`.
 
 ## Hiệu năng
