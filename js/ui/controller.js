@@ -8,7 +8,6 @@ import { crewThought, updateColumbusCrew } from '../parts/columbus.js';
 import { approach, approachPhase, approachStartTime, dragon, dragonBounds, dragonFlightBounds, lvlhToStation, rendezvous,
     setDragonShell, updateApproach, updateDragonCrew } from '../parts/dragon.js';
 import { evaWorkerState, z1EVA } from '../figures/eva.js';
-import { atmosphere, earth, loadEarth, orbitalGroup, placeOrbitDots } from './backdrop.js';
 import { ghostMaterial } from './ghost.js';
 import { updateRendezvousGuide } from './rendezvous-guide.js';
 
@@ -214,6 +213,10 @@ controls.addEventListener('start', () => { dragonFollow = false; });
 // its own camera and controls take the canvas; the station keeps running underneath.
 let orbitView = null, orbitLoading = null, stationTexts = null;
 export const getOrbitView = () => orbitView;
+// The real sky (js/orbit/sky.js), shared by the Orbit view and the Earth backdrop; loaded the first time either opens.
+let sky = null, skyLoading = null;
+export const getSky = () => sky;
+const loadSky = () => (skyLoading ||= import('../orbit/sky.js').then(module => (sky = module.createSky())));
 function enterOrbit() {
     const configurationName = document.getElementById('configuration-name'), orientation = document.getElementById('orientation-text');
     if (currentView !== 'orbit') stationTexts = [configurationName.textContent, orientation.textContent];
@@ -222,7 +225,7 @@ function enterOrbit() {
     document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === 'orbit')));
     document.getElementById('view-name').textContent = '06 / LOW EARTH ORBIT';
     configurationName.textContent = 'SGP4 PREDICTION / NOT LIVE TELEMETRY'; orientation.textContent = 'INERTIAL FRAME / NORTH UP';
-    orbitLoading ||= import('../orbit/view.js').then(module => module.createOrbitView()).then(view => (orbitView = view));
+    orbitLoading ||= Promise.all([import('../orbit/view.js'), loadSky()]).then(([module, loaded]) => (orbitView = module.createOrbitView(loaded)));
     orbitLoading.then(view => { if (currentView === 'orbit') { view.enter(); resize(); } }, error => {
         orbitLoading = null; console.warn('Orbit view unavailable:', error); notify('The orbit view could not load.'); setView('reverse');
     });
@@ -429,17 +432,9 @@ function updateLabels() {
         label.dot.setAttribute('cx', anchorX.toFixed(1)); label.dot.setAttribute('cy', anchorY.toFixed(1));
     }
 }
-const stationCentre = new THREE.Vector3();
-function placeEarth() {
-    const forward = camera.getWorldDirection(new THREE.Vector3());
-    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-    earth.position.copy(controls.target).addScaledVector(forward, 380).addScaledVector(up, -164).addScaledVector(right, 26);
-    atmosphere.position.copy(earth.position);
-    placeOrbitDots(stationBounds.getCenter(stationCentre), forward);
-}
 export function render() {
     if (currentView === 'orbit') { if (orbitView) orbitView.render(); return; }
-    camera.updateMatrixWorld(true); if (inspectionLight.visible) inspectionLight.position.copy(camera.position); if (orbital) placeEarth(); updateApproachDistance(); updateLabels(); updateCrewThought(); updateShutterControls();
+    camera.updateMatrixWorld(true); if (inspectionLight.visible) inspectionLight.position.copy(camera.position); updateApproachDistance(); updateLabels(); updateCrewThought(); updateShutterControls();
     const approachState = approach.time >= approach.duration ? 'DOCKED' : motion ? approachPhase() : 'PAUSED';
     const readout = rangeLabel(approach.range) + ' / ' + approachState;
     updateRendezvousGuide(currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach');
@@ -449,7 +444,10 @@ export function render() {
     const scaleMetres = [.01, .02, .05, .1, .2, .5, 1, 2, 5, 10, 20, 50, 100].find(length => length * pixelsPerMetre >= 55) || 100;
     document.getElementById('scale-line').style.width = (scaleMetres * pixelsPerMetre).toFixed(1) + 'px';
     document.getElementById('scale-label').textContent = scaleMetres + ' m';
-    renderer.render(scene, camera);
+    // Earth backdrop: the real sky behind the station first, then the station over it.
+    if (orbital && sky && sky.renderBehind(camera, viewport.clientWidth, viewport.clientHeight)) {
+        renderer.autoClear = false; renderer.clearDepth(); renderer.render(scene, camera); renderer.autoClear = true;
+    } else renderer.render(scene, camera);
 }
 export function resize() {
     const width = viewport.clientWidth, height = viewport.clientHeight;
@@ -488,8 +486,9 @@ document.getElementById('rotate-toggle').addEventListener('click', () => { contr
 document.getElementById('motion-toggle').addEventListener('click', () => { motion = !motion; setPressed('motion-toggle', motion); render(); });
 document.getElementById('configuration-toggle').addEventListener('click', () => setConfiguration(configuration === 'reference' ? 'modern' : 'reference'));
 document.getElementById('backdrop-toggle').addEventListener('click', () => {
-    orbital = !orbital; orbitalGroup.visible = orbital; app.dataset.backdrop = orbital ? 'orbit' : 'space'; setPressed('backdrop-toggle', orbital);
-    if (orbital) loadEarth(render, notify); render();
+    orbital = !orbital; app.dataset.backdrop = orbital ? 'orbit' : 'space'; setPressed('backdrop-toggle', orbital);
+    if (orbital) loadSky().then(loaded => { loaded.update(0); render(); }, error => { console.warn('Earth backdrop unavailable:', error); notify('The Earth backdrop could not load.'); });
+    render();
 });
 document.getElementById('capture').addEventListener('click', () => {
     render(); const canvas = document.createElement('canvas'); canvas.width = renderer.domElement.width; canvas.height = renderer.domElement.height;
@@ -524,10 +523,10 @@ export function advance(delta) {
             dish.azimuth.rotation.y = dish.baseAzimuth + Math.sin(elapsed * .11) * Math.PI / 30;
             dish.elevation.rotation.x = dish.baseElevation + Math.sin(elapsed * .16) * Math.PI / 60;
         }
-        earth.rotation.y = elapsed * .008;
     }
     if (dragonFollow && currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach') followDragon(delta);
     if (currentView === 'orbit' && orbitView) orbitView.update(delta);
+    else if (orbital && sky) sky.update(delta);
     updateShadows(delta, motion);
     controls.update(delta); render();
     if (watchFrames(delta, motion)) resize();

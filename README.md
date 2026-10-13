@@ -15,10 +15,11 @@ Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 | `js/core/` | nền: `data` (dữ liệu mô hình), `stage` (renderer, camera, đèn), `quality` (mức chất lượng, lịch vẽ bóng đổ), `kit` (vật liệu, gộp lưới), `station` (sổ bộ phận `part()`, hằng số bố trí), cùng các chi tiết dùng chung: `cbm`, `surfaces`, `hull`, `pma`, `payloads` |
 | `js/parts/` | mỗi tệp một bộ phận (truss, power, … z1). `assembly.js` chạy sau cùng: dời cụm Nga, hạ giàn, thu nhỏ Z1 |
 | `js/figures/eva.js` | lưới phi hành gia EVA; mỗi khung chép tư thế nhận từ worker |
-| `js/ui/` | `backdrop` (Trái Đất, sao), `ghost` (khối mờ, nét viền), `rendezvous-guide` (đường tiếp cận, điểm chờ, vùng cấm 200 m), `controller` (chọn bộ phận, góc nhìn, nhãn, nút bấm, vòng lặp khung hình) |
-| `js/orbit/view.js` | góc nhìn quỹ đạo: quả địa cầu, ISS, vòng quỹ đạo, vết trên mặt đất, tua nhanh thời gian; tải khi mở lần đầu |
+| `js/ui/` | `ghost` (khối mờ, nét viền), `rendezvous-guide` (đường tiếp cận, điểm chờ, vùng cấm 200 m), `controller` (chọn bộ phận, góc nhìn, nhãn, nút bấm, vòng lặp khung hình) |
+| `js/orbit/sky.js` | bầu trời thật dùng chung: Trái Đất (ngày, đêm, mây), ISS, Mặt Trăng, Mặt Trời, sao, theo giờ hiện tại; vẽ cả nền Trái Đất sau trạm. Tải khi mở lần đầu |
+| `js/orbit/view.js` | góc nhìn quỹ đạo: khung ISS / Earth & Moon / Sun, zoom ra tới 600 triệu km, tua nhanh thời gian |
 | `js/sim/rendezvous.js` | mô hình tiếp cận của Crew Dragon (Clohessy–Wiltshire, lịch Crew-2), chỉ có toán |
-| `js/sim/orbit.js` | quỹ đạo từ TLE: SGP4 (satellite.js), hướng Mặt Trời, bóng Trái Đất, vết trên mặt đất |
+| `js/sim/orbit.js` | quỹ đạo từ TLE: SGP4 (satellite.js), bóng Trái Đất, vết trên mặt đất; vị trí Mặt Trời, Mặt Trăng, quỹ đạo Trái Đất (astronomy-engine) |
 | `js/sim/eva.js` | mô hình chuyển động của phi hành gia EVA (khung xương, leo tay vịn, dây, súng PGT), không chứa lưới |
 | `js/sim/worker.js` | Web Worker chạy các mô hình chuyển động, trả tư thế về mỗi khung hình |
 | `js/workers/line-art.js` | Web Worker dựng nét viền cho các khối mờ |
@@ -70,14 +71,22 @@ Nắp mũi đóng suốt chặng xa và chỉ mở khi Dragon dừng ở điểm
 
 Nút **Orbit**: Trái Đất đúng tỉ lệ, ISS ở vị trí tính bằng SGP4 từ TLE mới nhất của CelesTrak (lưu tạm 2 giờ trên máy người xem; không tải được thì dùng `data/orbits.json`). Mặt Trời đúng hướng theo giờ UTC nên ranh giới ngày đêm đúng; vòng quỹ đạo vẽ trong hệ quán tính, vết trên mặt đất quay theo Trái Đất. Thời gian: Live, ×60, ×600. Bấm vào ISS để về trạm.
 
+Mặt Trăng và Mặt Trời ở vị trí và kích thước thật, tính bằng astronomy-engine (MIT, sai số khoảng 1 phút cung) rồi xoay về xích đạo thời điểm hiện tại cho khớp hệ của SGP4. Mặt Trăng được Mặt Trời chiếu sáng nên pha trăng là pha thật. Ba khung: **ISS**, **Earth & Moon** (cùng quỹ đạo Mặt Trăng trong một tháng), **Sun** (cùng quỹ đạo Trái Đất trong một năm); camera nhìn từ 40° phía trên mặt phẳng hoàng đạo. Lăn chuột cũng ra được tới 600 triệu km: tốc độ zoom tăng theo khoảng cách. Ở xa, Trái Đất và Mặt Trăng nhỏ hơn một điểm ảnh nên có chấm đánh dấu và nhãn.
+Đã kiểm tra ngày 13/10/2026: Mặt Trời cách 149,3 triệu km, xích vĩ −7,9°; Mặt Trăng cách khoảng 398.000 km, sáng 8% (trăng non 3 ngày).
+
 Đã đối chiếu 13/10/2026 08:09:42 UTC với api.wheretheiss.at: 9,69° S, 118,79° E, cao 420,6 km, 7,661 km/s, cả hai nguồn trùng nhau.
 Đây là dự báo từ TLE, không phải đo đạc trực tiếp; sai số tăng vài km mỗi ngày tính từ thời điểm TLE.
 
 Thêm vệ tinh: thêm mã NORAD vào `OBJECTS` trong `tle.py` và gọi `addOrbiter({ id, name, norad })` trong `js/orbit/view.js`. Chuyến tiếp tế (phóng → bám quỹ đạo → tiếp cận) có thể ghép `js/sim/orbit.js` cho chặng xa với `js/sim/rendezvous.js` cho chặng gần.
 
-Nút **Earth backdrop** (nền Trái Đất sau trạm) có vòng quỹ đạo chấm cùng kiểu: trạm ở đỉnh vòng, phía trạm bay tới sáng, phía sau mờ. Nền này đặt theo camera (Trái Đất luôn ở dưới trạm), nên vòng chấm cũng được vẽ theo màn hình; đây là hình minh họa, không đúng tỉ lệ.
+Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó, nhìn từ một điểm cách vị trí thật của ISS 1.200 km về phía sau, theo đúng hướng camera của trạm.
+- Hệ trục của trạm là hệ quỹ đạo của ISS (đỉnh +y, hướng bay −z, mạn phải +x). ISS bay gần như theo hệ này, nên nền xoay theo quỹ đạo: Trái Đất luôn ở dưới, mặt đất phía dưới là nơi ISS đang bay qua, ngày đêm đúng giờ.
+- Vòng chấm là một phần ba quỹ đạo thật quanh trạm: sáng phía trước, mờ phía sau.
+- Mây là ảnh tĩnh, không phải mây thời gian thực.
+- Ánh sáng trên trạm vẫn cố định để mô hình luôn rõ. Khi ISS bay vào vùng đêm, nền tối nhưng trạm vẫn sáng.
+- Trên trạm, một điểm ảnh ứng với khoảng 2–10 km mặt đất, còn ảnh Trái Đất 4096 px chỉ có 10 km/px, nên mặt đất hơi mờ. Muốn sắc nét thì phải tải ảnh theo ô (ví dụ NASA GIBS) như các bản đồ trực tuyến.
 
-Ảnh Trái Đất (ngày, đèn đêm) đang lấy trực tiếp từ threejs.org; nên thay bằng ảnh NASA Blue Marble / Black Marble (miền công cộng) đặt trong `assets/`.
+Ảnh Trái Đất (ngày, đêm, mây, độ nhám) của [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0), bản thu nhỏ trong ví dụ của three.js, lấy trực tiếp từ threejs.org. Ảnh Mặt Trăng là của ví dụ three.js, chưa rõ giấy phép; nên thay bằng ảnh Mặt Trăng 2K của Solar System Scope (CC BY 4.0) đặt trong `assets/`.
 
 ## Hiệu năng
 

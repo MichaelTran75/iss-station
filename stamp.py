@@ -100,6 +100,8 @@ def write_modules():
         print('index.html: %d module, %d tải trước' % (len(order) + len(lazy), len(order)))
 
 
+# Khối module viết trước (để mục của tệp đã xoá không còn), rồi đóng dấu, rồi viết lại với dấu mới.
+write_modules()
 stamp_all()
 write_modules()
 stamp_all()

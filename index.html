@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=2323b631e5">
+    <link rel="stylesheet" href="css/app.css?v=eaa55fc633">
     <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
          trước mọi module theo thứ tự dựng. -->
     <script type="importmap">
@@ -57,14 +57,14 @@
         "./js/parts/external-payloads.js": "./js/parts/external-payloads.js?v=50123c1b56",
         "./js/parts/assembly.js": "./js/parts/assembly.js?v=495148cc5c",
         "./js/figures/eva.js": "./js/figures/eva.js?v=35ce703c39",
-        "./js/ui/backdrop.js": "./js/ui/backdrop.js?v=06f84d394c",
         "./js/ui/ghost.js": "./js/ui/ghost.js?v=e02e8c564f",
         "./js/ui/rendezvous-guide.js": "./js/ui/rendezvous-guide.js?v=c2e18df47a",
-        "./js/ui/controller.js": "./js/ui/controller.js?v=8473ba41da",
-        "./js/main.js": "./js/main.js?v=8224d8e92a",
-        "./js/orbit/view.js": "./js/orbit/view.js?v=6b0e3214c4",
+        "./js/ui/controller.js": "./js/ui/controller.js?v=6f52b540ae",
+        "./js/main.js": "./js/main.js?v=8f998bddb6",
+        "./js/orbit/sky.js": "./js/orbit/sky.js?v=39d38add5d",
+        "./js/orbit/view.js": "./js/orbit/view.js?v=9166f83b83",
         "./js/sim/eva.js": "./js/sim/eva.js?v=2f04194c17",
-        "./js/sim/orbit.js": "./js/sim/orbit.js?v=4c844a3e49"
+        "./js/sim/orbit.js": "./js/sim/orbit.js?v=f44737761f"
       }
     }
     </script>
@@ -106,11 +106,10 @@
     <link rel="modulepreload" href="js/parts/external-payloads.js?v=50123c1b56">
     <link rel="modulepreload" href="js/parts/assembly.js?v=495148cc5c">
     <link rel="modulepreload" href="js/figures/eva.js?v=35ce703c39">
-    <link rel="modulepreload" href="js/ui/backdrop.js?v=06f84d394c">
     <link rel="modulepreload" href="js/ui/ghost.js?v=e02e8c564f">
     <link rel="modulepreload" href="js/ui/rendezvous-guide.js?v=c2e18df47a">
-    <link rel="modulepreload" href="js/ui/controller.js?v=8473ba41da">
-    <link rel="modulepreload" href="js/main.js?v=8224d8e92a">
+    <link rel="modulepreload" href="js/ui/controller.js?v=6f52b540ae">
+    <link rel="modulepreload" href="js/main.js?v=8f998bddb6">
     <!-- /modules -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
 </head>
@@ -201,8 +200,12 @@
                         <div class="period"><dt>Period</dt><dd id="orbit-period">–</dd></div>
                         <div class="inclination"><dt>Inclination</dt><dd id="orbit-inclination">–</dd></div>
                         <div><dt>Light</dt><dd id="orbit-light">–</dd></div>
+                        <div class="wide"><dt>Moon</dt><dd id="orbit-moon">–</dd></div>
                     </dl>
-                    <button type="button" class="orbit-follow" id="orbit-follow" aria-pressed="true">Follow ISS</button>
+                    <div class="orbit-frame" role="group" aria-label="Frame"><button type="button" data-frame="iss"
+                            aria-pressed="true">ISS</button><button type="button" data-frame="moon"
+                            aria-pressed="false">Earth &amp; Moon</button><button type="button" data-frame="sun"
+                            aria-pressed="false">Sun</button></div>
                     <small id="orbit-source">Loading orbital elements…</small>
                 </section>
                 <div class="scale">

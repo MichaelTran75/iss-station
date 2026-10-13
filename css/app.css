@@ -1593,7 +1593,8 @@
             color: var(--accent);
         }
 
-        .orbit-warp {
+        .orbit-warp,
+        .orbit-frame {
             display: flex;
             gap: 3px;
             width: max-content;
@@ -1603,7 +1604,8 @@
             border-radius: 5px;
         }
 
-        .orbit-warp button {
+        .orbit-warp button,
+        .orbit-frame button {
             min-height: 24px;
             padding: 0 11px;
             border: 0;
@@ -1613,7 +1615,8 @@
             font: 600 9px 'IBM Plex Mono', monospace;
         }
 
-        .orbit-warp button[aria-pressed="true"] {
+        .orbit-warp button[aria-pressed="true"],
+        .orbit-frame button[aria-pressed="true"] {
             background: var(--ink);
             color: var(--paper);
         }
@@ -1642,16 +1645,8 @@
             font-variant-numeric: tabular-nums;
         }
 
-        .orbit-follow {
-            padding: 4px 0;
-            border: 0;
-            border-bottom: 1px solid var(--line);
-            background: transparent;
-            font: 500 9px/1.6 'IBM Plex Mono', monospace;
-        }
-
-        .orbit-follow[aria-pressed="true"] {
-            color: var(--accent);
+        .orbit-frame {
+            margin: 0;
         }
 
         .orbit-panel small {
@@ -1672,6 +1667,14 @@
             letter-spacing: .04em;
             color: #91d8c3;
             text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
+        }
+
+        .orbit-label.body {
+            color: #c9d1d9;
+        }
+
+        .orbit-label.sun {
+            color: #ffd98a;
         }
 
         @media (max-width: 760px) {
