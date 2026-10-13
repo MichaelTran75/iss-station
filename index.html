@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=1b5d33c7a0">
+    <link rel="stylesheet" href="css/app.css?v=2323b631e5">
     <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
          trước mọi module theo thứ tự dựng. -->
     <script type="importmap">
@@ -45,7 +45,8 @@
         "./js/parts/zvezda.js": "./js/parts/zvezda.js?v=7272398135",
         "./js/parts/nauka.js": "./js/parts/nauka.js?v=22abe4a613",
         "./js/parts/prichal.js": "./js/parts/prichal.js?v=e8df7d74de",
-        "./js/parts/dragon.js": "./js/parts/dragon.js?v=9fb6f81518",
+        "./js/sim/rendezvous.js": "./js/sim/rendezvous.js?v=83f290ad04",
+        "./js/parts/dragon.js": "./js/parts/dragon.js?v=49dd89805d",
         "./js/parts/soyuz.js": "./js/parts/soyuz.js?v=c2f348f5a2",
         "./js/parts/robotics.js": "./js/parts/robotics.js?v=a1e546c82a",
         "./js/parts/beam.js": "./js/parts/beam.js?v=c2c04d76ab",
@@ -58,9 +59,12 @@
         "./js/figures/eva.js": "./js/figures/eva.js?v=35ce703c39",
         "./js/ui/backdrop.js": "./js/ui/backdrop.js?v=e7a9fd0df4",
         "./js/ui/ghost.js": "./js/ui/ghost.js?v=e02e8c564f",
-        "./js/ui/controller.js": "./js/ui/controller.js?v=1abb59222c",
-        "./js/main.js": "./js/main.js?v=fb6b24a8f9",
-        "./js/sim/eva.js": "./js/sim/eva.js?v=2f04194c17"
+        "./js/ui/rendezvous-guide.js": "./js/ui/rendezvous-guide.js?v=c2e18df47a",
+        "./js/ui/controller.js": "./js/ui/controller.js?v=21fd9e05e5",
+        "./js/main.js": "./js/main.js?v=8224d8e92a",
+        "./js/orbit/view.js": "./js/orbit/view.js?v=6b0e3214c4",
+        "./js/sim/eva.js": "./js/sim/eva.js?v=2f04194c17",
+        "./js/sim/orbit.js": "./js/sim/orbit.js?v=4c844a3e49"
       }
     }
     </script>
@@ -90,7 +94,8 @@
     <link rel="modulepreload" href="js/parts/zvezda.js?v=7272398135">
     <link rel="modulepreload" href="js/parts/nauka.js?v=22abe4a613">
     <link rel="modulepreload" href="js/parts/prichal.js?v=e8df7d74de">
-    <link rel="modulepreload" href="js/parts/dragon.js?v=9fb6f81518">
+    <link rel="modulepreload" href="js/sim/rendezvous.js?v=83f290ad04">
+    <link rel="modulepreload" href="js/parts/dragon.js?v=49dd89805d">
     <link rel="modulepreload" href="js/parts/soyuz.js?v=c2f348f5a2">
     <link rel="modulepreload" href="js/parts/robotics.js?v=a1e546c82a">
     <link rel="modulepreload" href="js/parts/beam.js?v=c2c04d76ab">
@@ -103,8 +108,9 @@
     <link rel="modulepreload" href="js/figures/eva.js?v=35ce703c39">
     <link rel="modulepreload" href="js/ui/backdrop.js?v=e7a9fd0df4">
     <link rel="modulepreload" href="js/ui/ghost.js?v=e02e8c564f">
-    <link rel="modulepreload" href="js/ui/controller.js?v=1abb59222c">
-    <link rel="modulepreload" href="js/main.js?v=fb6b24a8f9">
+    <link rel="modulepreload" href="js/ui/rendezvous-guide.js?v=c2e18df47a">
+    <link rel="modulepreload" href="js/ui/controller.js?v=21fd9e05e5">
+    <link rel="modulepreload" href="js/main.js?v=8224d8e92a">
     <!-- /modules -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
 </head>
@@ -125,7 +131,8 @@
                         aria-pressed="false">Port</button><button data-view="reverse"
                         aria-pressed="true">Starboard</button><button data-view="zenith"
                         aria-pressed="false">Zenith</button><button data-view="forward"
-                        aria-pressed="false">Forward</button></nav>
+                        aria-pressed="false">Forward</button><button data-view="orbit"
+                        aria-pressed="false">Orbit</button></nav>
             </div>
         </header>
         <nav class="timeline" aria-label="Assembly milestones">
@@ -181,6 +188,23 @@
                         <option value="">Choose a component…</option>
                     </select>
                 </div>
+                <section class="orbit-panel" id="orbit-panel" aria-label="ISS orbit" hidden>
+                    <div class="orbit-time"><b id="orbit-clock">–</b><span id="orbit-rate">LIVE</span></div>
+                    <div class="orbit-warp" role="group" aria-label="Time rate"><button type="button" data-warp="1"
+                            aria-pressed="true">Live</button><button type="button" data-warp="60"
+                            aria-pressed="false">×60</button><button type="button" data-warp="600"
+                            aria-pressed="false">×600</button></div>
+                    <dl class="orbit-readout">
+                        <div><dt>Altitude</dt><dd id="orbit-altitude">–</dd></div>
+                        <div><dt>Speed</dt><dd id="orbit-speed">–</dd></div>
+                        <div class="wide"><dt>Over</dt><dd id="orbit-place">–</dd></div>
+                        <div class="period"><dt>Period</dt><dd id="orbit-period">–</dd></div>
+                        <div class="inclination"><dt>Inclination</dt><dd id="orbit-inclination">–</dd></div>
+                        <div><dt>Light</dt><dd id="orbit-light">–</dd></div>
+                    </dl>
+                    <button type="button" class="orbit-follow" id="orbit-follow" aria-pressed="true">Follow ISS</button>
+                    <small id="orbit-source">Loading orbital elements…</small>
+                </section>
                 <div class="scale">
                     <div class="scale-line" id="scale-line"></div><span id="scale-label">10 m</span>
                 </div>

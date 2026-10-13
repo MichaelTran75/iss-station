@@ -5,11 +5,12 @@ import { app, camera, controls, inspectionLight, renderer, scene, station, viewp
 import { markShadowsDirty, updateShadows, updateStats, watchFrames } from '../core/quality.js';
 import { destinyShutter, ghostOpacity, modernParts, parts, trackingDishes, wings } from '../core/station.js';
 import { crewThought, updateColumbusCrew } from '../parts/columbus.js';
-import { approach, approachPhase, approachStartTime, dragon, dragonFlightBounds, setDragonShell, updateApproach,
-    updateDragonCrew } from '../parts/dragon.js';
+import { approach, approachPhase, approachStartTime, dragon, dragonBounds, dragonFlightBounds, lvlhToStation, rendezvous,
+    setDragonShell, updateApproach, updateDragonCrew } from '../parts/dragon.js';
 import { evaWorkerState, z1EVA } from '../figures/eva.js';
 import { atmosphere, earth, loadEarth, orbitalGroup } from './backdrop.js';
 import { ghostMaterial } from './ghost.js';
+import { updateRendezvousGuide } from './rendezvous-guide.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 export let motion = !reducedMotion.matches, labelsEnabled = false, selected = null, currentView = 'reverse', configuration = 'modern', orbital = false, elapsed = 0;
@@ -95,6 +96,7 @@ export function selectPart(id) {
     setDragonShell(0);
     if (currentView === 'detail' && (id !== selected || !id)) setView('reverse');
     if (id && id !== 'columbus' && currentView === 'interior') setView('reverse');
+    if (id && currentView === 'orbit') setView('reverse');
     if (id && modernParts.has(id) && configuration === 'reference') setConfiguration('modern');
     if (id === 'destiny' && selected !== 'destiny') destinyDetail = 'supports';
     if (id === 'dragon' && selected !== 'dragon') dragonDetail = 'approach';
@@ -150,18 +152,18 @@ export function setConfiguration(name) {
     configuration = name; markShadowsDirty();
     for (const entry of parts.values()) entry.group.visible = !modernParts.has(entry.id) || name === 'modern';
     stationBounds.makeEmpty();
-    for (const entry of parts.values()) if (entry.group.visible) stationBounds.expandByObject(entry.group);
+    // Dragon may be hundreds of metres out on its approach: the station's frame takes only its last leg.
+    for (const entry of parts.values()) if (entry.group.visible && entry.id !== 'dragon') stationBounds.expandByObject(entry.group);
     stationBounds.union(dragonFlightBounds);
     setPressed('configuration-toggle', name === 'modern');
     document.getElementById('configuration-name').textContent = name === 'modern' ? 'JUNE 2023 / ILLUSTRATIVE CONFIGURATION' : 'CORE ELEMENTS / SIMPLIFIED COMPARISON';
     if (selected && !parts.get(selected).group.visible) selectPart(null);
-    setView(currentView === 'detail' ? 'reverse' : currentView);
+    if (currentView !== 'orbit') setView(currentView === 'detail' ? 'reverse' : currentView);
 }
-function fitBox(bounds, direction, margin = 1.16) {
-    const damping = controls.enableDamping;
-    controls.enableDamping = false; controls.update(0); controls.enableDamping = damping;
-    const center = bounds.getCenter(new THREE.Vector3());
-    controls.target.copy(center); camera.up.set(0, 1, 0); camera.position.copy(center).add(direction); camera.lookAt(center); camera.updateMatrixWorld(true);
+// The orthographic frustum that frames `bounds` from the camera's present direction: half its height, the aspect, and
+// the vertical shift (per unit of half-height) that centres the bounds in the space between the page's chrome (and,
+// with `clearDock`, above the tool dock too).
+function framing(bounds, margin, clearDock = false) {
     const inverse = camera.matrixWorldInverse;
     let minimumX = Infinity, maximumX = -Infinity, minimumY = Infinity, maximumY = -Infinity;
     for (const across of [bounds.min.x, bounds.max.x]) for (const height of [bounds.min.y, bounds.max.y]) for (const depth of [bounds.min.z, bounds.max.z]) {
@@ -169,15 +171,72 @@ function fitBox(bounds, direction, margin = 1.16) {
     }
     const width = viewport.clientWidth, height = Math.max(1, viewport.clientHeight);
     const chrome = document.querySelector('.viewport-chrome');
-    const safeHeight = Math.max(80, chrome.clientHeight), aspect = width / height;
+    let safeHeight = Math.max(80, chrome.clientHeight);
+    if (clearDock) safeHeight = Math.max(80, Math.min(safeHeight, document.querySelector('.dock').getBoundingClientRect().top - viewport.getBoundingClientRect().top - 14 - chrome.offsetTop));
+    const aspect = width / height;
     const halfHeight = Math.max((maximumY - minimumY) * margin * height / (2 * safeHeight), (maximumX - minimumX) * margin / (aspect * 2));
-    const centerOffset = (chrome.offsetTop + safeHeight / 2 - height / 2) * (2 * halfHeight / height);
+    return { halfHeight, aspect, shift: (chrome.offsetTop + safeHeight / 2 - height / 2) * 2 / height };
+}
+function setFrustum({ halfHeight, aspect, shift }) {
     camera.left = -halfHeight * aspect; camera.right = halfHeight * aspect;
-    camera.top = halfHeight + centerOffset; camera.bottom = -halfHeight + centerOffset;
+    camera.top = halfHeight * (1 + shift); camera.bottom = halfHeight * (shift - 1);
+}
+function fitBox(bounds, direction, margin = 1.16, clearDock = false) {
+    const damping = controls.enableDamping;
+    controls.enableDamping = false; controls.update(0); controls.enableDamping = damping;
+    const center = bounds.getCenter(new THREE.Vector3());
+    controls.target.copy(center); camera.up.set(0, 1, 0); camera.position.copy(center).add(direction); camera.lookAt(center); camera.updateMatrixWorld(true);
+    setFrustum(framing(bounds, margin, clearDock));
     camera.zoom = 1; camera.updateProjectionMatrix(); controls.update();
 }
+// Crew Dragon's approach view follows the capsule: the frame eases to hold Harmony, Dragon and the path still ahead of
+// it, so it narrows from the whole transfer down to the docking ring, until someone takes the camera.
+let dragonFollow = false;
+// Wider than other close-ups: far out, Dragon sits at the frame's edge, by the tool dock.
+const dragonMargin = 1.25;
+const harmonyBox = new THREE.Box3(), followBox = new THREE.Box3(), followCenter = new THREE.Vector3(), pathPoint = new THREE.Vector3();
+function dragonApproachBounds() {
+    if (harmonyBox.isEmpty()) harmonyBox.setFromObject(parts.get('harmony').group);
+    dragonBounds(followBox).union(harmonyBox);
+    for (const point of rendezvous.pathAhead(approach.mission)) followBox.expandByPoint(lvlhToStation(point, pathPoint).add(approach.port));
+    return followBox;
+}
+function followDragon(delta) {
+    const bounds = dragonApproachBounds(), goal = framing(bounds, dragonMargin, true), ease = 1 - Math.exp(-3 * delta);
+    const current = (camera.top - camera.bottom) / 2;
+    const shift = bounds.getCenter(followCenter).sub(controls.target).multiplyScalar(ease);
+    controls.target.add(shift); camera.position.add(shift);
+    setFrustum({ ...goal, halfHeight: Math.exp(THREE.MathUtils.lerp(Math.log(current), Math.log(goal.halfHeight), ease)) });
+    camera.updateProjectionMatrix();
+}
+controls.addEventListener('start', () => { dragonFollow = false; });
+// Orbit view (js/orbit/view.js): the globe with the ISS where it is now, loaded the first time it opens. While it shows,
+// its own camera and controls take the canvas; the station keeps running underneath.
+let orbitView = null, orbitLoading = null, stationTexts = null;
+export const getOrbitView = () => orbitView;
+function enterOrbit() {
+    const configurationName = document.getElementById('configuration-name'), orientation = document.getElementById('orientation-text');
+    if (currentView !== 'orbit') stationTexts = [configurationName.textContent, orientation.textContent];
+    currentView = 'orbit'; app.dataset.sceneView = 'orbit'; inspectionLight.visible = false; dragonFollow = false;
+    controls.enabled = false; controls.autoRotate = false; setPressed('rotate-toggle', false);
+    document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === 'orbit')));
+    document.getElementById('view-name').textContent = '06 / LOW EARTH ORBIT';
+    configurationName.textContent = 'SGP4 PREDICTION / NOT LIVE TELEMETRY'; orientation.textContent = 'INERTIAL FRAME / NORTH UP';
+    orbitLoading ||= import('../orbit/view.js').then(module => module.createOrbitView()).then(view => (orbitView = view));
+    orbitLoading.then(view => { if (currentView === 'orbit') { view.enter(); resize(); } }, error => {
+        orbitLoading = null; console.warn('Orbit view unavailable:', error); notify('The orbit view could not load.'); setView('reverse');
+    });
+}
+function leaveOrbit() {
+    if (currentView !== 'orbit') return;
+    orbitView?.leave(); controls.enabled = true;
+    currentView = 'reverse'; app.dataset.sceneView = 'reverse';
+    if (stationTexts) [document.getElementById('configuration-name').textContent, document.getElementById('orientation-text').textContent] = stationTexts;
+}
 export function setView(name) {
-    inspectionLight.visible = false;
+    if (name === 'orbit') { enterOrbit(); return; }
+    leaveOrbit();
+    inspectionLight.visible = false; dragonFollow = false;
     currentView = name; app.dataset.sceneView = name; controls.autoRotate = false; setPressed('rotate-toggle', false);
     for (const entry of parts.values()) entry.group.visible = name === 'interior' ? entry.id === 'columbus' : !modernParts.has(entry.id) || configuration === 'modern';
     applyGhost();
@@ -188,23 +247,27 @@ export function setView(name) {
     document.getElementById('view-name').textContent = { overview: '01 / PORT FORWARD', reverse: '02 / STARBOARD FORWARD', zenith: '03 / ZENITH PLAN', forward: '04 / FORWARD ELEVATION', interior: '05 / COLUMBUS LABORATORY' }[name]; render();
 }
 export function focusPart(id) {
+    leaveOrbit();
     if (id === 'columbus') { setView('interior'); return; }
     if (currentView === 'interior') setView('reverse');
     const windowDetail = id === 'destiny' && destinyDetail === 'window', cabinDetail = id === 'dragon' && dragonDetail === 'cabin';
     // A fixed envelope covers the whole shutter sweep so the camera never pumps.
     const bounds = windowDetail ? new THREE.Box3(new THREE.Vector3(-.68, -3.48, 4.15), new THREE.Vector3(1.56, -2.08, 5.55))
         : cabinDetail ? new THREE.Box3(new THREE.Vector3(-2.05, -2.05, -4.3), new THREE.Vector3(2.05, 2.05, .2)).applyMatrix4(dragon.group.matrixWorld)
-        : id === 'dragon' ? dragonFlightBounds.clone() : new THREE.Box3().setFromObject(parts.get(id).group);
+        : id === 'dragon' ? dragonApproachBounds().clone() : new THREE.Box3().setFromObject(parts.get(id).group);
     if (id === 'dragon' && !cabinDetail) bounds.union(new THREE.Box3().setFromObject(parts.get('harmony').group));
     controls.autoRotate = false; setPressed('rotate-toggle', false);
     const detailDirections = { destiny: [-110, 68, -145], poisk: [-155, 85, -140], rassvet: [-145, -85, -135], prichal: [-140, 20, -180], soyuz: [-160, 120, 160], beam: [-120, 80, 150], bishop: [-155, 100, -140], z1: [-85, 58, -165], s3payloads: [125, 70, -160], p3payloads: [-125, 70, -160], tranquility: [-100, -120, -155], robotics: [-40, 120, 150], thermal: [-155, 80, -100], irosa: [-100, 160, -130] };
-    const direction = windowDetail ? new THREE.Vector3(65, -180, -105) : cabinDetail ? new THREE.Vector3(-100, -20, 35) : id === 'dragon' ? new THREE.Vector3(-100, 85, 150) : detailDirections[id] ? new THREE.Vector3(...detailDirections[id]) : cameraDirection('reverse');
+    const direction = windowDetail ? new THREE.Vector3(65, -180, -105) : cabinDetail ? new THREE.Vector3(-100, -20, 35) : id === 'dragon' ? new THREE.Vector3(-165, 70, 75) : detailDirections[id] ? new THREE.Vector3(...detailDirections[id]) : cameraDirection('reverse');
     // The selected assembly stays solid; the rest of the station remains as ghosted line art for context.
     for (const entry of parts.values()) entry.group.visible = !modernParts.has(entry.id) || configuration === 'modern';
     applyGhost();
     inspectionLight.visible = windowDetail || cabinDetail || id === 'tranquility';
     currentView = 'detail'; app.dataset.sceneView = 'detail';
-    fitBox(bounds, direction, windowDetail ? 1.32 : cabinDetail ? 1.12 : id === 'dragon' ? 1.23 : 1.22);
+    // Far out on its approach Dragon spans hundreds of metres of frame: keep the camera beyond the near clipping plane.
+    if (id === 'dragon' && !cabinDetail) direction.setLength(Math.max(direction.length(), bounds.getSize(new THREE.Vector3()).length()));
+    fitBox(bounds, direction, windowDetail ? 1.32 : cabinDetail ? 1.12 : id === 'dragon' ? dragonMargin : 1.22, id === 'dragon' && !cabinDetail);
+    dragonFollow = id === 'dragon' && !cabinDetail;
     document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', 'false'));
     document.getElementById('view-name').textContent = windowDetail ? 'DETAIL / DESTINY OBSERVATION WINDOW' : cabinDetail ? 'DETAIL / CREW DRAGON CABIN' : 'DETAIL / ' + parts.get(id).name.toUpperCase(); render();
 }
@@ -214,6 +277,7 @@ export function restartApproach() {
     updateApproach(0);
     motion = !reducedMotion.matches;
     setPressed('motion-toggle', motion);
+    if (selected === 'dragon' && dragonDetail === 'approach' && currentView === 'detail') focusPart('dragon');
     render();
 }
 // The cabin is shown docked: the approach jumps to its end before the camera frames the capsule.
@@ -247,6 +311,7 @@ function updateShutterControls() {
     const button = document.getElementById('shutter-toggle'), label = destinyShutter.target > 0 ? 'Close shutter' : 'Open shutter';
     if (button.textContent !== label) button.textContent = label;
 }
+const rangeLabel = range => (range >= 100 ? range.toFixed(0) : range.toFixed(1)) + ' m';
 function updateApproachDistance() {
     if (!approachHud || !approachDistLine || !approachDistBadge) return;
     const dragonPart = parts.get('dragon'), harmonyPart = parts.get('harmony');
@@ -263,7 +328,17 @@ function updateApproachDistance() {
         approachHud.style.display = 'none'; approachDistBadge.style.display = 'none'; return;
     }
     const x1 = (vPort.x * .5 + .5) * width, y1 = (-vPort.y * .5 + .5) * height;
-    const x2 = (vDragon.x * .5 + .5) * width, y2 = (-vDragon.y * .5 + .5) * height;
+    let x2 = (vDragon.x * .5 + .5) * width, y2 = (-vDragon.y * .5 + .5) * height;
+    // Dragon out of the frame: the line runs from the port to the frame's edge toward it, and the range sits there.
+    const chrome = document.querySelector('.viewport-chrome'), inset = 26;
+    const dockTop = document.querySelector('.dock').getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+    const left = inset, right = width - inset, top = chrome.offsetTop + inset, bottom = Math.min(chrome.offsetTop + chrome.clientHeight - inset, dockTop - 18);
+    let clipped = false;
+    if (x1 > left && x1 < right && y1 > top && y1 < bottom && (x2 < left || x2 > right || y2 < top || y2 > bottom)) {
+        const dx = x2 - x1, dy = y2 - y1;
+        const t = Math.min(dx < 0 ? (left - x1) / dx : dx > 0 ? (right - x1) / dx : 1, dy < 0 ? (top - y1) / dy : dy > 0 ? (bottom - y1) / dy : 1);
+        x2 = x1 + dx * t; y2 = y1 + dy * t; clipped = true;
+    }
     const minX = Math.min(x1, x2), maxX = Math.max(x1, x2), minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
     if (maxX < -60 || minX > width + 60 || maxY < -60 || minY > height + 60) {
         approachHud.style.display = 'none'; approachDistBadge.style.display = 'none'; return;
@@ -273,10 +348,11 @@ function updateApproachDistance() {
     approachDistLine.setAttribute('x2', x2.toFixed(1)); approachDistLine.setAttribute('y2', y2.toFixed(1));
     approachPortDot.setAttribute('cx', x1.toFixed(1)); approachPortDot.setAttribute('cy', y1.toFixed(1));
     approachDragonDot.setAttribute('cx', x2.toFixed(1)); approachDragonDot.setAttribute('cy', y2.toFixed(1));
-    const midX = (x1 + x2) * .5, midY = (y1 + y2) * .5;
+    approachDragonDot.style.display = clipped ? 'none' : '';
+    const midX = clipped ? x2 : (x1 + x2) * .5, midY = clipped ? y2 : (y1 + y2) * .5;
     const linePixelDist = Math.hypot(x2 - x1, y2 - y1);
     let badgeX = midX, badgeY = midY;
-    if (linePixelDist < 52) {
+    if (linePixelDist < 52 && !clipped) {
         let nx = -(y2 - y1), ny = (x2 - x1);
         const nLen = Math.hypot(nx, ny);
         if (nLen > 0.001) {
@@ -286,7 +362,7 @@ function updateApproachDistance() {
         } else { badgeY = midY - 14; }
     }
     approachDistBadge.style.transform = 'translate(' + badgeX.toFixed(1) + 'px,' + badgeY.toFixed(1) + 'px) translate(-50%,-50%)';
-    const rangeText = approach.range.toFixed(1) + ' m';
+    const rangeText = rangeLabel(approach.range) + (clipped ? ' · DRAGON' : '');
     if (approachDistBadge.textContent !== rangeText) approachDistBadge.textContent = rangeText;
 }
 // Crew 1's thought follows his head on screen. It shows only while the camera looks into the see-through side of
@@ -360,9 +436,11 @@ function placeEarth() {
     atmosphere.position.copy(earth.position);
 }
 export function render() {
+    if (currentView === 'orbit') { if (orbitView) orbitView.render(); return; }
     camera.updateMatrixWorld(true); if (inspectionLight.visible) inspectionLight.position.copy(camera.position); if (orbital) placeEarth(); updateApproachDistance(); updateLabels(); updateCrewThought(); updateShutterControls();
     const approachState = approach.time >= approach.duration ? 'DOCKED' : motion ? approachPhase() : 'PAUSED';
-    const readout = approach.range.toFixed(1) + ' m / ' + approachState;
+    const readout = rangeLabel(approach.range) + ' / ' + approachState;
+    updateRendezvousGuide(currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach');
     const status = document.getElementById('approach-state');
     if (status.textContent !== readout) status.textContent = readout;
     const pixelsPerMetre = camera.zoom * viewport.clientWidth / (camera.right - camera.left);
@@ -375,6 +453,7 @@ export function resize() {
     const width = viewport.clientWidth, height = viewport.clientHeight;
     if (!width || !height) return;
     renderer.setSize(width, height);
+    if (currentView === 'orbit') { orbitView?.resize(width, height); render(); return; }
     if (currentView === 'interior') fitBox(new THREE.Box3().setFromObject(parts.get('columbus').group), cameraDirection('interior'), 1.25);
     else if (currentView === 'detail' && selected) focusPart(selected); else if (currentView !== 'detail') fitBox(stationBounds, cameraDirection(currentView));
     render();
@@ -401,7 +480,7 @@ document.getElementById('reset').addEventListener('click', () => {
     destinyShutter.pivot.rotation.z = destinyShutter.openAngle;
     restartApproach(); advance(0);
 });
-for (const [id, multiplier] of [['zoom-in', 1.25], ['zoom-out', .8]]) document.getElementById(id).addEventListener('click', () => { camera.zoom = THREE.MathUtils.clamp(camera.zoom * multiplier, controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); render(); });
+for (const [id, multiplier] of [['zoom-in', 1.25], ['zoom-out', .8]]) document.getElementById(id).addEventListener('click', () => { if (currentView === 'orbit') { orbitView?.zoomBy(multiplier); return; } dragonFollow = false; camera.zoom = THREE.MathUtils.clamp(camera.zoom * multiplier, controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); render(); });
 document.getElementById('labels-toggle').addEventListener('click', () => { labelsEnabled = !labelsEnabled; setPressed('labels-toggle', labelsEnabled); render(); });
 document.getElementById('rotate-toggle').addEventListener('click', () => { controls.autoRotate = !controls.autoRotate; setPressed('rotate-toggle', controls.autoRotate); });
 document.getElementById('motion-toggle').addEventListener('click', () => { motion = !motion; setPressed('motion-toggle', motion); render(); });
@@ -422,6 +501,8 @@ renderer.domElement.addEventListener('pointerdown', event => { pointerStart = { 
 renderer.domElement.addEventListener('pointerup', event => {
     if (!pointerStart || Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) return;
     pointerStart = null;
+    // On the globe a click on the ISS goes back to the station.
+    if (currentView === 'orbit') { if (orbitView?.hitsStation(event.clientX, event.clientY)) setView('reverse'); return; }
     const bounds = renderer.domElement.getBoundingClientRect(); pointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1); raycaster.setFromCamera(pointer, camera);
     // A solid part under the pointer wins over ghosted ones in front of it; a ghost alone selects its part.
     const hits = raycaster.intersectObjects(station.children.filter(group => group.visible), true).filter(intersection => intersection.object.isMesh);
@@ -443,6 +524,8 @@ export function advance(delta) {
         }
         earth.rotation.y = elapsed * .008;
     }
+    if (dragonFollow && currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach') followDragon(delta);
+    if (currentView === 'orbit' && orbitView) orbitView.update(delta);
     updateShadows(delta, motion);
     controls.update(delta); render();
     if (watchFrames(delta, motion)) resize();

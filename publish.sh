@@ -1,9 +1,10 @@
 #!/bin/bash
 # Đưa bản mới lên GitHub Pages: ./publish.sh "mô tả thay đổi"
 # Repo này là bản gốc để sửa (index.html, css/, js/, data/, assets/).
-# 1) đóng dấu lại ?v=<băm nội dung> cho mọi tệp được tham chiếu · 2) commit + push.
+# 1) làm mới TLE của ISS (data/orbits.json) · 2) đóng dấu lại ?v=<băm nội dung> · 3) commit + push.
 set -e
 cd "$(dirname "$0")"
+python3 tle.py || echo "(dùng TLE cũ)"
 python3 stamp.py
 git add -A
 if git diff --cached --quiet; then echo "Không có thay đổi."; exit 0; fi

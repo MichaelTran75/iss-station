@@ -68,7 +68,7 @@
             background: var(--paper);
         }
 
-        #app[data-backdrop="orbit"] {
+        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"]) {
             color-scheme: dark;
             --paper: #000000;
             --ink: #e6ece7;
@@ -94,7 +94,7 @@
             text-shadow: 0 1px 2px rgba(226, 214, 192, .85);
         }
 
-        #app[data-backdrop="orbit"] :is(.header, .timeline, .metric, .colophon) {
+        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"]) :is(.header, .timeline, .metric, .colophon) {
             text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
         }
 
@@ -188,7 +188,7 @@
             color: var(--paper);
         }
 
-        #app[data-backdrop="orbit"] .view-switch button[aria-pressed="true"] {
+        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"]) .view-switch button[aria-pressed="true"] {
             color: #15231d;
         }
 
@@ -298,7 +298,7 @@
             mask-image: radial-gradient(ellipse at center, black, transparent 68%);
         }
 
-        #app:is([data-backdrop="space"], [data-backdrop="orbit"]) #viewport::before {
+        #app:is([data-backdrop="space"], [data-backdrop="orbit"], [data-scene-view="orbit"]) #viewport::before {
             display: none;
         }
 
@@ -1541,5 +1541,182 @@
             *::after {
                 animation: none !important;
                 transition: none !important;
+            }
+        }
+
+        .guide-label {
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 2;
+            pointer-events: none;
+            white-space: nowrap;
+            font: 500 8px/1.4 'IBM Plex Mono', monospace;
+            letter-spacing: .04em;
+            color: var(--accent);
+            text-shadow: 0 1px 2px rgba(226, 214, 192, .9);
+        }
+
+        .guide-label.muted {
+            color: var(--gold);
+        }
+
+        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"]) .guide-label {
+            text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
+        }
+
+        /* Orbit view: the globe replaces the station; station overlays and station-only tools step aside. */
+        #app[data-scene-view="orbit"] :is(#labels, #leaders, #approach-hud, .approach-dist-badge, .crew-thought, .guide-label, .approach-status,
+            .interior-focus, .component-picker, .scale, .drawing-note, #labels-toggle, #rotate-toggle, #motion-toggle, #configuration-toggle,
+            #backdrop-toggle, .dock .divider) {
+            display: none !important;
+        }
+
+        .orbit-panel {
+            position: absolute;
+            top: 64px;
+            left: 30px;
+            z-index: 3;
+            width: 236px;
+            pointer-events: auto;
+        }
+
+        .orbit-time b {
+            display: block;
+            font: 500 10px/1.6 'IBM Plex Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .orbit-time span {
+            font: 600 8px/1.6 'IBM Plex Mono', monospace;
+            letter-spacing: .08em;
+            color: var(--accent);
+        }
+
+        .orbit-warp {
+            display: flex;
+            gap: 3px;
+            width: max-content;
+            margin: 9px 0 12px;
+            padding: 3px;
+            border: 1px solid var(--line);
+            border-radius: 5px;
+        }
+
+        .orbit-warp button {
+            min-height: 24px;
+            padding: 0 11px;
+            border: 0;
+            border-radius: 3px;
+            background: transparent;
+            color: var(--muted);
+            font: 600 9px 'IBM Plex Mono', monospace;
+        }
+
+        .orbit-warp button[aria-pressed="true"] {
+            background: var(--ink);
+            color: var(--paper);
+        }
+
+        .orbit-readout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 9px 18px;
+            margin: 0 0 12px;
+            grid-auto-flow: dense;
+        }
+
+        .orbit-readout dt {
+            font: 400 8px/1.5 'IBM Plex Mono', monospace;
+            color: var(--muted);
+            text-transform: uppercase;
+        }
+
+        .orbit-readout .wide {
+            grid-column: 1 / -1;
+        }
+
+        .orbit-readout dd {
+            margin: 0;
+            font: 500 11px/1.4 'IBM Plex Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .orbit-follow {
+            padding: 4px 0;
+            border: 0;
+            border-bottom: 1px solid var(--line);
+            background: transparent;
+            font: 500 9px/1.6 'IBM Plex Mono', monospace;
+        }
+
+        .orbit-follow[aria-pressed="true"] {
+            color: var(--accent);
+        }
+
+        .orbit-panel small {
+            display: block;
+            margin-top: 10px;
+            font: 400 8px/1.6 'IBM Plex Mono', monospace;
+            color: var(--muted);
+        }
+
+        .orbit-label {
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 2;
+            pointer-events: none;
+            white-space: nowrap;
+            font: 600 9px/1.4 'IBM Plex Mono', monospace;
+            letter-spacing: .04em;
+            color: #91d8c3;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
+        }
+
+        @media (max-width: 760px) {
+            .orbit-panel {
+                top: auto;
+                bottom: 72px;
+                left: 12px;
+                right: 12px;
+                width: auto;
+                padding: 9px 11px;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                background: rgba(0, 0, 0, .55);
+                backdrop-filter: blur(8px);
+                -webkit-backdrop-filter: blur(8px);
+            }
+
+            .orbit-time {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+            }
+
+            .orbit-warp {
+                position: absolute;
+                top: 6px;
+                right: 9px;
+                margin: 0;
+            }
+
+            .orbit-readout {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 6px 10px;
+                margin: 8px 0;
+            }
+
+            .orbit-readout dd {
+                font-size: 10px;
+            }
+
+            .orbit-readout :is(.period, .inclination) {
+                display: none;
+            }
+
+            .orbit-panel small {
+                margin-top: 6px;
             }
         }
