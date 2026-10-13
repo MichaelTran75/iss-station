@@ -55,13 +55,13 @@ const dragonSkins = {
 const pma2RingFaceZ = pma2BaseZ - pmaReferenceLength + .19;
 // The approach runs the rendezvous model (js/sim/rendezvous.js): Waypoint 0 400 m below the station, the coasting
 // transfer to Waypoint 1 on the docking axis, the approach along it with the hold at Waypoint 2, then contact and
-// capture. The nose cone opened a minute after Dragon left the second stage, so it is open throughout (the GLB's own
-// stroke, -120 degrees about the hinge). `time` runs in animation seconds, `mission` in real seconds from Waypoint 0;
-// `offset` (station frame) puts the docking ring relative to the port, and `thrust` is the Draco acceleration.
+// capture. The nose cone stays shut until the hold at Waypoint 2 and swings open there (the GLB's own stroke, -120
+// degrees about the hinge); `open` runs 0 to 1. `time` runs in animation seconds, `mission` in real seconds from
+// Waypoint 0; `offset` (station frame) puts the docking ring relative to the port, and `thrust` is the Draco acceleration.
 export const rendezvous = createRendezvous(issMeanMotion);
 export const approach = {
     port: new THREE.Vector3(0, -pmaReferenceOffset, pma2RingFaceZ), nose: new THREE.Vector3(0, 0, 0), contactGap: .003,
-    duration: rendezvous.duration, time: 0, mission: 0, range: 400, open: 1, phase: 'transfer', label: 'WAYPOINT 0', warp: 60,
+    duration: rendezvous.duration, time: 0, mission: 0, range: 400, open: 0, phase: 'transfer', label: 'WAYPOINT 0', warp: 60,
     offset: new THREE.Vector3(), thrust: new THREE.Vector3()
 };
 // LVLH (radial, along-track, cross-track) to the station frame: zenith is +y, the velocity -z, the orbit normal -x.
@@ -88,7 +88,7 @@ const dragonBayPanel = payloadCanvas(192, 128, g => {
     g.fillStyle = '#6f5130'; for (let x = 0; x < 6; x++) for (let y = 0; y < 4; y++) { g.beginPath(); g.ellipse(18 + x * 31, 17 + y * 31, 10, 10, 0, 0, Math.PI * 2); g.fill(); }
     g.strokeStyle = '#c29a66'; g.lineWidth = 6; g.strokeRect(3, 3, 186, 122);
 });
-export const dragon = part('dragon', 'SpaceX Crew Dragon', '17 / RENDEZVOUS & DOCKING', 'Crew Dragon flies the last hour of its rendezvous: from Waypoint 0, 400 m below the station, it coasts on a curved Clohessy-Wiltshire transfer to Waypoint 1, 220 m out on Harmony\'s forward docking axis, closes at about 0.35 m/s to Waypoint 2, holds 20 m out for the go/no-go, then closes at 7 cm/s to contact and capture. Draco puffs show each burn. Times follow the Crew-2 docking timeline; the readout gives the time warp. The capsule, its four SuperDraco pods, four windows, side hatch, docking ring with three guide petals and the trunk with its four fins are measured from the supplied Crew Dragon model. Selected, the hull turns 75% transparent to show the four suited crew inside. Solar cells cover one half of the trunk; the other half is radiator.', [['Destination', 'Harmony forward (IDA-2)'], ['Waypoints', '400 m / 220 m / 20 m'], ['Contact speed', '5 cm/s'], ['Length / diameter', '8.1 m / 4.0 m']], [0, 1.6, -2.6], (kit, group) => {
+export const dragon = part('dragon', 'SpaceX Crew Dragon', '17 / RENDEZVOUS & DOCKING', 'Crew Dragon flies the last hour of its rendezvous: from Waypoint 0, 400 m below the station, it coasts on a curved Clohessy-Wiltshire transfer to Waypoint 1, 220 m out on Harmony\'s forward docking axis, closes at about 0.35 m/s to Waypoint 2, holds 20 m out for the go/no-go and swings its nose cone open there (in flight the cone opens soon after orbit insertion), then closes at 7 cm/s to contact and capture. Draco puffs show each burn. Times follow the Crew-2 docking timeline; the readout gives the time warp. The capsule, its four SuperDraco pods, four windows, side hatch, docking ring with three guide petals and the trunk with its four fins are measured from the supplied Crew Dragon model. Selected, the hull turns 75% transparent to show the four suited crew inside. Solar cells cover one half of the trunk; the other half is radiator.', [['Destination', 'Harmony forward (IDA-2)'], ['Waypoints', '400 m / 220 m / 20 m'], ['Contact speed', '5 cm/s'], ['Length / diameter', '8.1 m / 4.0 m']], [0, 1.6, -2.6], (kit, group) => {
     const noseCone = new THREE.Group(), coneKit = new Kit();
     for (const [where, surface, positions, indices] of dragonReference.parts) (where === 'n' ? coneKit : kit).add(dragonMesh(positions, indices, surface), dragonSkins[surface]);
     coneKit.finish(noseCone); noseCone.position.fromArray(dragonReference.hinge); noseCone.name = 'Docking nose cone'; group.add(noseCone);
@@ -261,16 +261,21 @@ export const dragonFlightBounds = dragonLocalBounds.clone().translate(lvlhToStat
 dragonFlightBounds.union(dragonLocalBounds.clone().translate(new THREE.Vector3(0, 0, -approach.contactGap).add(dockedOffset)));
 // Dragon's bounds where it is now.
 export const dragonBounds = (target = new THREE.Box3()) => target.copy(dragonLocalBounds).translate(dragon.group.position);
-// Draco thrusters: four clusters round the capsule's upper cone, each with a radial and an aft-canted nozzle, and two
-// forward nozzles by the docking ring. A nozzle puffs when it points against the commanded acceleration: a long puff
-// for each burn of the transfer, short pulses while Dragon holds a speed profile on the docking axis.
+// Draco thrusters: four clusters round the capsule's upper cone, each with a radial, an aft-canted and a forward-canted
+// nozzle, and two forward nozzles by the docking ring, under the nose cone, which fire only once it is open. A nozzle
+// puffs when it points against the commanded acceleration: a long puff for each burn of the transfer, short pulses
+// while Dragon holds a speed profile on the docking axis.
 const dracoNozzles = [];
 for (const angle of [.25, .75, 1.25, 1.75].map(turn => turn * Math.PI)) {
     const at = new THREE.Vector3(Math.cos(angle) * 1.62, Math.sin(angle) * 1.62, -1.4);
     dracoNozzles.push({ at, normal: new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0) });
     dracoNozzles.push({ at, normal: new THREE.Vector3(Math.cos(angle) * .35, Math.sin(angle) * .35, -1).normalize() });
+    dracoNozzles.push({ at, normal: new THREE.Vector3(Math.cos(angle) * .35, Math.sin(angle) * .35, 1).normalize() });
 }
-for (const x of [-.95, .95]) dracoNozzles.push({ at: new THREE.Vector3(x, 0, -.55), normal: new THREE.Vector3(0, 0, 1) });
+for (const x of [-.95, .95]) dracoNozzles.push({ at: new THREE.Vector3(x, 0, -.55), normal: new THREE.Vector3(0, 0, 1), underCone: true });
+// The cone swings open half a second into the Waypoint 2 hold, over 4 s of animation on a smoothstep. (In flight it
+// opens soon after orbit insertion; it opens here, 20 m out, where the motion reads at station scale.)
+const coneOpening = { start: rendezvous.phaseStart('hold') + .5, duration: 4 };
 const puffMap = payloadCanvas(64, 64, g => {
     const glow = g.createRadialGradient(32, 32, 0, 32, 32, 32);
     // Readable on the light paper as well as on black: a white core inside a pale blue-grey rim.
@@ -296,7 +301,7 @@ function updatePuffs() {
         if (pulse < .22) { strength = THREE.MathUtils.clamp(thrust / 2e-3, .55, 1) * (1 - pulse / .22); puffDirection.copy(approach.thrust).normalize(); }
     }
     for (const nozzle of dracoNozzles) {
-        const weight = strength * Math.max(0, -nozzle.normal.dot(puffDirection));
+        const weight = nozzle.underCone && approach.open < .95 ? 0 : strength * Math.max(0, -nozzle.normal.dot(puffDirection));
         nozzle.puff.visible = weight > .02;
         if (!nozzle.puff.visible) continue;
         nozzle.puff.material.opacity = Math.min(1, weight * 1.3);
@@ -308,6 +313,10 @@ export function updateApproach(delta) {
     approach.time = Math.min(approach.duration, approach.time + Math.max(0, delta));
     const state = rendezvous.state(rendezvous.missionAt(approach.time));
     Object.assign(approach, { mission: state.mission, range: state.range, phase: state.phase, label: state.label, warp: state.warp });
+    const stroke = THREE.MathUtils.clamp((approach.time - coneOpening.start) / coneOpening.duration, 0, 1);
+    approach.open = stroke * stroke * (3 - 2 * stroke);
+    dragonCone.rotation.x = dragonReference.openAngle * approach.open;
+    if (stroke > 0 && stroke < 1) approach.label = 'NOSE CONE OPENING';
     lvlhToStation([state.position[0], Math.max(state.position[1], approach.contactGap), state.position[2]], approach.offset);
     lvlhToStation(state.thrust, approach.thrust);
     dragon.group.position.copy(dockedOffset).add(approach.offset);
@@ -335,7 +344,7 @@ export function updateDragonCrew(time) {
     }
     bones.forEach((bone, i) => bone.quaternion.slerpQuaternions(poses[from][i], poses[to][i], k));
 }
-// Without motion the approach starts at the Waypoint 2 hold, 20 m out.
-export const approachStartTime = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? rendezvous.phaseStart('hold') : 0;
+// Without motion the approach starts at the Waypoint 2 hold, 20 m out, with the nose cone already open.
+export const approachStartTime = () => matchMedia('(prefers-reduced-motion: reduce)').matches ? coneOpening.start + coneOpening.duration : 0;
 approach.time = approachStartTime();
 updateApproach(0);

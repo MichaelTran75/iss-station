@@ -60,11 +60,11 @@ Theo lịch ghép nối Crew-2 (24/4/2021) và tốc độ của Demo-2. Thời 
 |---|---|---|---|
 | Điểm 0, 400 m dưới trạm → điểm 1, 220 m trên trục ghép | 24 phút | trôi theo Clohessy–Wiltshire sau một lần đốt 0,81 m/s | ×60 |
 | Điểm 1 → điểm 2 (20 m) | 11 phút | tiến dọc trục ở 0,35 m/s; Draco đẩy hướng tâm để giữ đường thẳng | ×30 |
-| Dừng ở điểm 2 (go/no-go) | 5 phút | đứng yên trên trục V-bar: điểm cân bằng, không cần đẩy | ×30 |
+| Dừng ở điểm 2 (go/no-go) | 5 phút | đứng yên trên trục V-bar: điểm cân bằng, không cần đẩy; mở nắp mũi | ×30 |
 | Tiếp cận cuối | 5 phút | 7 cm/s, chạm cổng ở 5 cm/s | ×4 |
 | Bắt mềm → móc khóa xong | 13 phút | | ×60 |
 
-Nắp mũi mở một phút sau khi tách tầng hai, nên mở suốt quá trình. Xem Dragon (bấm ô CREW DRAGON) thì khung hình bám theo Dragon và phần đường còn lại, kèm đường đi dự kiến, các điểm chờ, vùng cấm 200 m. Ở góc nhìn toàn trạm, khi Dragon ở ngoài khung, một đường chỉ hướng và khoảng cách nằm ở mép màn hình.
+Nắp mũi đóng suốt chặng xa và chỉ mở khi Dragon dừng ở điểm 2, cách 20 m (chủ ý trình bày: ngoài thực tế nắp mở khoảng một phút sau khi tách tầng hai). Hai động cơ Draco phía trước nằm dưới nắp nên chỉ phun khi nắp đã mở; trước đó việc hãm tốc dùng các vòi chếch về trước ở bốn cụm bên sườn. Xem Dragon (bấm ô CREW DRAGON) thì khung hình bám theo Dragon và phần đường còn lại, kèm đường đi dự kiến, các điểm chờ, vùng cấm 200 m. Ở góc nhìn toàn trạm, khi Dragon ở ngoài khung, một đường chỉ hướng và khoảng cách nằm ở mép màn hình.
 
 ## Góc nhìn quỹ đạo
 
