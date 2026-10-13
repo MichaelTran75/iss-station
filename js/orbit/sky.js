@@ -174,8 +174,11 @@ export function createSky() {
         earth.add(entry.track); scene.add(entry.orbit);
         entry.nadir = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: .45, depthWrite: false }));
         scene.add(entry.nadir);
-        entry.dots = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 3.2, sizeAttenuation: false, vertexColors: true, map: roundDot, transparent: true, depthWrite: false }));
-        entry.dots.visible = false; scene.add(entry.dots);
+        const dots = () => {
+            const points = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ size: 3.2, sizeAttenuation: false, vertexColors: true, map: roundDot, transparent: true, depthWrite: false }));
+            points.visible = false; scene.add(points); return points;
+        };
+        entry.dots = dots(); entry.ring = dots();
         entry.element = label('');
         entry.ready = loadElements(norad).then(({ tle, source, fetched }) => { entry.object = orbiter(name, tle[0], tle[1]); entry.source = source; entry.fetched = fetched; });
         orbiters.push(entry);
@@ -187,17 +190,21 @@ export function createSky() {
         const orbit = orbitPath(entry.object, date, -period / 2, period / 2, 240).map(point => toScene(point));
         setFadedLine(entry.orbit, orbit, entry.colour, 120);
         if (entry.showTrack) setFadedLine(entry.track, groundTrack(entry.object, date, -45, 90, 270, earthRadius + 10).map(point => toScene(point)), '#ffc766', 90);
-        // The dots for the backdrop: a third of a revolution round the station, bright ahead and dim behind, fading out at
-        // both ends so the far side of the orbit does not hook up over Earth's limb.
-        const dots = orbitPath(entry.object, date, -period / 6, period / 6, 700), positions = new Float32Array(dots.length * 3), colours = new Float32Array(dots.length * 4);
+        // Dots for the backdrop, bright ahead and dim behind: a third of a revolution round the station, fading out at both
+        // ends so the far side of the orbit does not hook up over Earth's limb seen from close; and the whole revolution for
+        // the backdrop seen from far out.
         const base = new THREE.Color(entry.colour);
-        dots.forEach((point, k) => {
-            toScene(point, position); positions.set([position.x, position.y, position.z], k * 3);
-            const from = k / (dots.length - 1) * 2 - 1, level = (from >= 0 ? 1 : .45) * (1 - THREE.MathUtils.smoothstep(Math.abs(from), .55, 1));
-            colours.set([base.r, base.g, base.b, level], k * 4);
-        });
-        entry.dots.geometry.dispose();
-        entry.dots.geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(positions, 3)).setAttribute('color', new THREE.BufferAttribute(colours, 4));
+        const fill = (target, points, level) => {
+            const positions = new Float32Array(points.length * 3), colours = new Float32Array(points.length * 4);
+            points.forEach((point, k) => {
+                toScene(point, position); positions.set([position.x, position.y, position.z], k * 3);
+                colours.set([base.r, base.g, base.b, level(k / (points.length - 1) * 2 - 1)], k * 4);
+            });
+            target.geometry.dispose();
+            target.geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(positions, 3)).setAttribute('color', new THREE.BufferAttribute(colours, 4));
+        };
+        fill(entry.dots, orbitPath(entry.object, date, -period / 6, period / 6, 700), from => (from >= 0 ? 1 : .45) * (1 - THREE.MathUtils.smoothstep(Math.abs(from), .55, 1)));
+        fill(entry.ring, orbitPath(entry.object, date, -period / 2, period / 2, 1024), from => from >= 0 ? 1 - .45 * from : .45 - .25 * -from);
         entry.trackAt = date.getTime();
     }
 
@@ -246,7 +253,7 @@ export function createSky() {
             entry.marker.visible = orbitView && !!entry.state && fromEarth < 3e5;
             entry.orbit.visible = entry.nadir.visible = orbitView && fromEarth < 3e5;
             entry.track.visible = orbitView && entry.showTrack && fromEarth < 3e5;
-            entry.dots.visible = !orbitView && !!entry.state;
+            entry.dots.visible = entry.ring.visible = false;   // the backdrop picks one in renderBehind
         }
         moonOrbit.visible = orbitView && fromEarth > 1.2e5;
         earthOrbit.visible = orbitView && fromEarth > 4e6;
@@ -292,24 +299,33 @@ export function createSky() {
     function hideLabels() { for (const element of [...orbiters.map(entry => entry.element), ...bodies.map(body => body.element)]) element.hidden = true; }
     function resize(width, height) { for (const material of lineMaterials) material.resolution.set(width, height); }
 
-    // The station's backdrop: the sky from a point `vantage` km behind the station's real position, looking the way the
-    // station camera looks. The station frame (zenith +y, velocity -z, starboard +x) is the ISS's local vertical,
-    // local horizontal frame (the station flies close to it), so the backdrop turns with the orbit: Earth stays below
-    // and the ground beneath is the ground under the ISS now. The station camera's vertical offset (it centres the
-    // station between header and footer) is matched, so the ISS's real position falls behind the station.
-    const backdropCamera = new THREE.PerspectiveCamera(60, 1, 1, 1e9), vantage = 1200;
+    // The station's backdrop: the sky from a point behind the station's real position, looking the way the station camera
+    // looks. The station frame (zenith +y, velocity -z, starboard +x) is the ISS's local vertical, local horizontal frame
+    // (the station flies close to it), so the backdrop turns with the orbit: Earth stays below and the ground beneath is
+    // the ground under the ISS now.
+    // - The viewpoint is 1,200 km back at the framed size; zooming the station out pulls it further back, more slowly than
+    //   the station shrinks, so Earth stays the larger of the two: about 7,400 km back at 45% (Earth fills most of the
+    //   view), 19,000 km at 20%, 65,000 km at 5% (a whole globe a sixth of the screen high).
+    // - The ISS's real position sits behind `anchor` (the station's centre) wherever panning and zooming put it on screen,
+    //   so the backdrop moves with the station; it is kept within reach of the screen so the view never turns far
+    //   off-axis.
+    const backdropCamera = new THREE.PerspectiveCamera(60, 1, 1, 1e9), nearVantage = 1200, anchorOnScreen = new THREE.Vector3();
     const zenith = new THREE.Vector3(), starboard = new THREE.Vector3(), aft = new THREE.Vector3(), frame = new THREE.Quaternion(), stationTurn = new THREE.Quaternion();
-    function renderBehind(stationCamera, width, height) {
+    function renderBehind(stationCamera, width, height, anchor) {
         if (!iss.state) return false;
         toScene(iss.state.position, position); toScene(iss.state.velocity, velocity);
         zenith.copy(position).normalize(); starboard.crossVectors(velocity, zenith).normalize(); aft.crossVectors(starboard, zenith);
         frame.setFromRotationMatrix(basis.makeBasis(starboard, zenith, aft));
         stationCamera.getWorldQuaternion(stationTurn);
         backdropCamera.quaternion.multiplyQuaternions(frame, stationTurn);
+        const vantage = nearVantage + 7500 * (Math.pow(Math.min(1, stationCamera.zoom), -.75) - 1);
         backdropCamera.position.copy(position).addScaledVector(towardEarth.set(0, 0, -1).applyQuaternion(backdropCamera.quaternion), -vantage);
-        const shift = (stationCamera.top + stationCamera.bottom) / (stationCamera.top - stationCamera.bottom) * height / 2;
-        backdropCamera.aspect = width / height; backdropCamera.setViewOffset(width, height, 0, -shift, width, height);
-        prepare(backdropCamera, 'backdrop'); resize(width, height);
+        anchorOnScreen.copy(anchor).project(stationCamera);
+        const x = THREE.MathUtils.clamp(anchorOnScreen.x, -1.5, 1.5) * width / 2, y = THREE.MathUtils.clamp(anchorOnScreen.y, -1.5, 1.5) * height / 2;
+        backdropCamera.aspect = width / height; backdropCamera.setViewOffset(width, height, -x, y, width, height);
+        prepare(backdropCamera, 'backdrop');
+        for (const entry of orbiters) { entry.dots.visible = !!entry.state && vantage <= 8000; entry.ring.visible = !!entry.state && vantage > 8000; }
+        resize(width, height);
         renderer.render(scene, backdropCamera);
         return true;
     }

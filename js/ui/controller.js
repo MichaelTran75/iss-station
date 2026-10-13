@@ -432,6 +432,7 @@ function updateLabels() {
         label.dot.setAttribute('cx', anchorX.toFixed(1)); label.dot.setAttribute('cy', anchorY.toFixed(1));
     }
 }
+const backdropAnchor = new THREE.Vector3();
 export function render() {
     if (currentView === 'orbit') { if (orbitView) orbitView.render(); return; }
     camera.updateMatrixWorld(true); if (inspectionLight.visible) inspectionLight.position.copy(camera.position); updateApproachDistance(); updateLabels(); updateCrewThought(); updateShutterControls();
@@ -445,7 +446,7 @@ export function render() {
     document.getElementById('scale-line').style.width = (scaleMetres * pixelsPerMetre).toFixed(1) + 'px';
     document.getElementById('scale-label').textContent = scaleMetres + ' m';
     // Earth backdrop: the real sky behind the station first, then the station over it.
-    if (orbital && sky && sky.renderBehind(camera, viewport.clientWidth, viewport.clientHeight)) {
+    if (orbital && sky && sky.renderBehind(camera, viewport.clientWidth, viewport.clientHeight, stationBounds.getCenter(backdropAnchor))) {
         renderer.autoClear = false; renderer.clearDepth(); renderer.render(scene, camera); renderer.autoClear = true;
     } else renderer.render(scene, camera);
 }
@@ -487,6 +488,9 @@ document.getElementById('motion-toggle').addEventListener('click', () => { motio
 document.getElementById('configuration-toggle').addEventListener('click', () => setConfiguration(configuration === 'reference' ? 'modern' : 'reference'));
 document.getElementById('backdrop-toggle').addEventListener('click', () => {
     orbital = !orbital; app.dataset.backdrop = orbital ? 'orbit' : 'space'; setPressed('backdrop-toggle', orbital);
+    // With Earth behind it the station zooms out much further, down to 5%: the backdrop pulls back to the whole globe.
+    controls.minZoom = orbital ? .05 : .45;
+    if (camera.zoom < controls.minZoom) { camera.zoom = controls.minZoom; camera.updateProjectionMatrix(); }
     if (orbital) loadSky().then(loaded => { loaded.update(0); render(); }, error => { console.warn('Earth backdrop unavailable:', error); notify('The Earth backdrop could not load.'); });
     render();
 });

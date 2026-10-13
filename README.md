@@ -81,7 +81,9 @@ Thêm vệ tinh: thêm mã NORAD vào `OBJECTS` trong `tle.py` và gọi `addOrb
 
 Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó, nhìn từ một điểm cách vị trí thật của ISS 1.200 km về phía sau, theo đúng hướng camera của trạm.
 - Hệ trục của trạm là hệ quỹ đạo của ISS (đỉnh +y, hướng bay −z, mạn phải +x). ISS bay gần như theo hệ này, nên nền xoay theo quỹ đạo: Trái Đất luôn ở dưới, mặt đất phía dưới là nơi ISS đang bay qua, ngày đêm đúng giờ.
-- Vòng chấm là một phần ba quỹ đạo thật quanh trạm: sáng phía trước, mờ phía sau.
+- Kéo chuột phải (hoặc giữ Ctrl/Shift rồi kéo chuột trái) dịch cả trạm lẫn nền: vị trí thật của ISS luôn nằm sau tâm trạm.
+- Khi bật nền, thu nhỏ được tới 5% (bình thường 45%). Điểm nhìn lùi dần: khoảng 7.400 km ở 45% (Trái Đất gần kín màn hình), 19.000 km ở 20% (thấy trọn quả địa cầu), 65.000 km ở 5%. Trái Đất lùi chậm hơn trạm thu nhỏ, nên luôn to hơn trạm.
+- Vòng chấm là một phần ba quỹ đạo thật quanh trạm (sáng phía trước, mờ phía sau); khi điểm nhìn đã lùi xa hơn 8.000 km thì hiện cả vòng.
 - Mây là ảnh tĩnh, không phải mây thời gian thực.
 - Ánh sáng trên trạm vẫn cố định để mô hình luôn rõ. Khi ISS bay vào vùng đêm, nền tối nhưng trạm vẫn sáng.
 - Trên trạm, một điểm ảnh ứng với khoảng 2–10 km mặt đất, còn ảnh Trái Đất 4096 px chỉ có 10 km/px, nên mặt đất hơi mờ. Muốn sắc nét thì phải tải ảnh theo ô (ví dụ NASA GIBS) như các bản đồ trực tuyến.
