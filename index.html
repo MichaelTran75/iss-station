@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=80d2fc853e">
+    <link rel="stylesheet" href="css/app.css?v=edc5d426f5">
     <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
          trước mọi module theo thứ tự dựng. -->
     <script type="importmap">
@@ -61,12 +61,12 @@
         "./js/ui/rendezvous-guide.js": "./js/ui/rendezvous-guide.js?v=c2e18df47a",
         "./js/ui/controller.js": "./js/ui/controller.js?v=efbd36e377",
         "./js/main.js": "./js/main.js?v=b201e06096",
-        "./js/launch/ground.js": "./js/launch/ground.js?v=d0c1291e1b",
+        "./js/launch/ground.js": "./js/launch/ground.js?v=5d7c05e711",
         "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=905d8ca01b",
-        "./js/launch/view.js": "./js/launch/view.js?v=8071e6b4b4",
+        "./js/launch/view.js": "./js/launch/view.js?v=6edb1e7b70",
         "./js/orbit/sky.js": "./js/orbit/sky.js?v=48e499c19c",
         "./js/orbit/view.js": "./js/orbit/view.js?v=9166f83b83",
-        "./js/sim/ascent.js": "./js/sim/ascent.js?v=03a2b738fd",
+        "./js/sim/ascent.js": "./js/sim/ascent.js?v=1ea7c28262",
         "./js/sim/eva.js": "./js/sim/eva.js?v=2f04194c17",
         "./js/sim/orbit.js": "./js/sim/orbit.js?v=f44737761f"
       }
@@ -167,6 +167,7 @@
             </svg>
             <button id="approach-distance-badge" class="approach-dist-badge" type="button" aria-label="Docking distance"
                 title="Docking distance / Click to inspect Crew Dragon"></button>
+            <button id="launch-inset" class="launch-inset" type="button" title="Swap views" hidden><b></b><span></span></button>
             <div id="crew-thought" class="crew-thought" aria-hidden="true" hidden><i></i><i></i><b>Claude code + Ultra code 😐</b></div>
             <div class="viewport-chrome">
                 <div class="viewport-meta"><b id="view-name">02 / STARBOARD FORWARD</b><span

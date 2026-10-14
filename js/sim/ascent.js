@@ -259,6 +259,14 @@ export const droneship = (() => {
     const position = toPad(sim.landing.r, sim.landing.at, true), up = unit([position[0], position[1] + R, position[2]]);
     return { position, up, downrange: Math.acos(cosineAt(sim.landing.r, sim.landing.at)) * R };
 })();
+// The two flight paths as dots, one a second, in the pad's frame (each where it was over the turning Earth then):
+// the rocket and Dragon from liftoff, the booster from separation to the barge.
+export const paths = {
+    rocket: Array.from({ length: guidance.end + 1 }, (_, t) => ({ t, position: toPad(sampleAt(sim.stack, t).r, t, true) })),
+    booster: sim.landing ? Array.from({ length: Math.floor(sim.landing.at - guidance.separation) + 1 }, (_, k) => {
+        const t = guidance.separation + k; return { t, position: toPad(sampleAt(sim.booster, t).r, t, true) };
+    }) : []
+};
 export const summary = {
     meco: describe(sampleAt(sim.stack, guidance.meco), guidance.meco, [0, 1, 0]), orbit: sim.insertion, maxQ: sim.maxQ, reserve: sim.reserve,
     boosterApogee: sim.apogee, landing: sim.landing && { at: sim.landing.at, speed: sim.landing.speed, propellantLeft: sim.landing.m - vehicle.s1Dry }

@@ -129,12 +129,21 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
 
 ### Cảnh
 
+- Đường bay chấm: xanh cho tên lửa và Dragon, cam cho tầng 1 quay về; sáng ở đoạn đã bay, mờ ở đoạn sắp bay. Chấm đặt dọc đường bay (điểm mỗi giây từ mô phỏng) với khoảng cách tăng theo khoảng cách tới camera (khoảng 1° trên màn hình), nên gần hay xa đều thấy một hàng chấm đều. Một quả cầu vô hình thấp hơn mặt đất 3 km che đoạn đường bay khuất sau đường chân trời.
+- Màn hình phụ ở góc trên bên phải: từ lúc tách tầng, hiện chiếc còn lại (tầng 1 bay về khi màn chính theo Dragon, hoặc ngược lại), có camera tự bám riêng; bấm vào để đổi chỗ hai màn. Vẽ bằng cùng renderer, trong một vùng cắt (scissor) của canvas.
 - Thời gian chạy nhanh dần: ×1 quanh lúc cất cánh và các lần tách, tới ×17 ở giữa. Bấm một mốc trong danh sách để nhảy tới trước mốc đó 4 giây (mốc của tầng 1 tự chuyển sang bám Booster).
 - Camera tự bám: bên bệ lúc cất cánh, rồi bên hông tên lửa, sát chỗ tách tầng, trên Dragon; hoặc theo tầng 1 rơi xuống và hạ thấp cạnh sà lan. Kéo chuột để xoay, lăn chuột để ra xa tới 3.000 km. Nút *Follow* trả lại camera tự động.
 - Hai lượt vẽ: bầu trời thật (`sky.js`, đúng ngày giờ Demo-2, đơn vị km) nhìn từ vị trí thật của camera trên quả địa cầu, rồi bệ phóng, mặt đất, tên lửa trong hệ toạ độ của bệ (đơn vị m: x đông, y lên, z nam).
 - Mặt đất: bốn vòng ô ảnh quanh bệ, mỗi vòng 4 × 4 ô, tải từ máy chủ khi mở lần đầu (64 ô, vài MB). Gần nhất là ảnh USGS National Map (public domain) khoảng 2 m, 17 m, 130 m mỗi điểm ảnh. Ngoài cùng là NASA Blue Marble (GIBS, public domain) khoảng 1 km mỗi điểm ảnh ra tới 1.100 km, mép mờ dần vào bản đồ Trái Đất. Ngoài lãnh thổ Mỹ, ô USGS trong suốt nên vòng thô hơn hiện ra.
 - Bầu trời: lớp khí quyển xanh mỏng dần khi lên cao và mất hẳn ở khoảng 60 km. Lớp sáng ở mép Trái Đất (vỏ khí quyển của `sky.js`) hạ dần từ 178 km xuống khoảng 50 km khi camera xuống thấp, để khỏi thành một dải dày trên đường chân trời.
-- Tháp phóng, giàn dựng, giá phóng và sà lan là mô hình giản lược. Tay đón phi hành đoàn vẫn để ở vị trí nối với Dragon; thực tế tay này rút ra từ trước khi phóng. Xi lanh của chân đáp ẩn khi chân bung (chúng không co giãn).
+- Bệ 39A dựng theo ảnh USGS (vị trí đo trên ảnh, chiều cao kiểm bằng bóng đổ) và số liệu đã công bố:
+  - Tháp cố định (FSS) cách giá phóng 26 m về phía tây: 12 m vuông, sàn mỗi 6,1 m (20 ft), mái ở 87 m, cột thu lôi tới 110 m. Hai dây thu lôi kéo từ đỉnh cột xuống mỏ neo cách 340 m về phía bắc và nam.
+  - Tay đón phi hành đoàn ở mức 66 m (217 ft), xoay ra khỏi tên lửa như lúc cất cánh, đầu là phòng trắng.
+  - Giàn dựng (TE) ở phía nam tên lửa, phía nó đi lên dốc từ nhà lắp ráp HIF, ngả ra sau khi kẹp mở. Khung đế chạy xuống dốc.
+  - Rãnh lửa rộng 18 m chạy 105 m về phía bắc. Khói thoát ra cuối rãnh, một phần là hơi nước từ hệ phun nước quanh giá phóng.
+  - Tháp nước giảm âm cao 89 m, cách 129 m về phía bắc và 77 m về phía đông. Bồn cầu oxy lỏng ở góc tây bắc, bồn cầu hydro cũ ở góc đông bắc.
+  - Chưa có: gò đất nâng mặt bệ cao khoảng 15 m (ảnh mặt đất phẳng), các toà nhà nhỏ, ống dẫn.
+- Sà lan và các công trình là mô hình giản lược. Xi lanh của chân đáp ẩn khi chân bung (chúng không co giãn).
 
 ## Hiệu năng
 

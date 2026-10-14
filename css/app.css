@@ -1702,6 +1702,48 @@
             -webkit-backdrop-filter: blur(8px);
         }
 
+        /* Launch view corner screen: the canvas draws into this box; the box gives it a frame and a caption. */
+        .launch-inset {
+            position: absolute;
+            top: 64px;
+            right: 30px;
+            z-index: 3;
+            width: clamp(200px, 28vw, 380px);
+            aspect-ratio: 16 / 10;
+            padding: 0;
+            border: 1px solid rgba(255, 255, 255, .45);
+            border-radius: 4px;
+            background: transparent;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, .45);
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .launch-inset b,
+        .launch-inset span {
+            position: absolute;
+            left: 0;
+            padding: 3px 7px;
+            background: rgba(3, 6, 12, .62);
+            color: #e6ece7;
+            font: 600 9px/1.3 'IBM Plex Mono', monospace;
+            letter-spacing: .05em;
+        }
+
+        .launch-inset b {
+            top: 0;
+            color: #ffb35c;
+        }
+
+        .launch-inset span {
+            bottom: 0;
+            font-weight: 500;
+        }
+
+        .launch-inset:hover {
+            border-color: #ffb35c;
+        }
+
         /* Launch view panel: the orbit panel's layout, with the event list. */
         .launch-panel .orbit-warp {
             margin: 7px 0 9px;
@@ -1734,9 +1776,12 @@
         .launch-events {
             display: grid;
             gap: 1px;
+            max-height: 118px;
             margin: 0 0 8px;
-            padding: 0;
+            padding: 0 4px 0 0;
+            overflow-y: auto;
             list-style: none;
+            scrollbar-width: thin;
         }
 
         .launch-events button {
@@ -1833,6 +1878,12 @@
 
             .launch-events {
                 display: none;
+            }
+
+            .launch-inset {
+                top: 46px;
+                right: 12px;
+                width: 46vw;
             }
 
             .launch-event {

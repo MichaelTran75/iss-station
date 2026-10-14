@@ -4,8 +4,9 @@
 // - Imagery: USGS National Map orthoimagery (public domain) at about 2 m, 17 m and 130 m a pixel round the pad, and
 //   NASA's Blue Marble (GIBS, public domain) at about 1 km out to 1,100 km, its edge fading into the globe's own map; outside the US the USGS tiles are
 //   transparent and the coarser ring shows through. Tiles load from those servers when the view first opens.
-// - Structures are simplified: the fixed service structure with its lightning mast and the crew access arm swung back
-//   (as at liftoff), the transporter-erector leaning back from the rocket, and the launch mount.
+// - Structures, simplified, where the USGS image shows them: the fixed service structure with its lightning mast and
+//   catenary wires, the crew access arm swung clear (as at liftoff), the transporter-erector leaning back, the launch
+//   mount over the flame trench, the sound suppression water tower and the two propellant spheres.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { launchSite, padFrame } from '../sim/ascent.js';
@@ -73,32 +74,61 @@ export function createGround() {
         const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b), length = start.distanceTo(end);
         add(colour, new THREE.CylinderGeometry(radius, radius, length, 6).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize())).translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2));
     };
-    const steel = 0x8e9396, white = 0xe8e9e6, dark = 0x3b3f44, concrete = 0xb9b6ad;
-    // Launch mount over the flame trench.
-    box(concrete, [0, mountHeight / 2 - .5, 0], [14, mountHeight - 1, 14]);
+    const steel = 0x8e9396, white = 0xe8e9e6, dark = 0x3b3f44, concrete = 0xb9b6ad, trench = 0x2d2b28, tank = 0xdfe2e3;
+    // Positions measured on the USGS image of the pad (x east, z south, metres from the launch mount). The tower's
+    // and the water tower's lengths are cross-checked against their shadows in the same image.
+    // Launch mount on the transporter-erector's base, with four hold-down clamps round the engines, over the flame
+    // deflector.
+    box(concrete, [0, mountHeight / 2 - .5, 0], [12, mountHeight - 1, 12]);
     box(dark, [0, mountHeight - .3, 0], [7, .6, 7]);
-    // Fixed service structure: 10 m square, 80 m to the roof, a 40 m mast above it.
-    const tower = [-24, 0, 4], half = 5, top = 80;
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(steel, [tower[0] + sx * half, top / 2, tower[2] + sz * half], [.9, top, .9]);
-    for (let y = 8; y <= top; y += 8) {
-        for (const s of [-1, 1]) { box(steel, [tower[0], y, tower[2] + s * half], [2 * half, .5, .5]); box(steel, [tower[0] + s * half, y, tower[2]], [.5, .5, 2 * half]); }
+    for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2; box(dark, [Math.cos(a) * 2.6, mountHeight + .9, Math.sin(a) * 2.6], [.7, 2.4, .7]); }
+    // Flame trench: 18 m wide, running 105 m north from under the mount (exhaust leaves northward), with its walls.
+    box(trench, [0, .12, -58], [18, .25, 104]);
+    for (const s of [-1, 1]) box(concrete, [s * 9.6, .9, -58], [1.2, 1.8, 104]);
+    add(concrete, new THREE.BoxGeometry(18, 7, 10).translate(0, 1, -5));   // the deflector's bulk under the mount
+    // Fixed service structure, 26 m west: 12 m square, floors every 6.1 m (20 ft), 87 m to the roof; the crew
+    // access arm at the 66 m level (217 ft) and a 23 m lightning mast on top (110 m in all, as the shadow shows).
+    const tower = [-26, 0, -2], half = 6, top = 87, floor = 6.1;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(steel, [tower[0] + sx * half, top / 2, tower[2] + sz * half], [1.1, top, 1.1]);
+    for (let y = floor; y <= top; y += floor) {
+        for (const s of [-1, 1]) { box(steel, [tower[0], y, tower[2] + s * half], [2 * half, .6, .6]); box(steel, [tower[0] + s * half, y, tower[2]], [.6, .6, 2 * half]); }
         for (const s of [-1, 1]) {
-            rod(steel, [tower[0] - half, y - 8, tower[2] + s * half], [tower[0] + half, y, tower[2] + s * half], .18);
-            rod(steel, [tower[0] + s * half, y - 8, tower[2] - half], [tower[0] + s * half, y, tower[2] + half], .18);
+            rod(steel, [tower[0] - half, y - floor, tower[2] + s * half], [tower[0] + half, y, tower[2] + s * half], .2);
+            rod(steel, [tower[0] + s * half, y - floor, tower[2] - half], [tower[0] + s * half, y, tower[2] + half], .2);
         }
         box(steel, [tower[0], y - .2, tower[2]], [2 * half, .25, 2 * half]);
     }
-    rod(steel, [tower[0], top, tower[2]], [tower[0], top + 40, tower[2]], .45);
-    // Crew access arm, swung back along the tower's side, with the white room at its end.
-    box(white, [tower[0] + half + 1.5, 64, tower[2] - half - 8], [3, 3.2, 16]);
-    box(white, [tower[0] + half + 1.5, 64, tower[2] - half - 17.5], [4, 4, 4]);
-    // Transporter-erector, leaning back from the rocket after the clamps open.
-    const lean = -.05;
-    for (const s of [-1, 1]) box(dark, [6.2, 31, s * 2.4], [.9, 62, .9], [0, 0, lean]);
-    for (let y = 4; y < 62; y += 6) box(dark, [6.2 - y * Math.sin(-lean), y, 0], [.6, .45, 5.2]);
+    box(0xb4b8ba, [tower[0] - 2, top / 2, tower[2] + 2], [4, top, 4]);   // elevator and stair core
+    rod(white, [tower[0], top, tower[2]], [tower[0], top + 23, tower[2]], .55);
+    // Crew access arm, swung clear along the tower's north face for liftoff, with the white room at its end.
+    box(white, [tower[0] + half - 1, 66, tower[2] - half - 11], [2.8, 3.4, 22]);
+    box(white, [tower[0] + half - 1, 66, tower[2] - half - 23.5], [4.4, 4.6, 4.4]);
+    // Transporter-erector: the strongback on the rocket's south side, the side it came up the ramp from the hangar,
+    // leaning back once its clamps have opened; its base frame runs down the ramp.
+    const lean = .035;
+    for (const s of [-1, 1]) box(dark, [s * 2.3, 31, 4.9 + 31 * lean], [.9, 62, .9], [lean, 0, 0]);
+    for (let y = 4; y < 62; y += 6) box(dark, [0, y, 4.9 + y * lean], [5.4, .45, .6]);
+    for (const s of [-1, 1]) box(dark, [s * 3.5, 1.4, 22], [1, 2.8, 34]);
+    // Sound suppression water tower, 129 m north and 77 m east: tank 89 m up on four splayed legs.
+    const water = [77, 0, -129];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) rod(steel, [water[0] + sx * 6, 0, water[2] + sz * 6], [water[0] + sx * 3, 77, water[2] + sz * 3], .45);
+    for (let y = 12; y < 77; y += 13) { const w = 6 - 3 * y / 77; for (const s of [-1, 1]) { box(steel, [water[0], y, water[2] + s * w], [2 * w, .4, .4]); box(steel, [water[0] + s * w, y, water[2]], [.4, .4, 2 * w]); } }
+    add(tank, new THREE.SphereGeometry(6.5, 24, 16).scale(1, .9, 1).translate(water[0], 83, water[2]));
+    // Propellant spheres at the pad's north corners (liquid oxygen west, the old hydrogen sphere east).
+    add(tank, new THREE.SphereGeometry(9.4, 32, 20).translate(-402, 11, -273));
+    add(tank, new THREE.SphereGeometry(10.6, 32, 20).translate(370, 12, -259));
+    for (const [x, z, r] of [[-402, -273, 7], [370, -259, 8]]) for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; rod(steel, [x + Math.cos(a) * r, 0, z + Math.sin(a) * r], [x + Math.cos(a) * r * .9, 9, z + Math.sin(a) * r * .9], .35); }
     const structures = new THREE.Group();
     for (const [colour, geometries] of pieces) structures.add(new THREE.Mesh(mergeGeometries(geometries, false), new THREE.MeshStandardMaterial({ color: colour, roughness: .75, metalness: .2 })));
     group.add(structures);
+    // Lightning protection: catenary wires from the mast down to ground anchors 340 m north and south.
+    const wire = [];
+    for (const s of [-1, 1]) for (let k = 0; k <= 40; k++) {
+        const f = k / 40, sag = 30 * 4 * f * (1 - f);
+        wire.push(new THREE.Vector3(tower[0], (top + 23) * (1 - f) - sag * (1 - f * .3) + 1, tower[2] + s * 340 * f));
+    }
+    const catenary = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wire.flatMap((point, k) => k % 41 === 40 ? [] : [point, wire[k + 1]])), new THREE.LineBasicMaterial({ color: 0x2b2e31 }));
+    group.add(catenary);
 
     // Exhaust cloud at liftoff: puffs leave the flame trench northward, rise, swell and thin.
     const smokeMap = (() => {
@@ -110,7 +140,7 @@ export function createGround() {
     const puffs = Array.from({ length: 90 }, () => {
         const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeMap, color: 0xe9e6e0, transparent: true, depthWrite: false }));
         sprite.renderOrder = 4; group.add(sprite);
-        const side = random() < .75 ? -1 : 1;   // most of the exhaust leaves by the trench's north end
+        const side = random() < .75 ? 1 : -1;   // 1: out of the trench's north end; -1: deluge steam at the mount
         return { sprite, born: random() * 16 - 2.5, speed: 22 + random() * 26, heading: side * (1 + (random() - .5) * .5), drift: (random() - .5) * .6, rise: 2 + random() * 5, size: 10 + random() * 14 };
     });
     function updateSmoke(mission, light) {
@@ -118,8 +148,10 @@ export function createGround() {
             const age = mission - puff.born;
             puff.sprite.visible = age > 0 && age < 70;
             if (!puff.sprite.visible) continue;
+            // Most leave by the trench's north end, 100 m from the mount; the rest is steam off the deluge round it.
             const travel = puff.speed * 9 * (1 - Math.exp(-age / 9));   // slows as it spreads
-            puff.sprite.position.set(travel * puff.drift, 4 + puff.rise * age * .8 + Math.sqrt(age) * 3, travel * -Math.sign(puff.heading) * Math.abs(puff.heading) * .8);
+            if (puff.heading < 0) puff.sprite.position.set(travel * puff.drift * 1.6, 4 + puff.rise * age * .6 + Math.sqrt(age) * 3, travel * .35 * Math.sign(puff.drift || 1));
+            else puff.sprite.position.set(travel * puff.drift * .8, 3 + puff.rise * age * .8 + Math.sqrt(age) * 3, -40 - Math.min(70, travel * .6) - travel * .5);
             puff.sprite.scale.setScalar(puff.size * (1 + age * .55));
             puff.sprite.material.opacity = Math.min(1, age * 2) * Math.max(0, 1 - age / 70) * .85;
             puff.sprite.material.color.setScalar(.25 + .7 * light);

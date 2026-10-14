@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { renderer, viewport } from '../core/stage.js';
-import { animationAt, animationDuration, boosterState, countdown, droneship, eventAt, events, launchEpoch, launchSite, missionAt, padFrame, vehicleState, warpAt } from '../sim/ascent.js';
+import { animationAt, animationDuration, boosterState, countdown, droneship, eventAt, events, launchEpoch, launchSite, missionAt, padFrame, paths, vehicleState, warpAt } from '../sim/ascent.js';
 import { toScene } from '../orbit/sky.js';
 import { createGround, mountHeight } from './ground.js';
 import { createVehicle } from './vehicle.js';
@@ -47,6 +47,48 @@ export async function createLaunchView(sky) {
         barge.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...droneship.up));
         scene.add(barge);
     }
+    // Both flight paths as dotted lines: bright where the vehicle has been, faint ahead. The dots are laid along the
+    // path (one-second points from the simulation, joined straight: over a second the path bends by under a metre) at
+    // a spacing that grows with the distance from the camera, so they stay about 1° apart on screen near and far.
+    // Earth's bulk hides the stretches beyond the horizon (an invisible sphere a little below the ground writes only
+    // depth).
+    const dotMap = (() => {
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 32; const g = canvas.getContext('2d');
+        g.fillStyle = '#fff'; g.beginPath(); g.arc(16, 16, 12, 0, Math.PI * 2); g.fill(); return new THREE.CanvasTexture(canvas);
+    })();
+    const maxDots = 3000;
+    function trail(list, colour) {
+        const geometry = new THREE.BufferGeometry()
+            .setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxDots * 3), 3))
+            .setAttribute('color', new THREE.BufferAttribute(new Float32Array(maxDots * 4), 4));
+        const points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 5, sizeAttenuation: false, vertexColors: true, map: dotMap, transparent: true, depthWrite: false, alphaTest: .05 }));
+        points.frustumCulled = false; points.renderOrder = 2; scene.add(points);
+        points.userData = { path: list.map(entry => new THREE.Vector3(...entry.position)), times: list.map(entry => entry.t), colour: new THREE.Color(colour) };
+        return points;
+    }
+    const trails = { rocket: trail(paths.rocket, 0x9fe3ff), booster: trail(paths.booster, 0xffb35c) };
+    const dot = new THREE.Vector3();
+    function layDots(points, eye) {
+        const { path, times, colour } = points.userData, position = points.geometry.attributes.position, colours = points.geometry.attributes.color;
+        let count = 0, k = 0, along = 0;   // segment k, fraction along it
+        while (k < path.length - 1 && count < maxDots) {
+            dot.lerpVectors(path[k], path[k + 1], along);
+            const time = times[k] + (times[k + 1] - times[k]) * along;
+            position.setXYZ(count, dot.x, dot.y, dot.z);
+            colours.setXYZW(count, colour.r, colour.g, colour.b, time <= mission ? 1 : .42);
+            count++;
+            let step = Math.max(1.5, dot.distanceTo(eye) * .017);
+            while (step > 0 && k < path.length - 1) {
+                const left = path[k].distanceTo(path[k + 1]) * (1 - along);
+                if (step < left) { along += step / path[k].distanceTo(path[k + 1]); step = 0; }
+                else { step -= left; k++; along = 0; }
+            }
+        }
+        position.needsUpdate = colours.needsUpdate = true; points.geometry.setDrawRange(0, count);
+    }
+    function updateTrails() { trails.booster.visible = mission > eventAt('separation'); }
+    const occluder = new THREE.Mesh(new THREE.SphereGeometry(6371000 - 3000, 128, 64), new THREE.MeshBasicMaterial({ colorWrite: false }));
+    occluder.position.y = -6371000; occluder.renderOrder = -60; scene.add(occluder);
 
     const camera = new THREE.PerspectiveCamera(40, 1, .3, 5e6);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -133,8 +175,8 @@ export async function createLaunchView(sky) {
     const target = new THREE.Vector3(), goalTarget = new THREE.Vector3(), goalOffset = new THREE.Vector3(), offset = new THREE.Vector3();
     const side = new THREE.Vector3(), back = new THREE.Vector3(), point = new THREE.Vector3(), lookout = new THREE.Vector3(150, 14, 175);
     function stackPoint(group, height, target) { return target.set(0, height, 0).applyQuaternion(group.quaternion).add(group.position); }
-    function goal() {
-        if (focus === 'booster' && mission > separation + 1) {
+    function goal(kind, goalTarget, goalOffset) {
+        if (kind === 'booster' && mission > separation + 1) {
             // The booster: alongside as it falls tail-first, then low by the barge for the landing.
             stackPoint(booster, 24, goalTarget);
             back.set(...boosterNow.direction).negate();   // its tail leads
@@ -168,8 +210,20 @@ export async function createLaunchView(sky) {
         goalTarget.lerp(stackPoint(upper, vehicle.secondStageTop, point), .35 * (1 - smooth(mission, eventAt('dragon') + 4, eventAt('dragon') + 24)));
         goalOffset.copy(side).multiplyScalar(30).addScaledVector(back, 6).addScaledVector(up, 5);
     }
+    // Corner screen: the other vehicle from separation on (the booster flying home while the main view stays with
+    // Dragon, or the reverse), on its own camera that eases like the main one. A click on it swaps the two.
+    const inset = { camera: new THREE.PerspectiveCamera(40, 1.6, .3, 5e6), target: new THREE.Vector3(), offset: new THREE.Vector3(), goalOffset: new THREE.Vector3(), snap: true };
+    const insetElement = field('launch-inset'), insetText = insetElement.querySelector('span'), insetName = insetElement.querySelector('b');
+    const insetKind = () => focus === 'rocket' ? 'booster' : 'rocket';
+    const insetShown = () => active && mission > separation + 2 && (focus === 'booster' || mission < landing + 45);
+    insetElement.addEventListener('click', () => { setFocus(insetKind()); setFollow(true); snapCamera = inset.snap = true; });
+    function followInset(delta) {
+        goal(insetKind(), inset.target, inset.goalOffset);
+        if (inset.snap) { inset.offset.copy(inset.goalOffset); inset.snap = false; } else inset.offset.lerp(inset.goalOffset, 1 - Math.exp(-2.2 * delta));
+        inset.camera.position.copy(inset.target).add(inset.offset); inset.camera.up.set(0, 1, 0); inset.camera.lookAt(inset.target);
+    }
     function follow(delta) {
-        goal();
+        goal(focus, goalTarget, goalOffset);
         offset.subVectors(camera.position, controls.target);
         if (snapCamera) { offset.copy(goalOffset); snapCamera = false; }
         else if (auto) offset.lerp(goalOffset, 1 - Math.exp(-2.2 * delta));
@@ -188,7 +242,7 @@ export async function createLaunchView(sky) {
         ground.setDaylight(daylight);
     }
 
-    let readoutClock = 0;
+    let readoutClock = 0, lastReached = null;
     const speedText = metres => Math.round(metres * 3.6).toLocaleString('en-US') + ' km/h';
     function readout() {
         field('launch-clock').textContent = clock(mission);
@@ -205,43 +259,80 @@ export async function createLaunchView(sky) {
         field('launch-load').textContent = (mission < 0 ? 1 : shown.load).toFixed(2) + ' g';
         field('launch-q').textContent = (shown.q / 1000).toFixed(shown.q < 1e4 ? 1 : 0) + ' kPa';
         items.forEach((item, k) => item.classList.toggle('done', mission >= events[k].at));
+        const reached = items.filter(item => item.classList.contains('done')).pop();
+        if (reached && reached !== lastReached) { lastReached = reached; list.scrollTop = Math.max(0, reached.offsetTop - list.offsetTop - 40); }
+        insetElement.hidden = !insetShown();
+        if (!insetElement.hidden) {
+            const other = insetKind() === 'booster' ? boosterNow : state, label = insetKind() === 'booster' ? 'BOOSTER' : mission < eventAt('dragon') ? 'SECOND STAGE + DRAGON' : 'DRAGON';
+            insetName.textContent = label;
+            insetText.textContent = other.landed ? 'ON THE DRONESHIP' : (other.altitude < 1000 ? other.altitude.toFixed(0) + ' m' : (other.altitude / 1000).toFixed(1) + ' km') + ' · ' + speedText(other.speed);
+        }
         stationButton.hidden = mission < eventAt('nosecone') + 6;
         const tiles = ground.status.loading;
-        field('launch-source').textContent = (tiles ? 'Loading ground imagery (' + tiles + ' tiles)… · ' : '') + 'Flight simulated (thrust, drag, US-1976 air, Earth’s spin), fitted to NASA’s Demo-2 timeline and DM-1 telemetry · model: Stanley Creative, CC BY 4.0 · imagery: USGS, NASA GIBS';
+        field('launch-source').textContent = (tiles ? 'Loading ground imagery (' + tiles + ' tiles)… · ' : '') + 'Simulated flight, fitted to NASA Demo-2 and DM-1 telemetry · model: Stanley Creative, CC BY 4.0 · imagery: USGS, NASA GIBS';
     }
 
     function update(delta) {
         if (playing) { time = Math.min(animationDuration(focus), time + delta); if (time >= animationDuration(focus)) setPlaying(false); }
         mission = missionAt(time, focus);
         sky.update(0, new Date(launchEpoch + mission * 1000));
-        placeFrame(); pose(); light(); follow(delta);
+        placeFrame(); pose(); light(); follow(delta); updateTrails();
+        if (insetShown()) followInset(delta); else inset.snap = true;
         controls.update(delta);
         readoutClock -= delta;
         if (readoutClock <= 0) { readout(); readoutClock = .1; }
     }
 
-    // Draw: the sky from the camera's true place on the globe, then the pad's frame over it.
+    // Draw: the sky from the camera's true place on the globe, then the pad's frame over it; then the corner screen the
+    // same way in its own patch of the canvas.
     const skyCamera = new THREE.PerspectiveCamera(40, 1, 1, 1e9);
-    function render() {
-        camera.updateMatrixWorld();
-        const distance = camera.position.distanceTo(controls.target);
-        camera.near = Math.max(.3, distance * .004); camera.far = 5e6; camera.updateProjectionMatrix();
-        skyCamera.position.copy(camera.position).multiplyScalar(.001).applyQuaternion(frame).add(padWorld);
-        skyCamera.quaternion.multiplyQuaternions(frame, camera.quaternion);
-        skyCamera.fov = camera.fov; skyCamera.aspect = camera.aspect;
+    function draw(view, target) {
+        view.updateMatrixWorld();
+        if (view.view?.enabled) skyCamera.setViewOffset(view.view.fullWidth, view.view.fullHeight, view.view.offsetX, view.view.offsetY, view.view.width, view.view.height);
+        else skyCamera.clearViewOffset();
+        const distance = view.position.distanceTo(target);
+        view.near = Math.max(.3, distance * .004); view.far = 5e6; view.updateProjectionMatrix();
+        skyCamera.position.copy(view.position).multiplyScalar(.001).applyQuaternion(frame).add(padWorld);
+        skyCamera.quaternion.multiplyQuaternions(frame, view.quaternion);
+        skyCamera.fov = view.fov; skyCamera.aspect = view.aspect;
         skyCamera.updateMatrixWorld();
         sky.prepare(skyCamera, 'launch');
         const altitude = skyCamera.position.length() - 6371;
         skyCamera.near = Math.max(1, altitude * .3); skyCamera.updateProjectionMatrix();
         renderer.render(sky.scene, skyCamera);
-        ground.updateSky(camera, altitude * 1000, sunLocal, sunLocal.y);
-        ground.sky.scale.setScalar(Math.max(1, camera.near * 5 / 1000));
-        renderer.autoClear = false; renderer.clearDepth(); renderer.render(atmosphere, camera); renderer.render(scene, camera); renderer.autoClear = true;
+        ground.updateSky(view, altitude * 1000, sunLocal, sunLocal.y);
+        ground.sky.scale.setScalar(Math.max(1, view.near * 5 / 1000));
+        layDots(trails.rocket, view.position); if (trails.booster.visible) layDots(trails.booster, view.position);
+        renderer.autoClear = false; renderer.clearDepth(); renderer.render(atmosphere, view); renderer.render(scene, view); renderer.autoClear = true;
     }
-    function resize(width, height) { camera.aspect = width / height; camera.updateProjectionMatrix(); sky.resize(width, height); }
+    const canvasBox = { left: 0, top: 0, height: 0 };
+    function render() {
+        draw(camera, controls.target);
+        if (insetElement.hidden) return;
+        const box = insetElement.getBoundingClientRect(), page = renderer.domElement.getBoundingClientRect();
+        const x = box.left - page.left, y = page.height - (box.top - page.top) - box.height;
+        inset.camera.aspect = box.width / box.height;
+        renderer.setScissorTest(true); renderer.setScissor(x, y, box.width, box.height); renderer.setViewport(x, y, box.width, box.height);
+        renderer.setClearColor(0x000000, 1); renderer.clear();
+        draw(inset.camera, inset.target);
+        renderer.setClearColor(0x000000, 0); renderer.setScissorTest(false); renderer.setViewport(0, 0, page.width, page.height);
+        ground.updateSky(camera, 0, sunLocal, sunLocal.y);
+    }
+    // The vehicle sits in the open space between the header and the tool dock (on narrow screens, above the panel),
+    // and the corner screen just under the view's title.
+    function resize(width, height) {
+        const chrome = document.querySelector('.viewport-chrome'), top = viewport.getBoundingClientRect().top;
+        let lower = Math.min(chrome.offsetTop + chrome.clientHeight, document.querySelector('.dock').getBoundingClientRect().top - top - 8);
+        const box = panel.getBoundingClientRect();
+        if (!panel.hidden && box.width > width * .6) lower = Math.min(lower, box.top - top - 6);
+        const upper = chrome.offsetTop + 34, shift = (upper + lower) / 2 - height / 2;
+        camera.aspect = width / height; camera.setViewOffset(width, height, 0, -shift, width, height); camera.updateProjectionMatrix();
+        insetElement.style.top = Math.max(64, chrome.offsetTop + 44) + 'px';
+        sky.resize(width, height);
+    }
 
     return {
-        camera, controls, update, render, resize,
+        camera, controls, scene, update, render, resize,
         get mission() { return mission; },
         set onStation(callback) { stationButton.onclick = callback; },
         enter() {
@@ -250,7 +341,7 @@ export async function createLaunchView(sky) {
             if (time >= animationDuration(focus)) jump(0);
             setPlaying(true);
         },
-        leave() { active = false; controls.enabled = false; panel.hidden = true; setPlaying(false); },
+        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; setPlaying(false); },
         get active() { return active; },
         zoomBy(multiplier) {
             offset.subVectors(camera.position, controls.target);
