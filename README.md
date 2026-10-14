@@ -79,14 +79,17 @@ Mặt Trăng và Mặt Trời ở vị trí và kích thước thật, tính b�
 
 Thêm vệ tinh: thêm mã NORAD vào `OBJECTS` trong `tle.py` và gọi `addOrbiter({ id, name, norad })` trong `js/orbit/view.js`. Chuyến tiếp tế (phóng → bám quỹ đạo → tiếp cận) có thể ghép `js/sim/orbit.js` cho chặng xa với `js/sim/rendezvous.js` cho chặng gần.
 
-Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó, nhìn từ một điểm cách vị trí thật của ISS 1.200 km về phía sau, theo đúng hướng camera của trạm.
-- Hệ trục của trạm là hệ quỹ đạo của ISS (đỉnh +y, hướng bay −z, mạn phải +x). ISS bay gần như theo hệ này, nên nền xoay theo quỹ đạo: Trái Đất luôn ở dưới, mặt đất phía dưới là nơi ISS đang bay qua, ngày đêm đúng giờ.
-- Kéo chuột phải (hoặc giữ Ctrl/Shift rồi kéo chuột trái) dịch cả trạm lẫn nền: vị trí thật của ISS luôn nằm sau tâm trạm.
-- Khi bật nền, thu nhỏ được tới 5% (bình thường 45%). Điểm nhìn lùi dần: khoảng 7.400 km ở 45% (Trái Đất gần kín màn hình), 19.000 km ở 20% (thấy trọn quả địa cầu), 65.000 km ở 5%. Trái Đất lùi chậm hơn trạm thu nhỏ, nên luôn to hơn trạm.
-- Vòng chấm là một phần ba quỹ đạo thật quanh trạm (sáng phía trước, mờ phía sau); khi điểm nhìn đã lùi xa hơn 8.000 km thì hiện cả vòng.
+Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó sau trạm, **đúng tỉ lệ**: trạm 109 m, Trái Đất 12.742 km, ISS ở độ cao thật (~420 km).
+- Trạm vẫn vẽ bằng camera trực giao. Nền vẽ bằng camera phối cảnh tương đương: mắt lùi lại theo hướng nhìn một khoảng sao cho góc nhìn 45° phủ đúng khung hình của trạm tại tâm nhìn (khung cao 200 m thì mắt cách khoảng 240 m). Hai camera khớp nhau đúng ở mặt phẳng tâm nhìn, nên kích thước trạm so với Trái Đất là kích thước thật.
+- Hệ trục của trạm là hệ quỹ đạo của ISS (đỉnh +y, hướng bay −z, mạn phải +x). ISS bay gần như theo hệ này, nên Trái Đất luôn ở dưới, mặt đất phía dưới là nơi ISS đang bay qua, ngày đêm đúng giờ.
+- Ở gần, cảnh giống ảnh chụp từ tàu bay quanh trạm: đường chân trời cong thấp hơn phương ngang 20°, mặt đất trôi qua với tốc độ 7,7 km/s.
+- Zoom ra (bật nền thì xuống được tới 10⁻⁷, bình thường 45%): mắt lùi xa dần, trạm nhỏ lại đúng tỉ lệ. Khung cao khoảng 6 km (cửa sổ cao 800 điểm ảnh) thì trạm còn chưa tới 14 điểm ảnh, chấm **ISS** cùng nhãn độ cao hiện thay. Khung cao khoảng 15.000–20.000 km thì thấy trọn quả địa cầu cùng vòng quỹ đạo. Khung cao một đến hai triệu km thì thấy cả Mặt Trăng; Trái Đất, Mặt Trăng, Mặt Trời có nhãn như trong góc nhìn Orbit. Dưới mức 45%, mỗi nấc lăn chuột zoom nhanh dần, nút +/− mỗi lần nhảy bốn nấc. Thước tỉ lệ đổi sang km.
+- Kéo chuột phải dịch tâm nhìn, mắt dịch theo. Ở gần, trạm trượt trên nền Trái Đất ở xa, nền gần như đứng yên vì cách hàng trăm km. Ở xa, Trái Đất dịch theo.
+- Vòng chấm là một phần ba quỹ đạo thật quanh trạm (sáng phía trước, mờ phía sau). Khi mắt đã lùi xa hơn 8.000 km thì hiện cả vòng.
+- Khi Dragon nhỏ hơn 26 điểm ảnh, có vòng tròn đánh dấu nó.
 - Mây là ảnh tĩnh, không phải mây thời gian thực.
 - Ánh sáng trên trạm vẫn cố định để mô hình luôn rõ. Khi ISS bay vào vùng đêm, nền tối nhưng trạm vẫn sáng.
-- Trên trạm, một điểm ảnh ứng với khoảng 2–10 km mặt đất, còn ảnh Trái Đất 4096 px chỉ có 10 km/px, nên mặt đất hơi mờ. Muốn sắc nét thì phải tải ảnh theo ô (ví dụ NASA GIBS) như các bản đồ trực tuyến.
+- Ảnh Trái Đất 4096 px chỉ có khoảng 10 km mỗi điểm ảnh. Nhìn thẳng xuống từ 420 km, một khung 45° phủ khoảng 350 km mặt đất, tức chỉ khoảng 35 điểm ảnh của bản đồ, nên mặt đất ngay dưới trạm bị mờ; về phía chân trời thì đỡ hơn. Muốn sắc nét thì phải tải ảnh theo ô (ví dụ NASA GIBS) như các bản đồ trực tuyến.
 
 Ảnh Trái Đất (ngày, đêm, mây, độ nhám) của [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0), bản thu nhỏ trong ví dụ của three.js, lấy trực tiếp từ threejs.org. Ảnh Mặt Trăng là của ví dụ three.js, chưa rõ giấy phép; nên thay bằng ảnh Mặt Trăng 2K của Solar System Scope (CC BY 4.0) đặt trong `assets/`.
 

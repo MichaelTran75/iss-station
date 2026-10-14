@@ -1,9 +1,9 @@
 // The real sky round Earth, at the shown time: Earth with day, night and clouds, the ISS on its orbit, the Moon and
 // the Sun where they are, and the stars. Units are kilometres with Earth's centre at the origin; the axes are the
 // inertial frame of date (x toward the vernal equinox, z north) turned so +y points north. Two views draw it: the
-// Orbit view (js/orbit/view.js), and the station's Earth backdrop, seen from a point behind the station's real
-// position (renderBehind). It loads the first time either opens. More objects (satellites, a supply ship on its way
-// up) join through addOrbiter().
+// Orbit view (js/orbit/view.js), and the station's Earth backdrop, drawn at true scale behind the station
+// (renderBehind). It loads the first time either opens. More objects (satellites, a supply ship on its way up) join
+// through addOrbiter().
 import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
@@ -36,7 +36,7 @@ async function loadElements(norad) {
         try { localStorage.setItem(key, JSON.stringify({ tle, fetched: Date.now() })); } catch (error) { /* not cached */ }
         return { tle, source: 'CelesTrak', fetched: Date.now() };
     } catch (error) {
-        const response = await fetch('data/orbits.json?v=2da50c9f88');
+        const response = await fetch('data/orbits.json?v=b2a99426e6');
         const data = await response.json(), entry = data.objects.find(object => object.norad === norad);
         return { tle: entry.tle, source: 'CelesTrak (copy of ' + data.fetched.slice(0, 10) + ')', fetched: Date.parse(data.fetched) };
     }
@@ -245,9 +245,10 @@ export function createSky() {
     }
 
     // Before drawing: what each view shows, the stars round the camera, and clipping planes that fit the scene from where
-    // the camera is (the near plane a quarter of the way to the nearest surface, the far plane past Earth's orbit).
+    // the camera is (the near plane a quarter of the way to the nearest surface, or closer than `nearest` km, the far
+    // plane past Earth's orbit).
     const cameraDistance = new THREE.Vector3();
-    function prepare(camera, mode) {
+    function prepare(camera, mode, nearest = Infinity) {
         const orbitView = mode === 'orbit', fromEarth = camera.position.length();
         for (const entry of orbiters) {
             entry.marker.visible = orbitView && !!entry.state && fromEarth < 3e5;
@@ -257,15 +258,15 @@ export function createSky() {
         }
         moonOrbit.visible = orbitView && fromEarth > 1.2e5;
         earthOrbit.visible = orbitView && fromEarth > 4e6;
-        const nearest = Math.min(fromEarth - earthRadius * 1.03, cameraDistance.subVectors(camera.position, moon.position).length() - moonRadius);
-        camera.near = Math.max(.5, nearest * .25); camera.far = fromEarth + 3.2e8; camera.updateProjectionMatrix();
+        nearest = Math.min(nearest, fromEarth - earthRadius * 1.03, cameraDistance.subVectors(camera.position, moon.position).length() - moonRadius);
+        camera.near = Math.max(.001, nearest * .25); camera.far = fromEarth + 3.2e8; camera.updateProjectionMatrix();
         stars.position.copy(camera.position); stars.scale.setScalar(camera.far * .9);
         // Markers stand in for Earth and the Moon once their discs shrink below a few pixels.
         const pixelsPerRadian = viewport.clientHeight / 2 / Math.tan(camera.fov * Math.PI / 360);
         for (const body of bodies) {
             if (!body.marker) continue;
             body.marker.position.copy(body.object.position);
-            body.marker.visible = orbitView && body.radius / cameraDistance.subVectors(camera.position, body.object.position).length() * pixelsPerRadian < 2.5;
+            body.marker.visible = body.radius / cameraDistance.subVectors(camera.position, body.object.position).length() * pixelsPerRadian < 2.5;
         }
     }
     // Labels beside their objects (Orbit view only), hidden when Earth is in the way or off screen.
@@ -299,32 +300,49 @@ export function createSky() {
     function hideLabels() { for (const element of [...orbiters.map(entry => entry.element), ...bodies.map(body => body.element)]) element.hidden = true; }
     function resize(width, height) { for (const material of lineMaterials) material.resolution.set(width, height); }
 
-    // The station's backdrop: the sky from a point behind the station's real position, looking the way the station camera
-    // looks. The station frame (zenith +y, velocity -z, starboard +x) is the ISS's local vertical, local horizontal frame
-    // (the station flies close to it), so the backdrop turns with the orbit: Earth stays below and the ground beneath is
-    // the ground under the ISS now.
-    // - The viewpoint is 1,200 km back at the framed size; zooming the station out pulls it further back, more slowly than
-    //   the station shrinks, so Earth stays the larger of the two: about 7,400 km back at 45% (Earth fills most of the
-    //   view), 19,000 km at 20%, 65,000 km at 5% (a whole globe a sixth of the screen high).
-    // - The ISS's real position sits behind `anchor` (the station's centre) wherever panning and zooming put it on screen,
-    //   so the backdrop moves with the station; it is kept within reach of the screen so the view never turns far
-    //   off-axis.
-    const backdropCamera = new THREE.PerspectiveCamera(60, 1, 1, 1e9), nearVantage = 1200, anchorOnScreen = new THREE.Vector3();
+    // The station's Earth backdrop, at true scale. The station is drawn with an orthographic camera; the sky behind it is
+    // drawn by the perspective camera that shows the same picture at the station camera's target. Its eye sits back
+    // along the view by the distance at which a 45° field of view spans the station's frame there, and its frustum is
+    // shifted as the station's frame is, so the target falls on the same pixel in both and the station keeps its real
+    // size against Earth, the Moon and the Sun.
+    // - The station frame (zenith +y, velocity -z, starboard +x) is the ISS's local vertical, local horizontal frame (the
+    //   station flies close to it): Earth stays below and the ground is the ground under the ISS now.
+    // - Framed close, the eye is a few hundred metres from the station, and Earth is what the crew see from 420 km: the
+    //   horizon 20° below level and the ground sliding past at 7.7 km/s. Zoomed out, the eye pulls away: Earth shrinks
+    //   to a globe once the frame is thousands of kilometres high, and the station to a dot (`marked`: the ISS marker and
+    //   its label stand in for it). Panning moves the eye with the target, so close in the station slides over a
+    //   distant Earth, and far out Earth moves with it.
+    const backdropCamera = new THREE.PerspectiveCamera(45, 1, 1, 1e9), halfView = Math.tan(22.5 * Math.PI / 180);
     const zenith = new THREE.Vector3(), starboard = new THREE.Vector3(), aft = new THREE.Vector3(), frame = new THREE.Quaternion(), stationTurn = new THREE.Quaternion();
-    function renderBehind(stationCamera, width, height, anchor) {
+    const look = new THREE.Vector3(), eye = new THREE.Vector3();
+    function renderBehind(stationCamera, target, width, height, marked) {
         if (!iss.state) return false;
         toScene(iss.state.position, position); toScene(iss.state.velocity, velocity);
         zenith.copy(position).normalize(); starboard.crossVectors(velocity, zenith).normalize(); aft.crossVectors(starboard, zenith);
         frame.setFromRotationMatrix(basis.makeBasis(starboard, zenith, aft));
         stationCamera.getWorldQuaternion(stationTurn);
         backdropCamera.quaternion.multiplyQuaternions(frame, stationTurn);
-        const vantage = nearVantage + 7500 * (Math.pow(Math.min(1, stationCamera.zoom), -.75) - 1);
-        backdropCamera.position.copy(position).addScaledVector(towardEarth.set(0, 0, -1).applyQuaternion(backdropCamera.quaternion), -vantage);
-        anchorOnScreen.copy(anchor).project(stationCamera);
-        const x = THREE.MathUtils.clamp(anchorOnScreen.x, -1.5, 1.5) * width / 2, y = THREE.MathUtils.clamp(anchorOnScreen.y, -1.5, 1.5) * height / 2;
-        backdropCamera.aspect = width / height; backdropCamera.setViewOffset(width, height, -x, y, width, height);
-        prepare(backdropCamera, 'backdrop');
-        for (const entry of orbiters) { entry.dots.visible = !!entry.state && vantage <= 8000; entry.ring.visible = !!entry.state && vantage > 8000; }
+        // The station camera's frame at its target, in metres (OrthographicCamera keeps the frame's centre as it zooms).
+        const halfWidth = (stationCamera.right - stationCamera.left) / (2 * stationCamera.zoom), halfHeight = (stationCamera.top - stationCamera.bottom) / (2 * stationCamera.zoom);
+        const centreX = (stationCamera.right + stationCamera.left) / 2, centreY = (stationCamera.top + stationCamera.bottom) / 2;
+        const distance = halfHeight / halfView;   // metres, target to eye
+        stationCamera.getWorldDirection(look);
+        eye.copy(target).addScaledVector(look, -distance).multiplyScalar(.001).applyQuaternion(frame);
+        backdropCamera.position.copy(position).add(eye);
+        backdropCamera.aspect = halfWidth / halfHeight;
+        backdropCamera.setViewOffset(width, height, centreX / (2 * halfWidth) * width, -centreY / (2 * halfHeight) * height, width, height);
+        const kilometres = distance / 1000;
+        prepare(backdropCamera, 'backdrop', marked ? kilometres * 2 : Infinity);
+        for (const entry of orbiters) { entry.dots.visible = !!entry.state && kilometres <= 8000; entry.ring.visible = !!entry.state && kilometres > 8000; }
+        // Far enough out for the Moon, Earth, the Moon and the Sun are named as in the Orbit view, and the ISS, a few
+        // pixels off Earth's limb by then, gives way to Earth's own label.
+        const fromEarth = backdropCamera.position.length(), named = fromEarth > 1.5e5;
+        iss.marker.visible = marked && !named;
+        backdropCamera.updateMatrixWorld();
+        placeLabel(backdropCamera, iss.element, iss.marker.position, 'ISS · ' + iss.state.height.toFixed(0) + ' km', iss.marker.visible);
+        placeLabel(backdropCamera, bodies[0].element, earth.position, 'EARTH', named, false);
+        placeLabel(backdropCamera, bodies[1].element, moon.position, 'MOON · ' + Math.round(moon.position.length()).toLocaleString('en-US') + ' km · ' + Math.round(lit * 100) + '% lit', named);
+        placeLabel(backdropCamera, bodies[2].element, sun.position, 'SUN · ' + million(sun.position.length()), named);
         resize(width, height);
         renderer.render(scene, backdropCamera);
         return true;

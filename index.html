@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=eaa55fc633">
+    <link rel="stylesheet" href="css/app.css?v=c45b42fac9">
     <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
          trước mọi module theo thứ tự dựng. -->
     <script type="importmap">
@@ -59,9 +59,9 @@
         "./js/figures/eva.js": "./js/figures/eva.js?v=35ce703c39",
         "./js/ui/ghost.js": "./js/ui/ghost.js?v=e02e8c564f",
         "./js/ui/rendezvous-guide.js": "./js/ui/rendezvous-guide.js?v=c2e18df47a",
-        "./js/ui/controller.js": "./js/ui/controller.js?v=337a40bf8a",
+        "./js/ui/controller.js": "./js/ui/controller.js?v=17737ab853",
         "./js/main.js": "./js/main.js?v=8f998bddb6",
-        "./js/orbit/sky.js": "./js/orbit/sky.js?v=0fb87be4d8",
+        "./js/orbit/sky.js": "./js/orbit/sky.js?v=0994192559",
         "./js/orbit/view.js": "./js/orbit/view.js?v=9166f83b83",
         "./js/sim/eva.js": "./js/sim/eva.js?v=2f04194c17",
         "./js/sim/orbit.js": "./js/sim/orbit.js?v=f44737761f"
@@ -108,7 +108,7 @@
     <link rel="modulepreload" href="js/figures/eva.js?v=35ce703c39">
     <link rel="modulepreload" href="js/ui/ghost.js?v=e02e8c564f">
     <link rel="modulepreload" href="js/ui/rendezvous-guide.js?v=c2e18df47a">
-    <link rel="modulepreload" href="js/ui/controller.js?v=337a40bf8a">
+    <link rel="modulepreload" href="js/ui/controller.js?v=17737ab853">
     <link rel="modulepreload" href="js/main.js?v=8f998bddb6">
     <!-- /modules -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
@@ -158,6 +158,7 @@
                 <line id="approach-dist-line"></line>
                 <circle id="approach-port-dot" r="2.5"></circle>
                 <circle id="approach-dragon-dot" r="2.5"></circle>
+                <circle id="approach-dragon-ring" r="11"></circle>
             </svg>
             <button id="approach-distance-badge" class="approach-dist-badge" type="button" aria-label="Docking distance"
                 title="Docking distance / Click to inspect Crew Dragon"></button>

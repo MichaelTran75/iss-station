@@ -483,6 +483,13 @@
             fill: var(--accent);
         }
 
+        #approach-dragon-ring {
+            fill: none;
+            stroke: var(--accent);
+            stroke-width: 1.5;
+            opacity: .9;
+        }
+
         /* Crew 1's thought: a small bubble over his head, in pixels so it stays readable at any zoom. */
         .crew-thought {
             position: absolute;

@@ -44,7 +44,7 @@ const detailSources = {
     nauka: ['ESA · European Robotic Arm', 'https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/International_Space_Station/European_Robotic_Arm']
 };
 const labelLayer = document.getElementById('labels'), leaders = document.getElementById('leaders');
-const approachHud = document.getElementById('approach-hud'), approachDistLine = document.getElementById('approach-dist-line'), approachPortDot = document.getElementById('approach-port-dot'), approachDragonDot = document.getElementById('approach-dragon-dot'), approachDistBadge = document.getElementById('approach-distance-badge');
+const approachHud = document.getElementById('approach-hud'), approachDistLine = document.getElementById('approach-dist-line'), approachPortDot = document.getElementById('approach-port-dot'), approachDragonDot = document.getElementById('approach-dragon-dot'), approachDragonRing = document.getElementById('approach-dragon-ring'), approachDistBadge = document.getElementById('approach-distance-badge');
 const svgNamespace = 'http://www.w3.org/2000/svg';
 const labelSpecs = [['power', '02 / POWER', 'Solar array wings', 65, -58], ['thermal', '04 / THERMAL', 'Heat-rejection radiators', 52, 45], ['kibo', '08 / RESEARCH', 'Kibo laboratory', -133, -25], ['robotics', '19 / ROBOTICS', 'Canadarm2', 58, -44], ['zvezda', '14 / RUSSIAN SEGMENT', 'Zvezda', 60, 38], ['dragon', '17 / CREW', 'Crew Dragon', -100, 40]];
 export const labels = labelSpecs.map(([id, code, title, offsetX, offsetY]) => {
@@ -147,12 +147,15 @@ function cameraDirection(name) {
     return new THREE.Vector3(-155, 185, -155);
 }
 export const stationBounds = new THREE.Box3();
+// The station's span across its arrays, for telling how large it is on screen.
+let stationSpan = 109;
 export function setConfiguration(name) {
     configuration = name; markShadowsDirty();
     for (const entry of parts.values()) entry.group.visible = !modernParts.has(entry.id) || name === 'modern';
     stationBounds.makeEmpty();
     // Dragon may be hundreds of metres out on its approach: the station's frame takes only its last leg.
     for (const entry of parts.values()) if (entry.group.visible && entry.id !== 'dragon') stationBounds.expandByObject(entry.group);
+    const size = stationBounds.getSize(new THREE.Vector3()); stationSpan = Math.max(size.x, size.z);
     stationBounds.union(dragonFlightBounds);
     setPressed('configuration-toggle', name === 'modern');
     document.getElementById('configuration-name').textContent = name === 'modern' ? 'JUNE 2023 / ILLUSTRATIVE CONFIGURATION' : 'CORE ELEMENTS / SIMPLIFIED COMPARISON';
@@ -315,10 +318,11 @@ function updateShutterControls() {
     if (button.textContent !== label) button.textContent = label;
 }
 const rangeLabel = range => (range >= 100 ? range.toFixed(0) : range.toFixed(1)) + ' m';
-function updateApproachDistance() {
+// `hidden`: the station is too small on screen for the line to mean anything.
+function updateApproachDistance(hidden) {
     if (!approachHud || !approachDistLine || !approachDistBadge) return;
     const dragonPart = parts.get('dragon'), harmonyPart = parts.get('harmony');
-    if (!dragonPart || !harmonyPart || currentView === 'interior' || !dragonPart.group.visible) {
+    if (hidden || !dragonPart || !harmonyPart || currentView === 'interior' || !dragonPart.group.visible) {
         approachHud.style.display = 'none'; approachDistBadge.style.display = 'none'; return;
     }
     const width = viewport.clientWidth, height = viewport.clientHeight;
@@ -352,6 +356,10 @@ function updateApproachDistance() {
     approachPortDot.setAttribute('cx', x1.toFixed(1)); approachPortDot.setAttribute('cy', y1.toFixed(1));
     approachDragonDot.setAttribute('cx', x2.toFixed(1)); approachDragonDot.setAttribute('cy', y2.toFixed(1));
     approachDragonDot.style.display = clipped ? 'none' : '';
+    // A ring round Dragon while it is too small to pick out (against Earth, a few pixels of white).
+    const dragonPixels = 8.1 * camera.zoom * width / (camera.right - camera.left);
+    approachDragonRing.setAttribute('cx', x2.toFixed(1)); approachDragonRing.setAttribute('cy', y2.toFixed(1));
+    approachDragonRing.style.display = clipped || dragonPixels > 26 || approach.time >= approach.duration ? 'none' : '';
     const midX = clipped ? x2 : (x1 + x2) * .5, midY = clipped ? y2 : (y1 + y2) * .5;
     const linePixelDist = Math.hypot(x2 - x1, y2 - y1);
     let badgeX = midX, badgeY = midY;
@@ -389,12 +397,12 @@ function updateCrewThought() {
     }
     element.hidden = !show;
 }
-function updateLabels() {
+function updateLabels(hidden) {
     const width = viewport.clientWidth, height = viewport.clientHeight, occupied = [];
     const chrome = document.querySelector('.viewport-chrome');
     const safeTop = chrome.offsetTop, safeBottom = safeTop + chrome.clientHeight;
     leaders.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
-    labelLayer.hidden = !labelsEnabled || !!selected || currentView === 'interior'; leaders.style.display = labelLayer.hidden ? 'none' : '';
+    labelLayer.hidden = hidden || !labelsEnabled || !!selected || currentView === 'interior'; leaders.style.display = labelLayer.hidden ? 'none' : '';
     if (labelLayer.hidden) return;
     const viewportBounds = viewport.getBoundingClientRect();
     for (const selector of ['.approach-status', '.interior-focus', '.component-picker']) {
@@ -432,21 +440,26 @@ function updateLabels() {
         label.dot.setAttribute('cx', anchorX.toFixed(1)); label.dot.setAttribute('cy', anchorY.toFixed(1));
     }
 }
-const backdropAnchor = new THREE.Vector3();
+// Scale-bar lengths in metres: 1, 2 and 5 times each power of ten from a centimetre to a million kilometres.
+const scaleSteps = Array.from({ length: 33 }, (_, k) => [1, 2, 5][k % 3] * 10 ** (Math.floor(k / 3) - 2));
+const scaleText = metres => metres >= 1000 ? (metres / 1000).toLocaleString('en-US') + ' km' : +metres.toPrecision(1) + ' m';
 export function render() {
     if (currentView === 'orbit') { if (orbitView) orbitView.render(); return; }
-    camera.updateMatrixWorld(true); if (inspectionLight.visible) inspectionLight.position.copy(camera.position); updateApproachDistance(); updateLabels(); updateCrewThought(); updateShutterControls();
+    camera.updateMatrixWorld(true); if (inspectionLight.visible) inspectionLight.position.copy(camera.position);
+    // Zoomed far out over Earth the station is a few pixels or less: its overlays stand down, and below 14 pixels the
+    // backdrop's ISS marker shows where it is.
+    const pixelsPerMetre = camera.zoom * viewport.clientWidth / (camera.right - camera.left), stationPixels = stationSpan * pixelsPerMetre;
+    updateApproachDistance(stationPixels < 40); updateLabels(stationPixels < 40); updateCrewThought(); updateShutterControls();
     const approachState = approach.time >= approach.duration ? 'DOCKED' : motion ? approachPhase() : 'PAUSED';
     const readout = rangeLabel(approach.range) + ' / ' + approachState;
     updateRendezvousGuide(currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach');
     const status = document.getElementById('approach-state');
     if (status.textContent !== readout) status.textContent = readout;
-    const pixelsPerMetre = camera.zoom * viewport.clientWidth / (camera.right - camera.left);
-    const scaleMetres = [.01, .02, .05, .1, .2, .5, 1, 2, 5, 10, 20, 50, 100].find(length => length * pixelsPerMetre >= 55) || 100;
+    const scaleMetres = scaleSteps.find(length => length * pixelsPerMetre >= 55) || scaleSteps[scaleSteps.length - 1];
     document.getElementById('scale-line').style.width = (scaleMetres * pixelsPerMetre).toFixed(1) + 'px';
-    document.getElementById('scale-label').textContent = scaleMetres + ' m';
-    // Earth backdrop: the real sky behind the station first, then the station over it.
-    if (orbital && sky && sky.renderBehind(camera, viewport.clientWidth, viewport.clientHeight, stationBounds.getCenter(backdropAnchor))) {
+    document.getElementById('scale-label').textContent = scaleText(scaleMetres);
+    // Earth backdrop: the real sky behind the station first, at true scale, then the station over it.
+    if (orbital && sky && sky.renderBehind(camera, controls.target, viewport.clientWidth, viewport.clientHeight, stationPixels < 14)) {
         renderer.autoClear = false; renderer.clearDepth(); renderer.render(scene, camera); renderer.autoClear = true;
     } else renderer.render(scene, camera);
 }
@@ -481,17 +494,22 @@ document.getElementById('reset').addEventListener('click', () => {
     destinyShutter.pivot.rotation.z = destinyShutter.openAngle;
     restartApproach(); advance(0);
 });
-for (const [id, multiplier] of [['zoom-in', 1.25], ['zoom-out', .8]]) document.getElementById(id).addEventListener('click', () => { if (currentView === 'orbit') { orbitView?.zoomBy(multiplier); return; } dragonFollow = false; camera.zoom = THREE.MathUtils.clamp(camera.zoom * multiplier, controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); render(); });
+// Over Earth, below the station's usual range, each press zooms four steps at once: from the station to the whole
+// Earth and Moon is seven orders of magnitude.
+const zoomSteps = () => orbital && camera.zoom < .45 ? 4 : 1;
+for (const [id, multiplier] of [['zoom-in', 1.25], ['zoom-out', .8]]) document.getElementById(id).addEventListener('click', () => { if (currentView === 'orbit') { orbitView?.zoomBy(multiplier); return; } dragonFollow = false; camera.zoom = THREE.MathUtils.clamp(camera.zoom * multiplier ** zoomSteps(), controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); render(); });
 document.getElementById('labels-toggle').addEventListener('click', () => { labelsEnabled = !labelsEnabled; setPressed('labels-toggle', labelsEnabled); render(); });
 document.getElementById('rotate-toggle').addEventListener('click', () => { controls.autoRotate = !controls.autoRotate; setPressed('rotate-toggle', controls.autoRotate); });
 document.getElementById('motion-toggle').addEventListener('click', () => { motion = !motion; setPressed('motion-toggle', motion); render(); });
 document.getElementById('configuration-toggle').addEventListener('click', () => setConfiguration(configuration === 'reference' ? 'modern' : 'reference'));
 document.getElementById('backdrop-toggle').addEventListener('click', () => {
     orbital = !orbital; app.dataset.backdrop = orbital ? 'orbit' : 'space'; setPressed('backdrop-toggle', orbital);
-    // With Earth behind it the station zooms out much further, down to 5%: the backdrop pulls back to the whole globe.
-    controls.minZoom = orbital ? .05 : .45;
+    // With Earth behind it the station zooms out at true scale until Earth and the Moon's orbit fit the view (the frame
+    // a million kilometres high); the station is a dot long before that.
+    controls.minZoom = orbital ? 1e-7 : .45;
     if (camera.zoom < controls.minZoom) { camera.zoom = controls.minZoom; camera.updateProjectionMatrix(); }
     if (orbital) loadSky().then(loaded => { loaded.update(0); render(); }, error => { console.warn('Earth backdrop unavailable:', error); notify('The Earth backdrop could not load.'); });
+    else sky?.hideLabels();
     render();
 });
 document.getElementById('capture').addEventListener('click', () => {
@@ -531,6 +549,8 @@ export function advance(delta) {
     if (dragonFollow && currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach') followDragon(delta);
     if (currentView === 'orbit' && orbitView) orbitView.update(delta);
     else if (orbital && sky) sky.update(delta);
+    // The wheel speeds up below the station's usual range, so the reach out to the Moon takes a few dozen notches.
+    controls.zoomSpeed = orbital && camera.zoom < .45 ? THREE.MathUtils.clamp(1 + 4 * Math.log10(.45 / camera.zoom), 1, 9) : 1;
     updateShadows(delta, motion);
     controls.update(delta); render();
     if (watchFrames(delta, motion)) resize();
