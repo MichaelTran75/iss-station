@@ -30,9 +30,21 @@ export const vehicle = {
 };
 const guidance = {
     kick: 1.9, kickStart: 10, kickEnd: 20, azimuth: 31.6424, bucket: [38, 70, .72], gLimit: 3.1,
-    meco: 153, separation: 156, ses: 164, pitch0: 5.96134, pitchRate: -.000271072, orbit: [202e3, 216e3],
+    ignition: -3, meco: 153, separation: 156, ses: 164, pitch0: 5.96134, pitchRate: -.000271072, orbit: [202e3, 216e3],
     entryAltitude: 70e3, entryLength: 20, tailArea: 1.6, landingCap: 6000, dragon: 720, nosecone: 766, end: 800
 };
+
+// Engine start and stop, after the jet engines on the airport page (there each engine's spool follows its target
+// through two lags in series, so it comes up along an S, and fan, wind and sound all follow that one spool). A Merlin
+// lights a moment after the command (TEA-TEB), then its turbopump brings the chamber pressure, and the thrust with it,
+// up through two lags of a quarter second: 90% in about a second (commanded at T−3 s, the nine must be up and checked
+// by T−0); throttle changes follow through the same lags. At cutoff the valves close and the chamber empties with
+// 0.15 s: the residual thrust once behind Falcon 1's stages touching after separation. The nine are commanded together;
+// each lights a few hundredths of a second from the others (the order is not published).
+export const merlinSpool = { delay: .2, rise: .25, tailOff: .15, spread: [0, .05, .02, .07, .04, .06, .01, .08, .03] };
+// The share of full thrust `seconds` after light-off (two equal lags: critically damped), and `seconds` after cutoff.
+export const spoolUp = seconds => seconds <= 0 ? 0 : 1 - (1 + seconds / merlinSpool.rise) * Math.exp(-seconds / merlinSpool.rise);
+export const tailOff = seconds => seconds <= 0 ? 1 : Math.exp(-seconds / merlinSpool.tailOff);
 
 // US Standard Atmosphere 1976: [km, density kg/m³, pressure Pa, speed of sound m/s], log-linear between rows.
 const atmosphere = [[0, 1.225, 101325, 340.3], [5, .7364, 54048, 320.5], [10, .4135, 26500, 299.5], [15, .1948, 12111, 295.1], [20, .08891, 5529, 295.1],
@@ -76,7 +88,7 @@ function simulate() {
         const gravity = scale(s.r, -mu / Math.pow(length(s.r), 3));
         let thrust = [0, 0, 0], mdot = 0;
         if (mode.engines) {
-            const force = mode.vacuum ? v.mvacVac * mode.throttle : mode.engines * (v.merlinVac * mode.throttle - v.merlinExit * atm.p);
+            const force = mode.vacuum ? v.mvacVac * mode.throttle : Math.max(0, mode.engines * (v.merlinVac * mode.throttle - v.merlinExit * atm.p));
             mdot = mode.vacuum ? mdotMvac * mode.throttle : mode.engines * mdotMerlin * mode.throttle;
             thrust = scale(mode.direction(s, vAir, up), force);
         }
@@ -99,7 +111,7 @@ function simulate() {
     const stack = [], booster = [];
     let s = { r: padStart.slice(), v: cross(spin, padStart), m: v.s1Dry + v.s1Prop + v.s2Dry + v.s2Prop + v.payload };
     let attitude = unit(padStart), seco = null, maxQ = { q: 0, at: 0 }, reserve = 0, separated = null, insertion = null;
-    stack.push({ t: 0, r: s.r, v: s.v, m: s.m, q: 0, load: 0, engines: 9, attitude });   // on the pad at liftoff
+    stack.push({ t: 0, r: s.r, v: s.v, m: s.m, q: 0, load: 0, engines: 9, lit: 9, attitude });   // on the pad at liftoff
     for (let k = 0; ; k++) {
         const t = k * step;
         if (t > p.end + 1e-9) break;
@@ -135,36 +147,45 @@ function simulate() {
             s.m -= v.s1Dry + reserve;
         }
         if (now >= p.ses && seco === null && orbit(s).a >= targetA) { seco = now; insertion = orbit(s); }
-        if (k % keep === keep - 1) stack.push({ t: now, r: s.r, v: s.v, m: s.m, q: info.q, load: info.load, engines: mode.engines ? (mode.vacuum ? -1 : 9 * throttle) : 0, attitude });
+        if (k % keep === keep - 1) stack.push({ t: now, r: s.r, v: s.v, m: s.m, q: info.q, load: info.load, engines: mode.engines ? (mode.vacuum ? -1 : 9 * throttle) : 0, lit: mode.engines && !mode.vacuum ? 9 : 0, attitude });
     }
     // The booster's own flight.
     let b = separated, entry = null, landingStart = null, landing = null, apogee = 0;
     const retro = st => scale(unit(airVelocity(st)), -1);
-    if (b) booster.push({ t: guidance.separation, r: b.r, v: b.v, m: b.m, q: 0, load: 0, engines: 0, retro: retro(b) });
+    if (b) booster.push({ t: guidance.separation, r: b.r, v: b.v, m: b.m, q: 0, load: 0, engines: 0, lit: 0, retro: retro(b) });
+    // Its engines spool as above: `pump` and `thrust` (in engines at full thrust) follow the command through the two
+    // lags once lit, thrust alone runs down at cutoff, and the `lit` engines burn until it has.
+    let pump = 0, thrust = 0, lit = 0, commandedAt = -Infinity, commanded = false;
     for (let k = 0; b && !landing; k++) {
         const t = guidance.separation + k * step;
         if (t > p.end) break;
         const h = length(b.r) - R, vAir = airVelocity(b), speed = length(vAir), descent = -dot(vAir, unit(b.r));
         apogee = Math.max(apogee, h);
-        let mode = { engines: 0, tail: t > p.separation + 30 }, burning = 0;
+        let mode = { engines: 0, tail: t > p.separation + 30 }, command = 0;
         if (entry === null && descent > 0 && h < p.entryAltitude) entry = t;
-        if (entry !== null && t < entry + p.entryLength) { mode = { engines: 3, throttle: 1, tail: true, direction: retro }; burning = 3; }
+        if (entry !== null && t < entry + p.entryLength) { mode = { engines: 3, throttle: 1, tail: true, direction: retro }; command = 3; }
         else if (entry !== null) {
             const atm = air(h), oneEngine = v.merlinVac - v.merlinExit * atm.p, g = mu / Math.pow(length(b.r), 2);
             const stopping = speed * speed / (2 * Math.max(.5, .85 * oneEngine / b.m - g));
             if (landingStart === null && h < p.landingCap && descent > 0 && h < 1.15 * stopping) landingStart = t;
             if (landingStart !== null) {
                 const need = (speed * speed / (2 * Math.max(.5, h)) + g) * b.m / oneEngine;
-                if (need >= .4) { mode = { engines: 1, throttle: Math.min(1, need), tail: true, direction: retro }; burning = Math.min(1, need); }
+                if (need >= .4) { mode = { engines: 1, throttle: Math.min(1, need), tail: true, direction: retro }; command = Math.min(1, need); }
             }
         }
+        if (command > 0 && !commanded) { commandedAt = t; lit = mode.engines; }
+        commanded = command > 0;
+        if (commanded) { if (t - commandedAt >= merlinSpool.delay) { const lag = 1 - Math.exp(-step / merlinSpool.rise); pump += (command - pump) * lag; thrust += (pump - thrust) * lag; } }
+        else { thrust *= Math.exp(-step / merlinSpool.tailOff); pump = thrust; if (thrust < .002) thrust = pump = lit = 0; }
+        const burning = lit ? thrust : 0;
+        if (lit) mode = { engines: lit, throttle: thrust / lit, tail: true, direction: retro };
         const info = {};
         b = { ...rk4(b, mode, info), attitude: b.attitude };
         const now = t + step;
-        if (k % keep === keep - 1) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, retro: retro(b) });
+        if (k % keep === keep - 1) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, lit, retro: retro(b) });
         if (length(b.r) - R <= 0) {
             landing = { at: now, speed: length(airVelocity(b)), r: b.r, m: b.m };
-            if (booster[booster.length - 1].t < now - 1e-9) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, retro: retro(b) });   // the touchdown itself
+            if (booster[booster.length - 1].t < now - 1e-9) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, lit, retro: retro(b) });   // the touchdown itself
         }
     }
     return { stack, booster, seco, maxQ, reserve, insertion, entry, landingStart, landing, apogee, separatedAttitude: separated?.attitude };
@@ -248,8 +269,10 @@ export const dockingTime = rendezvousTime + proximity.missionDuration;   // hook
 const stagePhasing = propagate({ t: sim.stack[sim.stack.length - 1].t, r: sim.stack[sim.stack.length - 1].r, v: sim.stack[sim.stack.length - 1].v }, 6000, null);
 
 export const events = [
-    { at: -3, key: 'ignition', label: 'ENGINE IGNITION' },
-    { at: 0, key: 'liftoff', label: 'LIFTOFF' },
+    { at: -262, key: 'cradles', label: 'STRONGBACK CRADLES OPEN' },
+    { at: -255, key: 'strongback', label: 'STRONGBACK RETRACTS' },
+    { at: guidance.ignition, key: 'ignition', label: 'ENGINE IGNITION' },
+    { at: 0, key: 'liftoff', label: 'LIFTOFF · HOLD-DOWN CLAMPS RELEASE' },
     { at: Math.round(sim.maxQ.at), key: 'maxq', label: 'MAX-Q · ' + (sim.maxQ.q / 1000).toFixed(0) + ' kPa' },
     { at: guidance.meco, key: 'meco', label: 'MAIN ENGINE CUTOFF' },
     { at: guidance.separation, key: 'separation', label: 'STAGE SEPARATION' },
@@ -267,7 +290,7 @@ export const events = [
     { at: Math.round(dockingTime), key: 'docked', label: 'DOCKED' }
 ].sort((a, b) => a.at - b.at);
 export const eventAt = key => events.find(event => event.key === key).at;
-export const countdown = -10, ascentDuration = dockingTime + 20;   // from ten seconds before liftoff to Dragon docked at the ISS
+export const countdown = -270, ascentDuration = dockingTime + 20;   // from T−4:30 (the strongback still holding the rocket) to Dragon docked at the ISS
 
 // Dragon's phasing burns on its four forward Dracos (1.6 kN on 12.5 t): when, how long, and the window round each
 // for turning to burn attitude (heat shield along the burn) and back.
@@ -289,8 +312,8 @@ function slowForBurns(plan, warp) {
 }
 const proximityWarps = proximity.phases.map(phase => [rendezvousTime + phase.start, phase.warp]);
 const warpPlans = {
-    rocket: slowForBurns([[countdown, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5], [790, 60], [1000, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15], ...proximityWarps], 90),
-    booster: [[countdown, 1], [20, 6], [140, 1.5], [185, 12], [eventAt('entry') - 6, 1.5], [eventAt('entry') + 26, 8], [eventAt('landingburn') - 12, 1], [eventAt('landing') + 6, 12], [eventAt('landing') + 60, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15], ...proximityWarps]
+    rocket: slowForBurns([[countdown, 3], [-236, 30], [-12, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5], [790, 60], [1000, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15], ...proximityWarps], 90),
+    booster: [[countdown, 3], [-236, 30], [-12, 1], [20, 6], [140, 1.5], [185, 12], [eventAt('entry') - 6, 1.5], [eventAt('entry') + 26, 8], [eventAt('landingburn') - 12, 1], [eventAt('landing') + 6, 12], [eventAt('landing') + 60, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15], ...proximityWarps]
 };
 function plan(name) {
     const warps = warpPlans[name], marks = [[0, countdown]];
@@ -334,14 +357,17 @@ function sampleAt(list, time) {
     const a = list[k], b = list[k + 1], dt = b.t - a.t, u = (time - a.t) / dt;
     const h00 = 2 * u ** 3 - 3 * u * u + 1, h10 = u ** 3 - 2 * u * u + u, h01 = -2 * u ** 3 + 3 * u * u, h11 = u ** 3 - u * u;
     const r = [0, 1, 2].map(i => h00 * a.r[i] + h10 * dt * a.v[i] + h01 * b.r[i] + h11 * dt * b.v[i]);
-    const vel = [0, 1, 2].map(i => a.v[i] + (b.v[i] - a.v[i]) * u);
-    return { ...(u < .5 ? a : b), t: time, r, v: vel };
+    const vel = [0, 1, 2].map(i => a.v[i] + (b.v[i] - a.v[i]) * u), near = u < .5 ? a : b;
+    // Thrust runs on smoothly between samples (a burn's spool is a few samples long), and the engines lit at either
+    // end count (the vacuum Merlin's -1 is a flag, not a thrust).
+    const engines = a.engines >= 0 && b.engines >= 0 ? a.engines + (b.engines - a.engines) * u : near.engines;
+    return { ...near, t: time, r, v: vel, engines, ...(a.lit !== undefined || b.lit !== undefined ? { lit: Math.max(a.lit || 0, b.lit || 0) } : {}) };
 }
 function describe(entry, time, direction) {
     return {
         position: toPad(entry.r, time, true), direction: unit(toPad(direction, time, false)), altitude: Math.max(0, length(entry.r) - R),
         downrange: Math.acos(Math.min(1, cosineAt(entry.r, time))) * R, speed: length(airVelocity(entry)), inertial: length(entry.v),
-        q: entry.q || 0, load: entry.load || 0, mass: entry.m, engines: entry.engines || 0
+        q: entry.q || 0, load: entry.load || 0, mass: entry.m, engines: entry.engines || 0, lit: entry.lit || 0
     };
 }
 // Angle between the pad and the point under the vehicle (cosine), for the distance downrange.
@@ -352,11 +378,17 @@ function cosineAt(r, time) {
 // The rocket (first and second stage until separation, then the second stage with Dragon) at a mission time.
 export function vehicleState(mission) {
     if (mission <= 0) {
-        // On the pad: the engines light at T−3 s and run up to full thrust against the hold-down clamps.
-        const f = Math.min(1, Math.max(0, (mission + 3) / 2.5)), engines = mission >= -3 ? 9 * (.6 + .4 * f * f * (3 - 2 * f)) : 0;
-        return { position: [0, 0, 0], direction: [0, 1, 0], altitude: 0, downrange: 0, speed: 0, inertial: omega * R * Math.cos(phi), q: 0, load: 1, mass: sim.stack[0].m, engines };
+        // On the pad: commanded at T−3 s, the nine light and spool up to full thrust against the hold-down clamps.
+        const since = mission - guidance.ignition - merlinSpool.delay;
+        const engines = merlinSpool.spread.reduce((sum, offset) => sum + spoolUp(since - offset), 0);
+        return { position: [0, 0, 0], direction: [0, 1, 0], altitude: 0, downrange: 0, speed: 0, inertial: omega * R * Math.cos(phi), q: 0, load: 1, mass: sim.stack[0].m, engines, lit: since >= 0 ? 9 : 0 };
     }
-    if (mission <= guidance.end) { const entry = sampleAt(sim.stack, mission); return describe(entry, mission, entry.attitude); }
+    if (mission <= guidance.end) {
+        const entry = sampleAt(sim.stack, mission), state = describe(entry, mission, entry.attitude), after = mission - guidance.meco;
+        // Main engine cutoff: the nine run down over a fraction of a second.
+        if (after >= 0 && after < 1.5) Object.assign(state, { engines: mecoThrust * tailOff(after), lit: 9 });
+        return state;
+    }
     // Dragon on its own, nose along its flight; from Waypoint 0, where the proximity operations put it about the ISS.
     if (mission < rendezvousTime) {
         const entry = { ...sampleAt(dragonPhasing.list, mission), m: vehicle.payload, q: 0, load: 0, engines: 0 };
@@ -367,6 +399,7 @@ export function vehicleState(mission) {
     const entry = { r: offset(local.position, frame.r), v: offset(local.velocity, frame.v), m: vehicle.payload, q: 0, load: 0, engines: 0 };
     return { ...describe(entry, mission, frame.along), dragon: true, proximity: local };
 }
+const mecoThrust = sim.stack.filter(entry => entry.t <= guidance.meco + 1e-6).pop().engines;
 // The ISS's place and its local frame (radial up, along its flight, the orbit's normal), inertial and in the pad's frame
 // as Earth stands at `turn`.
 function issInertialFrame(time) {
@@ -400,7 +433,7 @@ export function padTransform(time) {
 export function boosterState(mission) {
     // Once down it stays on the barge: freeze the clock there, so Earth's turning does not carry its inertial
     // position away.
-    const landed = sim.landing && mission >= sim.landing.at;
+    const landed = sim.landing && mission >= sim.landing.at, sinceDown = landed ? mission - sim.landing.at : 0;
     if (landed) mission = sim.booster[sim.booster.length - 1].t;
     const entry = sampleAt(sim.booster, mission), since = mission - guidance.separation;
     const flip = since <= 4 ? 0 : since >= 40 ? 1 : (since - 4) / 36, eased = flip * flip * (3 - 2 * flip);
@@ -409,7 +442,8 @@ export function boosterState(mission) {
     let axis = cross(from, to); if (length(axis) < 1e-6) axis = cross(from, [0, 0, 1]); axis = unit(axis);
     const c = Math.cos(angle), s = Math.sin(angle), turned = add(add(scale(from, c), cross(axis, from), s), axis, dot(axis, from) * (1 - c));
     const state = describe(entry, mission, eased >= 1 ? to : turned);
-    if (landed) Object.assign(state, { speed: 0, inertial: omega * (R + state.altitude) * Math.cos(phi), engines: 0, load: 1, q: 0, landed: true });
+    // On the deck the engine is cut and runs down.
+    if (landed) Object.assign(state, { speed: 0, inertial: omega * (R + state.altitude) * Math.cos(phi), engines: state.engines * tailOff(sinceDown), lit: sinceDown < 1.2 ? state.lit : 0, load: 1, q: 0, landed: true });
     return state;
 }
 // Where the booster comes down: the droneship, in the pad's frame (position and its local up).

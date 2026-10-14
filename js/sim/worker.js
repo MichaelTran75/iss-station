@@ -1,7 +1,7 @@
 // Animation worker: runs motion models off the main thread. The page sends {type: 'init', id, kind, payload} once per
 // animated figure, then {type: 'step', id, time, buffer} each frame; the worker fills the pose into the buffer and hands
 // it back (transferred, never copied). To add a figure, write a module like eva.js and register its factory here.
-import { createEvaSimulation } from './eva.js?v=2f04194c17';
+import { createEvaSimulation } from './eva.js?v=559ea8ce8a';
 
 const factories = { eva: payload => createEvaSimulation(payload.asset, payload.fairleadTangent) };
 const simulations = new Map();

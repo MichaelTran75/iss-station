@@ -183,7 +183,7 @@ async function createZ1Maintenance(evaAsset, simulation) {
     }
     if (query.get('worker') !== '0' && typeof Worker === 'function') {
         try {
-            const worker = new Worker(new URL('../sim/worker.js?v=18dcb99032', import.meta.url), { type: 'module' });
+            const worker = new Worker(new URL('../sim/worker.js?v=dca14f3e35', import.meta.url), { type: 'module' });
             driver.mode = 'starting'; driver.worker = worker; evaWorkerState = 'starting worker';
             worker.onmessage = ({ data }) => {
                 if (data.type === 'ready') {
@@ -199,7 +199,7 @@ async function createZ1Maintenance(evaAsset, simulation) {
         } catch (error) { useMainThread(error.message); }
     } else useMainThread();
     for (const skin of skins) { skin.computeBoundingBox(); skin.boundingBox.expandByScalar(30); skin.computeBoundingSphere(); skin.boundingSphere.radius += 30; }
-    frame.userData = {role: 'Z1 hand-over-hand climb, waist tether clipped at the worksite, pistol grip tool on four panel bolts', asset: evaAsset.source, author: evaAsset.author, animationDuration: evaAsset.duration, safetyTether: 'Quest EVA hatch handrail ring', timings: S.timings};
+    frame.userData = {role: 'Z1 hand-over-hand climb, waist tether clipped at the worksite, pistol grip tool on four panel bolts, then the tool stowed, the tether unclipped and the climb back down', asset: evaAsset.source, author: evaAsset.author, animationDuration: evaAsset.duration, safetyTether: 'Quest EVA hatch handrail ring', timings: S.timings};
     return {frame, actor, rig, skeleton, skins, tool, bit, drillTip, handrail, panel, bones, bolts, workPoint, rightHand, leftHand, timings: S.timings,
         routedLine, tetherSpan: tubes.tetherSpan, waistStrap: tubes.waistStrap, waistHook, toolTether: tubes.toolTether, reel, anchor, routeCurve, fairlead,
         update: delta => { time += Math.max(0, delta); stepNow(); },

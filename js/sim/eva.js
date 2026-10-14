@@ -8,7 +8,7 @@ const decode = (encoded, ArrayType) => new ArrayType(Uint8Array.from(atob(encode
 
 // Tube rings: segments + 1 rings of 7 vertices (6 radial segments, the seam vertex repeated), as THREE.TubeGeometry.
 export const evaTubes = { tetherSpan: { count: 48, radius: .006 }, waistStrap: { count: 32, radius: .0075 }, toolTether: { count: 24, radius: .0028 } };
-export const evaPhases = ['climb', 'tether', 'tool', 'drive'];
+export const evaPhases = ['climb', 'tether', 'tool', 'drive', 'stow', 'untether', 'descend'];
 
 export function evaLayout(boneCount) {
     const layout = { header: 0, actor: 5, tool: 12, hook: 19, bones: 26 };
@@ -32,7 +32,7 @@ export const evaScene = {
     // Bone-local suit hardware (model units): D-rings on the waist bone, reel on the left extender, tool mount on the chest.
     leftRing: [26.5, -5.4, 8.0], rightRing: [-26.5, -5.4, 8.0], reel: [37.5, -15.3, 5.6], reelExit: [.004, -.066, .028],
     toolMount: [15.0, -18.2, 29.1], hookStow: [0, -.075, .02],
-    timings: { climb: 9.8, tether: 13.6, tool: 16.4, bolt: 6.5, workCycle: 28 }
+    timings: { climb: 9.8, tether: 13.6, tool: 16.4, bolt: 6.5, workCycle: 28, turnaround: 45.7, period: 62.1 }
 };
 
 export function createEvaSimulation(asset, fairleadTangentArray) {
@@ -181,8 +181,17 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
     }
     // Timeline after NASA EVA practice: translate hand over hand (one hand always on a rail), stop and clip the
     // waist tether to the worksite handhold, take the pistol grip tool from the mini-workstation, then drive the
-    // panel bolts in a cross pattern. Motions stay slow: no quick grabs, kicks or swings against the tethers.
+    // panel bolts in a cross pattern and read back the torque. Motions stay slow: no quick grabs, kicks or swings
+    // against the tethers. Then the way back, each step the reverse of the way in: the tool returned to the
+    // mini-workstation, the waist tether unclipped and stowed on its D-ring, and hand over hand down the rail to
+    // where the crew member started, so the task loops without a jump (62 s).
     const timings = S.timings;
+    // Task time for a moment of the loop: forward to the turnaround (one cycle of four bolts and the reading, then
+    // the tool back at the first bolt's standoff, where it was when it arrived), then back down the same timeline.
+    function taskTime(time) {
+        const t = ((time % timings.period) + timings.period) % timings.period;
+        return t <= timings.turnaround ? t : Math.max(0, timings.tool - (t - timings.turnaround));
+    }
     // The climb keeps the handhold line near the body's midline; at the worksite the body settles left of it,
     // so the right hand holds on its own side and the left hand works the panel without crossing the chest.
     const hipKeys = {
@@ -276,8 +285,9 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
     }
     const hips = new THREE.Vector3(), hipsBefore = new THREE.Vector3(), hipsAfter = new THREE.Vector3();
     const toolPosition = new THREE.Vector3(), toolRotation = new THREE.Quaternion();
-    const acceleration = (t, out) => {
-        hipsAt(t - .12, hipsBefore); hipsAt(t + .12, hipsAfter); hipsAt(t, out);
+    // Of the hips over the loop's own time (through the turnaround and the way back).
+    const acceleration = (time, out) => {
+        hipsAt(taskTime(time - .12), hipsBefore); hipsAt(taskTime(time + .12), hipsAfter); hipsAt(taskTime(time), out);
         return out.multiplyScalar(-2).add(hipsBefore).add(hipsAfter).divideScalar(.0144);
     };
     // Gaze leads the hands: the next handhold, the clip point, then the bolt; each change eases over 0.6 s.
@@ -292,9 +302,11 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
     const writeTransform = (object, out, offset) => {
         object.position.toArray(out, offset); object.quaternion.toArray(out, offset + 3);
     };
-    function step(t, out) {
-        // Base posture: the supplied loop slowed right down for the limbs, the torso held calm.
-        mixer.setTime(t * .22);
+    function step(time, out) {
+        const t = taskTime(time), back = ((time % timings.period) + timings.period) % timings.period > timings.turnaround;
+        // Base posture: the supplied loop slowed right down for the limbs, the torso held calm (on the clock, so it
+        // never runs backward).
+        mixer.setTime(time * .22);
         calmJoints.forEach((index, i) => bones[index].quaternion.copy(calmPose[i].clone().slerp(bones[index].quaternion, .24)));
         bones[0].position.fromArray(asset.rootPivot);
         // Body: pulled up between grips, then settled at the worksite. Lean, roll and drift stay small,
@@ -303,28 +315,28 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
         const climbing = 1 - ramp(t, 9.4, 11.4), working = ramp(t, 14.9, timings.tool + 1.2);
         const toolState = toolPose(t, toolPosition, toolRotation);
         const lagged = new THREE.Vector3(), lagRotation = new THREE.Quaternion();
-        toolPose(Math.max(0, t - .45), lagged, lagRotation);
+        toolPose(taskTime(time - .45), lagged, lagRotation);
         const reach = lagged.sub(new THREE.Vector3(-1.16, 5.32, 10.31)).multiplyScalar(working);
-        const sway = new THREE.Vector3(Math.sin(t * .29) * .012, Math.sin(t * .41 + 1) * .010, Math.sin(t * .23 + 2) * .008);
+        const sway = new THREE.Vector3(Math.sin(time * .29) * .012, Math.sin(time * .41 + 1) * .010, Math.sin(time * .23 + 2) * .008);
         actor.position.copy(hips).add(sway).add(new THREE.Vector3(reach.x * .2, reach.y * .25, 0));
-        const pull = new THREE.Vector3(); acceleration(t, pull);
+        const pull = new THREE.Vector3(); acceleration(time, pull);
         // Roll eases toward the reaching hand; the drive reaction yaws the body slightly while the tool runs.
         const bump = (start, end) => { const s = THREE.MathUtils.clamp((t - start) / (end - start), 0, 1); return Math.sin(Math.PI * s) ** 2; };
         const side = bump(1.0, 2.5) - bump(3.6, 5.1) + bump(6.1, 7.6);
         const reaction = .010 * toolState.torque;
-        actor.rotation.set(-.03 - .03 * climbing - THREE.MathUtils.clamp(pull.y * .15, -.03, .03) + Math.sin(t * .32) * .008,
-            .07 + .025 * Math.sin(t * .27) + reaction - .03 * reach.x,
-            .06 + .025 * side * climbing + Math.sin(t * .35) * .008);
+        actor.rotation.set(-.03 - .03 * climbing - THREE.MathUtils.clamp(pull.y * .15, -.03, .03) + Math.sin(time * .32) * .008,
+            .07 + .025 * Math.sin(time * .27) + reaction - .03 * reach.x,
+            .06 + .025 * side * climbing + Math.sin(time * .35) * .008);
         actor.updateWorldMatrix(true, true); actor.getWorldQuaternion(actorRotation);
         // Waist bearing: a slight bend toward the face while pulling and while reaching for the bolts.
         bend(bones[1], axisX, .03 * climbing + .05 * working * ramp(reach.y, -.2, .2));
         // Pressurised legs stay nearly straight; they hang soft and lag the pulls, flexing a little more as the body is drawn up.
-        const lagPull = new THREE.Vector3(); acceleration(Math.max(0, t - .35), lagPull);
+        const lagPull = new THREE.Vector3(); acceleration(time - .35, lagPull);
         const swing = THREE.MathUtils.clamp(lagPull.y * .35, -.08, .08);
         for (const [thigh, shin, foot, phaseOffset, flex] of [[77, 78, 79, 0, .07], [83, 84, 85, 1.7, .12]]) {
-            bend(bones[thigh], axisX, -(flex + swing * .6 + .035 * Math.sin(t * .37 + phaseOffset)));
-            bend(bones[shin], axisX, .14 + flex * .5 + swing + .035 * Math.sin(t * .31 + phaseOffset * 1.3));
-            bend(bones[foot], axisX, .12 + .03 * Math.sin(t * .43 + phaseOffset));
+            bend(bones[thigh], axisX, -(flex + swing * .6 + .035 * Math.sin(time * .37 + phaseOffset)));
+            bend(bones[shin], axisX, .14 + flex * .5 + swing + .035 * Math.sin(time * .31 + phaseOffset * 1.3));
+            bend(bones[foot], axisX, .12 + .03 * Math.sin(time * .43 + phaseOffset));
         }
         // The helmet is fixed to the hard upper torso, so gaze shows mostly through the body; the head turns a few
         // degrees toward the next handhold or the bolt.
@@ -369,8 +381,8 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
         const exit = frame.worldToLocal(reelExit.getWorldPosition(new THREE.Vector3()));
         const exitDirection = new THREE.Vector3(0, -1, .25).applyQuaternion(frameRotation().invert().multiply(reel.getWorldQuaternion(new THREE.Quaternion()))).normalize();
         const span = exit.distanceTo(fairlead);
-        const velocity = new THREE.Vector3(); hipsAt(t + .2, velocity); velocity.sub(hipsAt(Math.max(0, t - .2), new THREE.Vector3())).divideScalar(.4);
-        const lag = velocity.multiplyScalar(-.22).clampLength(0, .06).add(new THREE.Vector3(.012 * Math.sin(t * .5), 0, -.015));
+        const velocity = new THREE.Vector3(); hipsAt(taskTime(time + .2), velocity); velocity.sub(hipsAt(taskTime(time - .2), new THREE.Vector3())).divideScalar(.4);
+        const lag = velocity.multiplyScalar(-.22).clampLength(0, .06).add(new THREE.Vector3(.012 * Math.sin(time * .5), 0, -.015));
         const line = tubes.tetherSpan.curve;
         line.v0.copy(fairlead); line.v3.copy(exit);
         line.v1.copy(fairlead).addScaledVector(fairleadTangent, Math.min(.12, span * .1)).add(lag.clone().multiplyScalar(.6));
@@ -387,8 +399,9 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
             cord.v2.lerpVectors(mount, butt, .66).add(new THREE.Vector3(0, -.03, -.01));
             writeTube(tubes.toolTether, out);
         }
-        out[0] = t;
-        out[1] = evaPhases.indexOf(t < timings.climb ? 'climb' : t < timings.tether ? 'tether' : t < timings.tool ? 'tool' : 'drive');
+        out[0] = time;
+        out[1] = evaPhases.indexOf(back ? (t > timings.tether ? 'stow' : t > timings.climb ? 'untether' : 'descend')
+            : t < timings.climb ? 'climb' : t < timings.tether ? 'tether' : t < timings.tool ? 'tool' : 'drive');
         out[2] = toolState.running ? 1 : 0; out[3] = toolState.spin * 18; out[4] = toolTetherVisible ? 1 : 0;
         writeTransform(actor, out, layout.actor); writeTransform(tool, out, layout.tool); writeTransform(waistHook, out, layout.hook);
         for (let i = 0; i < bones.length; i++) {

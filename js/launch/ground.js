@@ -124,11 +124,19 @@ export function createGround() {
     // Structures. Steel lattice as merged boxes and rods.
     const pieces = new Map();
     const add = (colour, geometry) => { if (!pieces.has(colour)) pieces.set(colour, []); pieces.get(colour).push(geometry); };
-    const box = (colour, [x, y, z], [w, h, d], rotation = [0, 0, 0]) => add(colour, new THREE.BoxGeometry(w, h, d).rotateX(rotation[0]).rotateY(rotation[1]).rotateZ(rotation[2]).translate(x, y, z));
-    const rod = (colour, a, b, radius) => {
+    const box = (colour, [x, y, z], [w, h, d], rotation = [0, 0, 0], into = add) => into(colour, new THREE.BoxGeometry(w, h, d).rotateX(rotation[0]).rotateY(rotation[1]).rotateZ(rotation[2]).translate(x, y, z));
+    const rod = (colour, a, b, radius, into = add) => {
         const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b), length = start.distanceTo(end);
-        add(colour, new THREE.CylinderGeometry(radius, radius, length, 6).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize())).translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2));
+        into(colour, new THREE.CylinderGeometry(radius, radius, length, 6).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize())).translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2));
     };
+    // A moving part: its pieces merged per colour under its own pivot (see updatePad).
+    const surfaceFor = new Map(), surface = colour => { if (!surfaceFor.has(colour)) surfaceFor.set(colour, new THREE.MeshStandardMaterial({ color: colour, roughness: .75, metalness: .2 })); return surfaceFor.get(colour); };
+    function movingPart(pivot, build) {
+        const own = new Map(), into = (colour, geometry) => { if (!own.has(colour)) own.set(colour, []); own.get(colour).push(geometry); };
+        build(into);
+        for (const [colour, geometries] of own) pivot.add(new THREE.Mesh(mergeGeometries(geometries, false), surface(colour)));
+        return pivot;
+    }
     const steel = 0x8e9396, white = 0xe8e9e6, dark = 0x3b3f44, tank = 0xdfe2e3, grating = 0x6f7478;
     // Positions measured on the USGS image of the pad (x east, z south, metres from the launch mount). The tower's
     // and the water tower's lengths are cross-checked against their shadows in the same image. Everything on the
@@ -145,8 +153,21 @@ export function createGround() {
         box(dark, [s * 4.3, frameTop - .55, 0], [1.4, 1.1, 10.6]);
         box(dark, [s * 7.6, frameTop - .55, 0], [1, 1.1, 10.6]);
     }
-    for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; box(dark, [Math.cos(a) * 2.35, base + 1.1, Math.sin(a) * 2.35], [.9, 3.4, .9], [0, -a, 0]); }
-    for (const s of [-1, 1]) { box(steel, [s * 3.1, base + .9, 3], [.8, 3.4, .8]); box(dark, [s * 2.2, base + 2.3, 2.4], [1.6, .5, .5]); }
+    // Each clamp is a post with a jaw over the octaweb's edge, hinged at its foot: it swings back at release.
+    const clamps = [];
+    for (let k = 0; k < 4; k++) {
+        const a = k * Math.PI / 2, pivot = new THREE.Group();
+        pivot.position.set(Math.cos(a) * 2.55, frameTop, Math.sin(a) * 2.55); pivot.rotation.y = -a;   // its +x points out from the rocket
+        group.add(movingPart(pivot, into => { box(dark, [0, 1.75, 0], [.9, 3.5, .9], undefined, into); box(dark, [-.5, 3.25, 0], [1, .45, .75], undefined, into); }));
+        clamps.push(pivot);
+    }
+    // The masts stand; their umbilical plates on the octaweb pull back and drop away at liftoff.
+    const tsmPlates = [];
+    for (const s of [-1, 1]) {
+        box(steel, [s * 3.1, base + .9, 3], [.8, 3.4, .8]);
+        const plate = new THREE.Group(); plate.position.set(s * 2.2, base + 2.3, 2.4); plate.userData.home = plate.position.clone();
+        group.add(movingPart(plate, into => box(dark, [0, 0, 0], [1.6, .5, .5], undefined, into))); tsmPlates.push(plate);
+    }
 
     // Fixed service structure, by NASA's figures: 40 ft square, levels every 20 ft from 27 ft over the deck, the tower's
     // top at 247 ft, the hammerhead crane to 265 ft and an 80 ft fibreglass lightning mast to 347 ft. It stands where
@@ -193,8 +214,18 @@ export function createGround() {
     box(steel, [armX, pivot[1] - .5, pivot[2] - 10.8], [2.4, 1, 21.6]);
     for (let z = 0; z < 21; z += 3) rod(steel, [armX, pivot[1] - 1, pivot[2] - z], [armX, pivot[1], pivot[2] - z - 3], .09);
     rod(steel, [pivot[0], pivot[1] + 5, pivot[2]], [armX, pivot[1] + 3, pivot[2] - 12], .12);   // tie rod from the hinge post
+    // Its windows: a row down both sides of the enclosed walkway.
+    for (let z = 1.5; z < 20.5; z += 2.1) for (const s of [-1, 1]) box(0x2a3036, [armX + s * 1.31, pivot[1] + 1.75, pivot[2] - z - .7], [.04, .85, 1.4]);
     box(white, [armX, pivot[1] + 1.8, pivot[2] - 23.8], [4.4, 4, 4.4]);   // the white room
     box(dark, [armX + 2.21, pivot[1] + 1.4, pivot[2] - 23.8], [.04, 2.2, 1.2]);
+    // Safety railings along both edges of the flame trench where it cuts through the hardstand: yellow posts every 2 m
+    // with a top rail and a knee rail, from the mount north to where the drop runs out.
+    for (const s of [-1, 1]) for (let z = -7; z > -100; z -= 2) {
+        const x = s * 9.5, h0 = terrainHeight(x, z), h1 = terrainHeight(x, z - 2);
+        if (h0 < 1.5) break;
+        rod(0xd9b23a, [x, h0, z], [x, h0 + 1.1, z], .045);
+        for (const rail of [.55, 1.1]) rod(0xd9b23a, [x, h0 + rail, z], [x, h1 + rail, z - 2], .035);
+    }
     // Emergency egress: the refurbished shuttle-era slide-wire baskets, raised to the crew access level in 2018, their
     // wires running west down to the landing area beyond the pad's perimeter.
     const egress = [];
@@ -206,28 +237,46 @@ export function createGround() {
     group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(egress), new THREE.LineBasicMaterial({ color: 0x3a3e42 })));
 
     // Transporter-erector: the strongback on the rocket's south side, the side it came up the ramp from the hangar. Two
-    // lattice legs joined by cross frames; four clamp arms whose half-rings held the stack (open now); the propellant and
-    // power lines up to the second stage's and Dragon's umbilicals; the hinge at the mount with the two hydraulic
-    // cylinders that raised it; and the transporter frame on its bogies down the ramp. Leaning back 2° with its clamps
-    // open, as at liftoff.
+    // lattice legs joined by cross frames; at four heights a cradle of two arms, hinged on its face, that wraps the
+    // rocket's south half with padded ends on the skin; the propellant and power lines up to the second stage's and
+    // Dragon's umbilicals; the hinge at the mount with the two hydraulic cylinders that raised it; and the transporter
+    // frame on its bogies down the ramp. In the terminal count the cradles open, then the strongback leans back 2°
+    // (by T−4 min), clear of the rocket for liftoff (see updatePad).
     const lean = .035, tall = 66, teFront = 2.7;
-    const te = (x, h, z) => [x, deck + 1 + h * Math.cos(lean), z + h * Math.sin(lean)];
-    for (const s of [-1, 1]) {
-        for (const dx of [-.7, .7]) for (const dz of [0, 1.4]) rod(dark, te(s * 2.8 + dx, 0, teFront + dz), te(s * 2.8 + dx, tall, teFront + dz), .17);
-        for (let h = 0; h < tall; h += 4) {
-            rod(dark, te(s * 2.8 - .7, h, teFront), te(s * 2.8 + .7, h + 4, teFront), .07); rod(dark, te(s * 2.8 + .7, h, teFront + 1.4), te(s * 2.8 - .7, h + 4, teFront + 1.4), .07);
-            rod(dark, te(s * 2.8 + s * .7, h, teFront), te(s * 2.8 + s * .7, h + 4, teFront + 1.4), .07);
+    const strongback = new THREE.Group(); strongback.position.set(0, deck + 1, teFront + .7); group.add(strongback);
+    const te = (x, h, z) => [x, h, z - teFront - .7];   // in the strongback's frame: its foot's hinge line, upright
+    movingPart(strongback, into => {
+        for (const s of [-1, 1]) {
+            for (const dx of [-.7, .7]) for (const dz of [0, 1.4]) rod(dark, te(s * 2.8 + dx, 0, teFront + dz), te(s * 2.8 + dx, tall, teFront + dz), .17, into);
+            for (let h = 0; h < tall; h += 4) {
+                rod(dark, te(s * 2.8 - .7, h, teFront), te(s * 2.8 + .7, h + 4, teFront), .07, into); rod(dark, te(s * 2.8 + .7, h, teFront + 1.4), te(s * 2.8 - .7, h + 4, teFront + 1.4), .07, into);
+                rod(dark, te(s * 2.8 + s * .7, h, teFront), te(s * 2.8 + s * .7, h + 4, teFront + 1.4), .07, into);
+            }
         }
+        for (let h = 2; h < tall; h += 8) { rod(dark, te(-2.1, h, teFront), te(2.1, h, teFront), .12, into); rod(dark, te(-2.1, h, teFront), te(2.1, h + 8, teFront), .08, into); }
+        for (const [x, h] of [[-1.2, 46], [-.6, 46], [.6, 58], [1.2, 58]]) rod(steel, te(x, 0, teFront - .25), te(x, h, teFront - .25), .11, into);
+        box(dark, te(0, 46, teFront - .6), [2.4, 1.2, .6], undefined, into); box(dark, te(0, 58, teFront - .6), [1.8, 1, .6], undefined, into);
+    });
+    // Cradle arms: in each arm's frame (its hinge on the strongback's face) an arc round the rocket's axis from the
+    // rocket's south point round to its side, a pad at its end, and the link back to the hinge.
+    const cradles = [], radius = 1.83 + .17;
+    for (const h of [9, 25, 41, 55]) for (const s of [-1, 1]) {
+        const pivot = new THREE.Group(); pivot.position.set(...te(s * 1.4, h, teFront)); strongback.add(pivot);
+        const axis = [-s * 1.4, 0, -teFront], from = s > 0 ? 8 : 90, end = (s > 0 ? 8 : 172) * Math.PI / 180;
+        movingPart(pivot, into => {
+            // A box-section arm: two chords round the skin, 0.5 m apart, with posts between; the pad bears on the skin.
+            for (const y of [-.25, .25]) into(dark, new THREE.TorusGeometry(radius + .1, .13, 6, 14, 82 * Math.PI / 180).rotateX(Math.PI / 2).rotateY(-from * Math.PI / 180).translate(axis[0], y, axis[2]));
+            for (let a = 0; a <= 82; a += 20.5) { const angle = (from + a) * Math.PI / 180; box(dark, [axis[0] + Math.cos(angle) * (radius + .1), 0, axis[2] + Math.sin(angle) * (radius + .1)], [.18, .5, .18], undefined, into); }
+            box(0x2a2d31, [axis[0] + Math.cos(end) * (radius - .02), 0, axis[2] + Math.sin(end) * (radius - .02)], [.3, .6, .3], undefined, into);
+            for (const y of [-.25, .25]) rod(dark, [axis[0], y, axis[2] + radius + .1], [0, y, 0], .16, into);
+        });
+        cradles.push({ pivot, side: s });
     }
-    for (let h = 2; h < tall; h += 8) { rod(dark, te(-2.1, h, teFront), te(2.1, h, teFront), .12); rod(dark, te(-2.1, h, teFront), te(2.1, h + 8, teFront), .08); }
-    for (const h of [9, 25, 41, 55]) {
-        const centre = te(0, h, 0), ring = new THREE.TorusGeometry(2.55, .17, 6, 18, Math.PI).rotateX(Math.PI / 2).rotateY(Math.PI);
-        add(dark, ring.translate(centre[0], centre[1], centre[2] + .25));
-        for (const s of [-1, 1]) rod(dark, te(s * 2.55, h, .25), te(s * 2.1, h, teFront), .18);
-    }
-    for (const [x, h] of [[-1.2, 46], [-.6, 46], [.6, 58], [1.2, 58]]) rod(steel, te(x, 0, teFront - .25), te(x, h, teFront - .25), .11);
-    box(dark, te(0, 46, teFront - .6), [2.4, 1.2, .6]); box(dark, te(0, 58, teFront - .6), [1.8, 1, .6]);
-    for (const s of [-1, 1]) rod(0xb9bdbf, [s * 2.8, deck + 1.2, 15], te(s * 2.8, 14, teFront + .7), .42);
+    // Hydraulic cylinders from the transporter frame to the strongback, stretched between their ends each frame.
+    const cylinders = [-1, 1].map(s => {
+        const mesh = new THREE.Mesh(new THREE.CylinderGeometry(.42, .42, 1, 10).translate(0, .5, 0), surface(0xb9bdbf));
+        group.add(mesh); return { mesh, foot: new THREE.Vector3(s * 2.8, deck + 1.2, 15), top: new THREE.Vector3(...te(s * 2.8, 14, teFront + .7)) };
+    });
     // The transporter frame down the ramp, on bogies over the rails.
     for (let z = 6; z <= 44; z += 2) {
         const h = Math.max(terrainHeight(3.5, z), terrainHeight(3.5, z + 2));
@@ -288,5 +337,25 @@ export function createGround() {
     // Daylight on the imagery (its own lighting is baked in): dim it when the Sun is low.
     function setDaylight(light) { for (const mesh of group.children) if (mesh.material?.isMeshBasicMaterial) mesh.material.color.setScalar(light); }
 
-    return { group, sky, updateSky, setDaylight, status };
+    // The pad through the count (mission seconds): the strongback's cradles open (T−4:22 to T−4:16) and it leans back
+    // (T−4:15 to T−4:00); at T−0, once the nine Merlins pass their checks, the hold-down clamps swing back and the tail
+    // service masts' umbilical plates pull away and drop.
+    const up = new THREE.Vector3(0, 1, 0), reach = new THREE.Vector3(), topNow = new THREE.Vector3();
+    function updatePad(mission) {
+        const open = THREE.MathUtils.smoothstep(mission, -262, -256), back = THREE.MathUtils.smoothstep(mission, -255, -240);
+        strongback.rotation.x = lean * back;
+        for (const { pivot, side } of cradles) pivot.rotation.y = -side * 1.31 * open;
+        const release = THREE.MathUtils.smoothstep(mission, -.05, .35);
+        for (const clamp of clamps) clamp.rotation.z = -.5 * release;
+        const drop = THREE.MathUtils.smoothstep(mission, 0, .3);
+        for (const plate of tsmPlates) { plate.position.copy(plate.userData.home).add(reach.set(0, -1.1 * drop * drop, .9 * drop)); plate.rotation.x = .7 * drop; }
+        strongback.updateMatrixWorld();
+        for (const { mesh, foot, top } of cylinders) {
+            strongback.localToWorld(topNow.copy(top)).sub(group.position);
+            reach.subVectors(topNow, foot);
+            mesh.position.copy(foot); mesh.quaternion.setFromUnitVectors(up, reach.clone().normalize()); mesh.scale.set(1, reach.length(), 1);
+        }
+    }
+    updatePad(-270);
+    return { group, sky, updateSky, setDaylight, status, updatePad };
 }

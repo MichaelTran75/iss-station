@@ -154,16 +154,54 @@ export function createComplex() {
 
     // SpaceX's hangar at the foot of 39A's ramp (the Horizontal Integration Facility, where the rocket is joined lying
     // down and rolled out on the transporter-erector), its door to the north, and the buildings round it.
+    // - The high bay on OpenStreetMap's footprint, 94.6 by 47.9 m (about 300 ft long, as published), walls 20 m high
+    //   under a low gable roof (its ridge 3 m higher) along the length; ribbed metal cladding, the roof in standing
+    //   seams. In local coordinates x runs along it (+x south), z across (+z west); the group stands at its middle.
+    // - The north end's door, which the transporter-erector rolls out through with the rocket lying on it: 36 by 17 m
+    //   in four sliding leaves, under a header beam, its track along the foot.
+    // - A lean-to for shops and offices down the east side, and air handlers along the ridge.
     {
-        const doorFace = canvasTexture(96, 40, (g, w, h) => {
-            siding(g, w, h, '#e6e7e3', 'rgba(120,124,126,.25)', 3);
-            g.fillStyle = '#c3c7c8'; g.fillRect(12, 6, 72, 34); g.fillStyle = 'rgba(80,86,90,.4)'; for (let y = 10; y < h; y += 4) g.fillRect(12, y, 72, 1);
-            g.strokeStyle = '#8b9296'; g.strokeRect(12, 6, 72, 34);
+        const hif = new THREE.Group(), length = 94.6, width = 47.9, wall = 20, ridge = 3;
+        hif.position.set(-5.7, groundDrop(-5.7, 459.4), 459.4); hif.rotation.y = -90 * rad; group.add(hif);
+        const ribs = (w, h) => canvasTexture(w, h, (g, cw, ch) => {
+            g.fillStyle = '#e4e5e1'; g.fillRect(0, 0, cw, ch);
+            for (let x = 0; x < cw; x += 4) { g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(x, 0, 1, ch); g.fillStyle = 'rgba(95,102,108,.32)'; g.fillRect(x + 2, 0, 1, ch); }
+            g.fillStyle = 'rgba(120,126,130,.3)'; g.fillRect(0, ch - 3, cw, 3);   // the base flashing
         });
-        const side = lit({ map: canvasTexture(190, 40, (g, w, h) => siding(g, w, h, '#e6e7e3', 'rgba(120,124,126,.25)', 3)) }), top = lit({ color: 0xd4d6d3 });
-        // Length north-south (local x along +z): faces +x south, -x north (the door), +z west, -z east.
-        const hif = new THREE.Mesh(new THREE.BoxGeometry(94.6, 20, 47.9), [side, lit({ map: doorFace }), top, top, side, side]);
-        placeBox(hif, [-5.7, 459.4], 90, 20); group.add(hif);
+        const longWall = lit({ map: ribs(190, 40) }), endWall = lit({ map: ribs(96, 40) });
+        for (const s of [-1, 1]) {
+            const side = new THREE.Mesh(new THREE.PlaneGeometry(length, wall), longWall);
+            side.position.set(0, wall / 2, s * width / 2); side.rotation.y = s > 0 ? 0 : Math.PI; hif.add(side);
+            // The ends, up into the gable.
+            const shape = new THREE.Shape([new THREE.Vector2(-width / 2, 0), new THREE.Vector2(width / 2, 0), new THREE.Vector2(width / 2, wall), new THREE.Vector2(0, wall + ridge), new THREE.Vector2(-width / 2, wall)]);
+            const end = new THREE.ShapeGeometry(shape), uv = end.attributes.uv;
+            for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) + width / 2) / width, uv.getY(i) / wall);
+            const face = new THREE.Mesh(end, endWall); face.rotation.y = s * Math.PI / 2; face.position.x = s * length / 2; hif.add(face);
+        }
+        // The roof, two slopes with their seams, overhanging the walls a little.
+        const seams = canvasTexture(190, 64, (g, w, h) => { g.fillStyle = '#c9ccca'; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(80,86,90,.35)'; for (let y = 0; y < h; y += 3) g.fillRect(0, y, w, 1); });
+        const slope = Math.hypot(width / 2 + .6, ridge), pitch = Math.atan2(ridge, width / 2);
+        for (const s of [-1, 1]) {
+            const roof = new THREE.Mesh(new THREE.PlaneGeometry(length + 1.2, slope), lit({ map: seams, side: THREE.DoubleSide }));
+            roof.rotation.order = 'YXZ'; roof.rotation.x = -Math.PI / 2 + s * pitch;
+            roof.position.set(0, wall + ridge / 2 - .1, s * (width / 4 + .15)); hif.add(roof);
+        }
+        // The door: four leaves set 0.4 m into the north wall, panels banded every 1.5 m, the header and the track.
+        const leaves = canvasTexture(72, 34, (g, w, h) => {
+            g.fillStyle = '#c4c8c9'; g.fillRect(0, 0, w, h);
+            g.fillStyle = 'rgba(70,78,84,.4)'; for (let y = 3; y < h; y += 3) g.fillRect(0, y, w, 1);
+            g.fillStyle = 'rgba(50,56,60,.7)'; for (let x = 18; x < w; x += 18) g.fillRect(x - 1, 0, 2, h);
+        });
+        const door = new THREE.Mesh(new THREE.PlaneGeometry(36, 17), lit({ map: leaves }));
+        door.rotation.y = -Math.PI / 2; door.position.set(-length / 2 - .02, 8.5, 0); hif.add(door);
+        const header = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.6, 38.4), lit({ color: 0x6b7176 })); header.position.set(-length / 2 - .5, 17.8, 0); hif.add(header);
+        for (const z of [-18.6, 18.6]) { const jamb = new THREE.Mesh(new THREE.BoxGeometry(1.2, 17, .9), lit({ color: 0x6b7176 })); jamb.position.set(-length / 2 - .5, 8.5, z); hif.add(jamb); }
+        const track = new THREE.Mesh(new THREE.BoxGeometry(1.4, .25, 72), lit({ color: 0x55595d })); track.position.set(-length / 2 - .6, .12, 0); hif.add(track);
+        // The lean-to on the east side.
+        const shed = new THREE.Mesh(new THREE.BoxGeometry(length - 8, 9, 12), [longWall, longWall, lit({ color: 0xbfc2c1 }), lit({ color: 0xbfc2c1 }), longWall, longWall]);
+        shed.position.set(4, 4.5, -width / 2 - 6); hif.add(shed);
+        // Air handlers along the ridge.
+        for (let k = 0; k < 6; k++) { const unit = new THREE.Mesh(new THREE.BoxGeometry(4, 1.8, 2.6), lit({ color: 0xb7bbbd })); unit.position.set(-35 + k * 14, wall + ridge + .6, 0); hif.add(unit); }
         // Rails from the hangar door up the ramp to the pad.
         for (const s of [-1, 1]) for (let z = 40; z < 412; z += 6) {
             const x = s * 4.5, y0 = Math.max(terrainHeight(x, z), 0), y1 = Math.max(terrainHeight(x, z + 6), 0);

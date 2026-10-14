@@ -7,6 +7,10 @@
 //   speed relative to the air) and by diffusion, rises while it is hotter than the air, jostles with the turbulence
 //   (a Langevin walk, as the airport page's smoke does) and drifts with the wind. Simulated in steps; a jump in time
 //   replays it from ignition.
+// - The droneship: in the last seconds of the landing burn the flame reaches the deck and spreads across it (a radial
+//   wall jet, drawn as a glowing disc), throwing exhaust out over the deck that rolls off its edges and drifts
+//   downwind: darker than the pad's cloud (no deluge water here, only the kerosene flame's soot), with some spray.
+//   The same puffs, simulated in the barge's own frame (the deck at 0, the sea 3 m below) from the booster's state.
 // - The trail: puffs left behind the flame along the flight path, each from the moment the rocket passed. A puff
 //   rides the wind at its height, spreads by turbulent diffusion (faster in the lowest two kilometres, where the
 //   afternoon air churns) and thins as it spreads; dense and white in the moist low air, a contrail again in the
@@ -14,7 +18,7 @@
 // Drawn as lit, soft, camera-facing puffs, sorted back to front.
 import * as THREE from 'three';
 import { windAt } from '../sim/wind.js';
-import { air, vehicleState } from '../sim/ascent.js';
+import { air, boosterState, droneship, flightData, vehicleState } from '../sim/ascent.js';
 import { clusterPlume } from '../sim/plume.js';
 import { terrainHeight } from './complex.js';
 import { mountHeight } from './ground.js';
@@ -93,6 +97,79 @@ function puffBatch(capacity, map, renderOrder) {
     }
     return { mesh, material, write };
 }
+// A cloud of puffs (see the top): stepped in time, deterministic from its seed; `floorAt(x, z)` is the ground under it.
+function puffCloud(capacity, floorAt) {
+    const P = {   // particle state
+        x: new Float32Array(capacity), y: new Float32Array(capacity), z: new Float32Array(capacity),
+        vx: new Float32Array(capacity), vy: new Float32Array(capacity), vz: new Float32Array(capacity),
+        tx: new Float32Array(capacity), ty: new Float32Array(capacity), tz: new Float32Array(capacity),   // turbulent velocity
+        r: new Float32Array(capacity), r0: new Float32Array(capacity), age: new Float32Array(capacity), life: new Float32Array(capacity),
+        heat: new Float32Array(capacity), steam: new Uint8Array(capacity), seed: new Float32Array(capacity), count: 0
+    };
+    let seed = 1;
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const gauss = () => { let s = 0; for (let k = 0; k < 4; k++) s += random(); return (s - 2) * 1.732; };
+    const wind = [0, 0];
+    function emit(x, y, z, vx, vy, vz, r, life, heat, steam) {
+        let k = P.count;
+        if (k >= capacity) {   // full: reuse the oldest
+            let oldest = 0; for (let j = 1; j < P.count; j++) if (P.age[j] / P.life[j] > P.age[oldest] / P.life[oldest]) oldest = j;
+            k = oldest;
+        } else P.count++;
+        P.x[k] = x; P.y[k] = y; P.z[k] = z; P.vx[k] = vx; P.vy[k] = vy; P.vz[k] = vz; P.tx[k] = P.ty[k] = P.tz[k] = 0;
+        P.r[k] = P.r0[k] = r; P.age[k] = 0; P.life[k] = life; P.heat[k] = heat; P.steam[k] = steam ? 1 : 0; P.seed[k] = random();
+    }
+    function move(dt) {
+        const decay = Math.exp(-dt / 1.6), kick = Math.sqrt(1 - decay * decay);
+        for (let k = 0; k < P.count; k++) {
+            if (P.age[k] >= P.life[k]) continue;
+            windAt(Math.max(0, P.y[k]), wind);
+            const wx = P.vx[k] - wind[0], wy = P.vy[k], wz = P.vz[k] - wind[1], w = Math.hypot(wx, wy, wz);
+            // Jet decay toward the wind, entrainment growth, buoyancy cooling as it mixes, turbulence.
+            const slow = 1 / (1 + w * dt / 55);
+            P.vx[k] = wind[0] + wx * slow; P.vz[k] = wind[1] + wz * slow; P.vy[k] = wy * slow;
+            P.r[k] += (.1 * w + .32) * dt;
+            P.heat[k] *= Math.exp(-dt / 9);
+            P.vy[k] += 9.8 * P.heat[k] * dt * Math.pow(P.r0[k] / P.r[k], 1.5);
+            const sigma = .14 * w + .7;
+            P.tx[k] = P.tx[k] * decay + sigma * kick * gauss(); P.ty[k] = P.ty[k] * decay + sigma * .6 * kick * gauss(); P.tz[k] = P.tz[k] * decay + sigma * kick * gauss();
+            P.x[k] += (P.vx[k] + P.tx[k]) * dt; P.y[k] += (P.vy[k] + P.ty[k]) * dt; P.z[k] += (P.vz[k] + P.tz[k]) * dt;
+            // The ground stops the cloud's base: it rolls along it.
+            const floor = floorAt(P.x[k], P.z[k]) + P.r[k] * .45;
+            if (P.y[k] < floor) { P.y[k] = floor; if (P.vy[k] < 0) P.vy[k] *= -.2; }
+            P.age[k] += dt;
+        }
+    }
+    // The live puffs into `out`: fading in, thinning as they grow, fading at the end of their life; steam white, the
+    // exhaust grey, darker by `soot` while young. Returns how many.
+    function gather(out, soot = 0) {
+        let count = 0;
+        for (let k = 0; k < P.count; k++) {
+            const age = P.age[k], life = P.life[k];
+            if (age >= life) continue;
+            const thin = Math.pow(P.r0[k] / P.r[k], .55) * Math.min(1, age * 3) * (1 - THREE.MathUtils.smoothstep(age, life * .55, life));
+            if (thin < .01) continue;
+            out.x[count] = P.x[k]; out.y[count] = P.y[k]; out.z[count] = P.z[k]; out.r[count] = P.r[k];
+            out.a[count] = (P.steam[k] ? .62 : .72) * thin; out.s[count] = P.seed[k];
+            const shade = P.steam[k] ? .97 : .9 - .1 * Math.exp(-age / 6) - soot * Math.exp(-age / 14);
+            out.c[count * 3] = shade; out.c[count * 3 + 1] = shade * (P.steam[k] ? 1 : .975); out.c[count * 3 + 2] = shade * (P.steam[k] ? 1.01 : .94);
+            count++;
+        }
+        return count;
+    }
+    return { random, gauss, emit, move, gather, reset() { P.count = 0; seed = 1; } };
+}
+// The flame spreading across the droneship's deck: a disc, hot in the middle, streaked by the wall jet racing out.
+const blastVertex = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+const blastFragment = `uniform float strength; uniform float time; varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main() {
+        vec2 p = vUv * 2. - 1.; float r = length(p), a = atan(p.y, p.x);
+        float streaks = .7 + .3 * sin(a * 19. + 3. * sin(a * 5. + time * 3.) - time * 2.) * sin(r * 14. - time * 30.);
+        float glow = strength * pow(max(0., 1. - r), 1.6) * streaks * (.85 + .15 * hash(vec2(floor(a * 12.), floor(time * 24.))));
+        vec3 colour = mix(vec3(1., .95, .82), vec3(1., .5, .18), smoothstep(.05, .75, r));
+        gl_FragColor = vec4(colour * glow, glow * .45);
+    }`;
 const columns = capacity => ({ x: new Float32Array(capacity), y: new Float32Array(capacity), z: new Float32Array(capacity), r: new Float32Array(capacity), a: new Float32Array(capacity), s: new Float32Array(capacity), c: new Float32Array(capacity * 3) });
 
 export function createExhaust() {
@@ -102,27 +179,9 @@ export function createExhaust() {
     // The cloud at the pad.
     const cloudCapacity = 1100, cloudBatch = puffBatch(cloudCapacity, map, 4), cloudOut = columns(cloudCapacity);
     group.add(cloudBatch.mesh);
-    const P = {   // particle state
-        x: new Float32Array(cloudCapacity), y: new Float32Array(cloudCapacity), z: new Float32Array(cloudCapacity),
-        vx: new Float32Array(cloudCapacity), vy: new Float32Array(cloudCapacity), vz: new Float32Array(cloudCapacity),
-        tx: new Float32Array(cloudCapacity), ty: new Float32Array(cloudCapacity), tz: new Float32Array(cloudCapacity),   // turbulent velocity
-        r: new Float32Array(cloudCapacity), r0: new Float32Array(cloudCapacity), age: new Float32Array(cloudCapacity), life: new Float32Array(cloudCapacity),
-        heat: new Float32Array(cloudCapacity), steam: new Uint8Array(cloudCapacity), seed: new Float32Array(cloudCapacity), count: 0
-    };
-    let seed = 1;
-    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const gauss = () => { let s = 0; for (let k = 0; k < 4; k++) s += random(); return (s - 2) * 1.732; };
+    const pad = puffCloud(cloudCapacity, terrainHeight), { random, gauss, emit } = pad;
     let simTime = null, carry = { trench: 0, deck: 0, steam: 0 };
-    function reset() { P.count = 0; seed = 1; carry = { trench: 0, deck: 0, steam: 0 }; simTime = -3; }
-    function emit(x, y, z, vx, vy, vz, r, life, heat, steam) {
-        let k = P.count;
-        if (k >= cloudCapacity) {   // full: reuse the oldest
-            let oldest = 0; for (let j = 1; j < P.count; j++) if (P.age[j] / P.life[j] > P.age[oldest] / P.life[oldest]) oldest = j;
-            k = oldest;
-        } else P.count++;
-        P.x[k] = x; P.y[k] = y; P.z[k] = z; P.vx[k] = vx; P.vy[k] = vy; P.vz[k] = vz; P.tx[k] = P.ty[k] = P.tz[k] = 0;
-        P.r[k] = P.r0[k] = r; P.age[k] = 0; P.life[k] = life; P.heat[k] = heat; P.steam[k] = steam ? 1 : 0; P.seed[k] = random();
-    }
+    function reset() { pad.reset(); carry = { trench: 0, deck: 0, steam: 0 }; simTime = -3; }
     // The rocket's engines above the deck and its thrust share at a mission time.
     function engineState(time) {
         if (time < -3) return { height: 0, thrust: 0 };
@@ -152,26 +211,7 @@ export function createExhaust() {
             const angle = random() * Math.PI * 2, at = 4 + random() * 14;
             emit(Math.cos(angle) * at, deckLevel + 1 + random() * 3, Math.sin(angle) * at, Math.cos(angle) * (4 + random() * 8), 1 + random() * 3, Math.sin(angle) * (4 + random() * 8), 3 + random() * 3, 50 + random() * 40, .1, true);
         }
-        // Motion.
-        const decay = Math.exp(-dt / 1.6), kick = Math.sqrt(1 - decay * decay);
-        for (let k = 0; k < P.count; k++) {
-            if (P.age[k] >= P.life[k]) continue;
-            windAt(Math.max(0, P.y[k]), wind);
-            const wx = P.vx[k] - wind[0], wy = P.vy[k], wz = P.vz[k] - wind[1], w = Math.hypot(wx, wy, wz);
-            // Jet decay toward the wind, entrainment growth, buoyancy cooling as it mixes, turbulence.
-            const slow = 1 / (1 + w * dt / 55);
-            P.vx[k] = wind[0] + wx * slow; P.vz[k] = wind[1] + wz * slow; P.vy[k] = wy * slow;
-            P.r[k] += (.1 * w + .32) * dt;
-            P.heat[k] *= Math.exp(-dt / 9);
-            P.vy[k] += 9.8 * P.heat[k] * dt * Math.pow(P.r0[k] / P.r[k], 1.5);
-            const sigma = .14 * w + .7;
-            P.tx[k] = P.tx[k] * decay + sigma * kick * gauss(); P.ty[k] = P.ty[k] * decay + sigma * .6 * kick * gauss(); P.tz[k] = P.tz[k] * decay + sigma * kick * gauss();
-            P.x[k] += (P.vx[k] + P.tx[k]) * dt; P.y[k] += (P.vy[k] + P.ty[k]) * dt; P.z[k] += (P.vz[k] + P.tz[k]) * dt;
-            // The ground (and the mound) stops the cloud's base: it rolls along it.
-            const floor = terrainHeight(P.x[k], P.z[k]) + P.r[k] * .45;
-            if (P.y[k] < floor) { P.y[k] = floor; if (P.vy[k] < 0) P.vy[k] *= -.2; }
-            P.age[k] += dt;
-        }
+        pad.move(dt);
     }
     function simulateTo(time) {
         if (simTime === null || time < simTime - 1e-6 || time - simTime > 3) {
@@ -180,6 +220,45 @@ export function createExhaust() {
         }
         // Catching up after a jump takes coarser steps once the engines have climbed away (the cloud only drifts then).
         while (simTime < time - 1e-9) { const dt = Math.min(time - simTime > 2 && simTime > 30 ? .5 : .1, time - simTime); step(simTime, dt); simTime += dt; }
+    }
+
+    // The droneship's blast and cloud.
+    const deckCapacity = 420, deckBatch = puffBatch(deckCapacity, map, 4), deckOut = columns(deckCapacity);
+    group.add(deckBatch.mesh);
+    const deckCloud = puffCloud(deckCapacity, (x, z) => Math.abs(x) < 45.7 && Math.abs(z) < 26.1 ? 0 : -3);
+    const bargeAt = new THREE.Vector3(), bargeTurn = new THREE.Quaternion(), local = new THREE.Vector3();
+    const touchdown = flightData.landing ? flightData.landing.at : Infinity, deckFrom = touchdown - 8, deckUntil = touchdown + 150;
+    const blast = new THREE.Mesh(new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({
+        uniforms: { strength: { value: 0 }, time: { value: 0 } }, vertexShader: blastVertex, fragmentShader: blastFragment, transparent: true, depthWrite: false,
+        blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor
+    }));
+    blast.visible = false; blast.renderOrder = 5; blast.frustumCulled = false;
+    if (droneship) {
+        bargeAt.set(...droneship.position); bargeTurn.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...droneship.up));
+        blast.position.copy(bargeAt).addScaledVector(new THREE.Vector3(...droneship.up), .12); blast.quaternion.copy(bargeTurn); group.add(blast);
+    }
+    // The booster over the deck at a mission time: its thrust (in engines at full thrust) and how far its flame would
+    // reach past the deck (its engines stand 2.8 m up on its legs; the flame as at sea level, standing still).
+    function overDeck(time) {
+        const state = boosterState(time), thrust = Math.max(0, state.engines);
+        if (thrust <= .004) return { thrust: 0, past: 0 };
+        const plume = clusterPlume({ throttle: Math.max(.4, Math.min(1, thrust)), pressure: 101325, density: 1.225, airspeed: 0 }, 1);
+        return { thrust, past: plume.flame - state.altitude - 2.8 };
+    }
+    let deckTime = null, deckCarry = 0;
+    function deckStep(time, dt) {
+        const { thrust, past } = overDeck(time);
+        deckCarry += 110 * thrust * THREE.MathUtils.smoothstep(past, 0, 8) * dt;
+        while (deckCarry >= 1) {
+            deckCarry--;
+            const random = deckCloud.random, angle = random() * Math.PI * 2, speed = (25 + random() * 25) * Math.min(1, thrust + .3), at = 1.5 + random() * 3;
+            deckCloud.emit(Math.cos(angle) * at, .8 + random() * 1.5, Math.sin(angle) * at, Math.cos(angle) * speed, 1 + random() * 3, Math.sin(angle) * speed, 2 + random() * 1.5, 30 + random() * 25, .5, random() < .25);
+        }
+        deckCloud.move(dt);
+    }
+    function simulateDeck(time) {
+        if (deckTime === null || time < deckTime - 1e-6 || time - deckTime > 3) { deckCloud.reset(); deckCarry = 0; deckTime = deckFrom; }
+        while (deckTime < time - 1e-9) { const dt = Math.min(time - deckTime > 2 && deckTime > touchdown + 3 ? .5 : .1, time - deckTime); deckStep(deckTime, dt); deckTime += dt; }
     }
 
     // The trail: puffs laid at the plume's tail along the flight path, closer together low down where the plume is
@@ -209,20 +288,26 @@ export function createExhaust() {
     function update(mission, camera, sun, light, flame) {
         // Cloud.
         simulateTo(Math.min(mission, 900));
-        let count = 0;
-        const shown = mission > -3.2 && mission < 900;
-        if (shown) for (let k = 0; k < P.count; k++) {
-            const age = P.age[k], life = P.life[k];
-            if (age >= life) continue;
-            const thin = Math.pow(P.r0[k] / P.r[k], .55) * Math.min(1, age * 3) * (1 - THREE.MathUtils.smoothstep(age, life * .55, life));
-            if (thin < .01) continue;
-            cloudOut.x[count] = P.x[k]; cloudOut.y[count] = P.y[k]; cloudOut.z[count] = P.z[k]; cloudOut.r[count] = P.r[k];
-            cloudOut.a[count] = (P.steam[k] ? .62 : .72) * thin; cloudOut.s[count] = P.seed[k];
-            const shade = P.steam[k] ? .97 : .9 - .1 * Math.exp(-age / 6);
-            cloudOut.c[count * 3] = shade; cloudOut.c[count * 3 + 1] = shade * (P.steam[k] ? 1 : .975); cloudOut.c[count * 3 + 2] = shade * (P.steam[k] ? 1.01 : .94);
-            count++;
-        }
+        const count = mission > -3.2 && mission < 900 ? pad.gather(cloudOut) : 0;
         cloudBatch.write(count, cloudOut, camera);
+        // The droneship: its cloud, turned from the barge's frame into the pad's, and the flame across the deck.
+        let deckCount = 0;
+        if (droneship && mission > deckFrom && mission < deckUntil) {
+            simulateDeck(mission);
+            deckCount = deckCloud.gather(deckOut, .3);
+            for (let k = 0; k < deckCount; k++) {
+                local.set(deckOut.x[k], deckOut.y[k], deckOut.z[k]).applyQuaternion(bargeTurn).add(bargeAt);
+                deckOut.x[k] = local.x; deckOut.y[k] = local.y; deckOut.z[k] = local.z;
+            }
+            const { thrust, past } = overDeck(mission);
+            blast.visible = past > 0 && thrust > .004;
+            if (blast.visible) {
+                blast.scale.setScalar(2 + Math.min(28, past * .9));
+                blast.material.uniforms.strength.value = Math.min(1.2, 1.4 * thrust) * THREE.MathUtils.smoothstep(past, 0, 6);
+                blast.material.uniforms.time.value = performance.now() / 1000;
+            }
+        } else blast.visible = false;
+        deckBatch.write(deckCount, deckOut, camera);
         // Trail.
         let laid = 0;
         if (mission > 0 && mission < 3600) for (const puff of trail) {
@@ -243,7 +328,7 @@ export function createExhaust() {
         trailBatch.write(laid, trailOut, camera);
         // Light: the Sun and sky, and the flame's orange glow on the cloud.
         sunView.copy(sun).transformDirection(camera.matrixWorldInverse);
-        for (const batch of [cloudBatch, trailBatch]) {
+        for (const batch of [cloudBatch, trailBatch, deckBatch]) {
             const u = batch.material.uniforms;
             u.sunView.value.copy(sunView);
             u.sunColour.value.setRGB(1, .97, .92).multiplyScalar(.95 * light);
@@ -252,7 +337,7 @@ export function createExhaust() {
             u.glowColour.value.setRGB(1.6, .75, .3).multiplyScalar(flame.strength);
             u.glowRange.value = flame.range;
         }
-        cloudBatch.mesh.visible = count > 0; trailBatch.mesh.visible = laid > 0;
+        cloudBatch.mesh.visible = count > 0; trailBatch.mesh.visible = laid > 0; deckBatch.mesh.visible = deckCount > 0;
         return glow;
     }
     return { group, update };
