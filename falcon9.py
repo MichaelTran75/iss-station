@@ -6,8 +6,8 @@
 Model: "Falcon 9 - SpaceX" của Stanley Creative (Sketchfab, CC BY 4.0). Đơn vị gốc là cm, tên lửa đứng theo +y.
 - Bỏ fairing (chuyến chở người dùng Dragon, không có fairing) và cụm khớp chân đáp ở đáy (51 nghìn tam giác cho
   vài bản lề nhỏ).
-- Chia ba phần: tầng 1 (cả đoạn nối, cánh lưới, chân, 9 động cơ), tầng 2 (cả động cơ MVac), và bốn cánh lưới tách
-  riêng theo góc phần tư để mở ra lúc tầng 1 quay về.
+- Chia phần: tầng 1 (cả đoạn nối, 9 động cơ), tầng 2 (cả động cơ MVac), bốn cánh lưới tách theo góc phần tư để mở ra
+  lúc tầng 1 quay về, bốn chân đáp (bung ra trước khi chạm sà lan) và cụm xi lanh chân (ẩn khi chân bung).
 - Mỗi phần gộp theo vật liệu. Toạ độ tính bằng mét, lượng tử 1/1024 m quanh tâm từng phần (Int16), pháp tuyến Int8,
   chỉ số Uint16 hoặc Uint32, UV chỉ giữ cho vật liệu có ảnh (Float32). Mảng mã hoá base64 như các tệp data/ khác.
 - Ảnh tấm chăn nhiệt động cơ (1 MB nhiễu) bỏ, thay bằng màu phẳng; ảnh thân tầng 1 (logo, cờ) giữ nguyên.
@@ -75,7 +75,9 @@ def main(path):
         names = path_names + [name]
         if 'Fairing' in names or 'Landing Leg Holder Rotator' in names: return
         if 'mesh' in node:
-            part = 'secondStage' if 'Second Stage' in names else 'gridFins' if 'Grid Fins' in names else 'firstStage'
+            leg = next((n for n in names if n.startswith('Landing Leg ') and n[12:].isdigit()), None)
+            part = ('secondStage' if 'Second Stage' in names else 'gridFins' if 'Grid Fins' in names
+                    else 'leg%d' % (int(leg[12:]) - 1) if leg else 'pistons' if any(n.startswith('Landing Leg Hydraulic') for n in names) else 'firstStage')
             normal_matrix = np.linalg.inv(world[:3, :3]).T
             for primitive in meshes[node['mesh']]['primitives']:
                 position = accessor(gltf, binary, primitive['attributes']['POSITION']).astype(np.float64)
@@ -148,7 +150,15 @@ def main(path):
         inner = (position[:, [0, 2]] @ radial).min()
         hinges.append({'at': [round(radial[0] * inner, 4), round(top, 4), round(radial[1] * inner, 4)], 'radial': [round(radial[0], 4), 0, round(radial[1], 4)]})
 
-    data = {'source': SOURCE, 'quantum': QUANTUM, 'materials': materials, 'parts': out_parts, 'gridFins': hinges,
+    # Landing legs: each turns about the tangent at its foot hinge, at the bottom of the stowed leg.
+    legs = []
+    for k in range(4):
+        position = np.concatenate([p[1] for p in parts['leg%d' % k]])
+        radial = position[:, [0, 2]].mean(axis=0); radial /= np.linalg.norm(radial)
+        low = position[position[:, 1] < position[:, 1].min() + .4]
+        legs.append({'at': [round(float(low[:, 0].mean()), 4), round(float(position[:, 1].min()), 4), round(float(low[:, 2].mean()), 4)],
+                     'radial': [round(float(radial[0]), 4), 0, round(float(radial[1]), 4)]})
+    data = {'source': SOURCE, 'legs': legs, 'quantum': QUANTUM, 'materials': materials, 'parts': out_parts, 'gridFins': hinges,
             # Measured on the model: nine Merlin 1D exits (eight on a 1.36 m circle, one in the centre), the MVac
             # exit, the top of the second stage's cylinder (where Dragon's trunk sits) and the stage joint.
             'engines': {'merlinRadius': 1.364, 'merlinExitY': .1, 'merlinExit': .46, 'mvacExitY': 43.571, 'mvacExit': 1.52},

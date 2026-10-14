@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=e1e0c9a53a">
+    <link rel="stylesheet" href="css/app.css?v=80d2fc853e">
     <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
          trước mọi module theo thứ tự dựng. -->
     <script type="importmap">
@@ -62,11 +62,11 @@
         "./js/ui/controller.js": "./js/ui/controller.js?v=efbd36e377",
         "./js/main.js": "./js/main.js?v=b201e06096",
         "./js/launch/ground.js": "./js/launch/ground.js?v=d0c1291e1b",
-        "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=0275c32a57",
-        "./js/launch/view.js": "./js/launch/view.js?v=f4c09b8467",
+        "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=905d8ca01b",
+        "./js/launch/view.js": "./js/launch/view.js?v=8071e6b4b4",
         "./js/orbit/sky.js": "./js/orbit/sky.js?v=48e499c19c",
         "./js/orbit/view.js": "./js/orbit/view.js?v=9166f83b83",
-        "./js/sim/ascent.js": "./js/sim/ascent.js?v=535c402f3e",
+        "./js/sim/ascent.js": "./js/sim/ascent.js?v=03a2b738fd",
         "./js/sim/eva.js": "./js/sim/eva.js?v=2f04194c17",
         "./js/sim/orbit.js": "./js/sim/orbit.js?v=f44737761f"
       }
@@ -220,11 +220,16 @@
                     <div class="orbit-warp" role="group" aria-label="Playback"><button type="button" id="launch-play"
                             aria-pressed="false">Pause</button><button type="button" id="launch-restart">Restart</button><button
                             type="button" id="launch-follow" aria-pressed="true">Follow</button></div>
+                    <div class="orbit-frame launch-focus" role="group" aria-label="Follow"><button type="button" data-focus="rocket"
+                            aria-pressed="true">Rocket &amp; Dragon</button><button type="button" data-focus="booster"
+                            aria-pressed="false">Booster</button></div>
                     <dl class="orbit-readout">
                         <div><dt>Altitude</dt><dd id="launch-altitude">–</dd></div>
-                        <div><dt>Speed</dt><dd id="launch-speed">–</dd></div>
+                        <div><dt>Ground speed</dt><dd id="launch-speed">–</dd></div>
+                        <div><dt>Inertial speed</dt><dd id="launch-inertial">–</dd></div>
                         <div><dt>Downrange</dt><dd id="launch-downrange">–</dd></div>
-                        <div><dt>Flying</dt><dd id="launch-stage">–</dd></div>
+                        <div><dt>Acceleration</dt><dd id="launch-load">–</dd></div>
+                        <div><dt>Dynamic pressure</dt><dd id="launch-q">–</dd></div>
                     </dl>
                     <ol class="launch-events" id="launch-events" aria-label="Launch events"></ol>
                     <button type="button" class="launch-station" id="launch-station" hidden>On to the station →</button>

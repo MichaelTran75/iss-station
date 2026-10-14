@@ -1,6 +1,7 @@
 // Launch view: Falcon 9 lifts Crew Dragon off LC-39A and climbs to orbit, as on Demo-2: liftoff, Max-Q, engine
-// cutoff, stage separation (the booster flips and opens its grid fins), second-stage burn and cutoff, Dragon's
-// separation and its nose cone opening. The model (js/sim/ascent.js) gives the path and the times; this view draws it
+// cutoff, stage separation, second-stage burn and cutoff, Dragon's separation and its nose cone opening; and the
+// booster's own flight back: flip, grid fins, entry burn, landing burn, legs, touchdown on the droneship. The flight
+// simulation (js/sim/ascent.js) gives both paths and the times; this view draws them
 // close up, over the ground round the pad (js/launch/ground.js) and the real sky at the time of the launch
 // (js/orbit/sky.js), both at true scale. Two passes: the sky in kilometres from where the camera really is, then the
 // pad, the ground and the vehicle in metres in the pad's frame. Loaded the first time the view opens.
@@ -8,7 +9,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { renderer, viewport } from '../core/stage.js';
-import { animationAt, animationDuration, countdown, eventAt, events, launchEpoch, launchSite, missionAt, padFrame, vehicleState, warpAt } from '../sim/ascent.js';
+import { animationAt, animationDuration, boosterState, countdown, droneship, eventAt, events, launchEpoch, launchSite, missionAt, padFrame, vehicleState, warpAt } from '../sim/ascent.js';
 import { toScene } from '../orbit/sky.js';
 import { createGround, mountHeight } from './ground.js';
 import { createVehicle } from './vehicle.js';
@@ -16,7 +17,7 @@ import { createVehicle } from './vehicle.js';
 const smooth = (value, from, to) => THREE.MathUtils.smoothstep(value, from, to);
 
 export async function createLaunchView(sky) {
-    const vehicle = await createVehicle('data/falcon-9.json?v=c3aff529d7');
+    const vehicle = await createVehicle('data/falcon-9.json?v=fa4c1d9cea');
     const scene = new THREE.Scene();
     const environment = new THREE.PMREMGenerator(renderer);
     scene.environment = environment.fromScene(new RoomEnvironment(), .04).texture; scene.environmentIntensity = .45;
@@ -29,6 +30,23 @@ export async function createLaunchView(sky) {
     const booster = new THREE.Group(), upper = new THREE.Group(), capsule = new THREE.Group();
     booster.add(vehicle.firstStage); upper.add(vehicle.secondStage); capsule.add(vehicle.dragon);
     scene.add(booster, upper, capsule);
+    // The droneship where the booster comes down: a 91 × 52 m barge with the landing target painted on its deck.
+    const barge = new THREE.Group();
+    if (droneship) {
+        const deck = document.createElement('canvas'); deck.width = 512; deck.height = 292;
+        const g = deck.getContext('2d'); g.fillStyle = '#4b4f53'; g.fillRect(0, 0, 512, 292);
+        g.strokeStyle = '#e8e8e2'; g.lineWidth = 9; g.beginPath(); g.arc(256, 146, 108, 0, Math.PI * 2); g.stroke();
+        g.lineWidth = 22; g.beginPath(); g.moveTo(196, 86); g.lineTo(316, 206); g.moveTo(316, 86); g.lineTo(196, 206); g.stroke();
+        const deckMap = new THREE.CanvasTexture(deck); deckMap.colorSpace = THREE.SRGBColorSpace; deckMap.anisotropy = 8;
+        const hull = new THREE.MeshStandardMaterial({ color: 0x3a3e43, roughness: .7, metalness: .3 });
+        const top = new THREE.MeshStandardMaterial({ map: deckMap, roughness: .8 });
+        barge.add(new THREE.Mesh(new THREE.BoxGeometry(91, 6, 52), [hull, hull, top, hull, hull, hull]));
+        barge.children[0].position.y = -3;
+        for (const side of [-1, 1]) { const wall = new THREE.Mesh(new THREE.BoxGeometry(91, 3, 1), hull); wall.position.set(0, 1.5, side * 26); barge.add(wall); }
+        barge.position.set(...droneship.position);
+        barge.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(...droneship.up));
+        scene.add(barge);
+    }
 
     const camera = new THREE.PerspectiveCamera(40, 1, .3, 5e6);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -36,25 +54,34 @@ export async function createLaunchView(sky) {
     let auto = true;
     controls.addEventListener('start', () => setFollow(false));
 
-    // Time: animation seconds, played with the model's warp; the mission clock follows.
-    let time = 0, mission = countdown, playing = true, active = false;
+    // Time: animation seconds, played with the warp for what the camera follows (the rocket and Dragon, or the
+    // booster); the mission clock follows.
+    let time = 0, mission = countdown, playing = true, active = false, focus = 'rocket';
     const panel = document.getElementById('launch-panel'), field = id => document.getElementById(id);
     const playButton = field('launch-play'), followButton = field('launch-follow'), stationButton = field('launch-station');
     function setFollow(value) { auto = value; followButton.setAttribute('aria-pressed', String(value)); }
     function setPlaying(value) { playing = value; playButton.textContent = value ? 'Pause' : 'Play'; playButton.setAttribute('aria-pressed', String(!value)); }
-    playButton.addEventListener('click', () => { if (time >= animationDuration) time = 0; setPlaying(!playing); });
+    playButton.addEventListener('click', () => { if (time >= animationDuration(focus)) time = 0; setPlaying(!playing); });
+    const focusButtons = [...panel.querySelectorAll('[data-focus]')];
+    function setFocus(name) {
+        focus = name; time = animationAt(mission, focus);
+        for (const button of focusButtons) button.setAttribute('aria-pressed', String(button.dataset.focus === name));
+    }
+    focusButtons.forEach(button => button.addEventListener('click', () => { setFocus(button.dataset.focus); setFollow(true); }));
     field('launch-restart').addEventListener('click', () => { jump(0); setPlaying(true); });
     followButton.addEventListener('click', () => setFollow(true));
     const list = field('launch-events');
     const items = events.map(event => {
         const item = document.createElement('li'), button = document.createElement('button');
         button.type = 'button'; button.innerHTML = '<span>' + clock(event.at) + '</span>' + event.label;
-        button.addEventListener('click', () => { jump(event.at <= 0 ? 0 : animationAt(event.at - 4)); setFollow(true); setPlaying(true); });
+        button.addEventListener('click', () => {
+            setFocus(event.booster ? 'booster' : 'rocket'); jump(event.at <= 0 ? 0 : animationAt(event.at - 4, focus)); setFollow(true); setPlaying(true);
+        });
         item.append(button); list.append(item); return item;
     });
     function clock(seconds) { const s = Math.abs(seconds < 0 ? Math.floor(seconds) : Math.floor(seconds)); return (seconds < 0 ? 'T−' : 'T+') + String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); }
     let snapCamera = true;
-    function jump(to) { time = to; mission = missionAt(time); snapCamera = true; }
+    function jump(to) { time = to; mission = missionAt(time, focus); snapCamera = true; }
 
     // The pad's frame on the globe (the sky's Earth turns under it with the date).
     const pad = padFrame(), toKm = vector => ({ x: vector[0] / 1000, y: vector[1] / 1000, z: vector[2] / 1000 });
@@ -67,43 +94,37 @@ export async function createLaunchView(sky) {
         frame.setFromRotationMatrix(basis.makeBasis(column[0], column[1], column[2])); frameInverse.copy(frame).invert();
     }
 
-    // Vehicle poses at a mission time.
-    const up = new THREE.Vector3(0, 1, 0), turn = new THREE.Quaternion(), flip = new THREE.Quaternion(), xAxis = new THREE.Vector3(1, 0, 0);
-    const stackPose = (at, position, quaternion) => {
-        const state = vehicleState(at);
-        position.set(...state.position).y += mountHeight;
-        quaternion.setFromUnitVectors(up, new THREE.Vector3(...state.direction));
-        return state;
-    };
-    // The booster coasts on from separation (pneumatic pushers part the stages at about 1 m/s), flips tail-first on its
-    // nitrogen thrusters and opens its grid fins; it falls out of the picture long before its entry burn. Both stages
-    // fall alike, so the booster is placed by its motion relative to the second stage: the push, then the second stage
-    // drawing ahead on its vacuum engine at about 8.5 m/s².
-    const separation = eventAt('separation'), ignition = eventAt('ses');
-    const separationPose = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
-    stackPose(separation, separationPose.position, separationPose.quaternion);
-    const axis = new THREE.Vector3(), state = { altitude: 0, downrange: 0, speed: 0 };
+    // Poses at a mission time: positions from the simulation (the rocket's base raised onto the launch mount, the
+    // booster's onto its legs), the long axis along the thrust or, for the falling booster, tail-first into the air.
+    const up = new THREE.Vector3(0, 1, 0), localUp = new THREE.Vector3(), direction = new THREE.Vector3();
+    function place(group, state, lift = mountHeight) {
+        group.position.set(...state.position);
+        localUp.set(state.position[0], state.position[1] + 6371000, state.position[2]).normalize();
+        group.position.addScaledVector(localUp, lift);
+        group.quaternion.setFromUnitVectors(up, direction.set(...state.direction));
+    }
+    const separation = eventAt('separation'), ignition = eventAt('ses'), landing = eventAt('landing');
+    const axis = new THREE.Vector3();
+    let state = vehicleState(countdown), boosterNow = state;
     function pose() {
-        Object.assign(state, stackPose(mission, upper.position, upper.quaternion));
+        state = vehicleState(mission);
+        place(upper, state);
         axis.set(0, 1, 0).applyQuaternion(upper.quaternion);
         capsule.position.copy(upper.position); capsule.quaternion.copy(upper.quaternion);
-        if (mission < separation) { booster.position.copy(upper.position); booster.quaternion.copy(upper.quaternion); vehicle.setFins(0); }
-        else {
-            const since = mission - separation, burning = Math.max(0, mission - ignition);
-            booster.position.copy(upper.position).addScaledVector(axis.set(0, 1, 0).applyQuaternion(separationPose.quaternion), -(1.1 * since + 4.25 * burning * burning));
-            booster.quaternion.copy(separationPose.quaternion).multiply(flip.setFromAxisAngle(xAxis, Math.PI * smooth(since, 4, 40)));
-            vehicle.setFins(smooth(since, 10, 16));
-            axis.set(0, 1, 0).applyQuaternion(upper.quaternion);
-        }
-        booster.visible = mission < 330;
+        boosterNow = mission < separation ? state : boosterState(mission);
+        if (mission < separation) { booster.position.copy(upper.position); booster.quaternion.copy(upper.quaternion); }
+        else place(booster, boosterNow, mountHeight - 3.2 * smooth(mission, landing - 60, landing - 20));   // down onto its legs' reach (2.8 m below the engines)
+        vehicle.setFins(smooth(mission - separation, 10, 16));
+        vehicle.setLegs(smooth(mission, landing - 9, landing - 4));
         // Springs push Dragon off the second stage; it draws away at about 0.4 m/s.
         const dragonSince = mission - eventAt('dragon');
         if (dragonSince > 0) capsule.position.addScaledVector(axis, .4 * dragonSince + .004 * dragonSince * dragonSince);
         vehicle.setNose(smooth(mission, eventAt('nosecone'), eventAt('nosecone') + 6));
-        // Engines: nine Merlins to cutoff (throttled back through Max-Q), then the vacuum Merlin to its cutoff.
-        const thrust = mission < eventAt('ignition') || mission >= eventAt('meco') ? 0 : mission < 0 ? .6 + .4 * smooth(mission, -3, -.5) : mission > 40 && mission < 68 ? .78 : 1;
-        vehicle.setFirstPlume(thrust, state.altitude, performance.now() / 1000);
-        vehicle.setSecondPlume(mission >= eventAt('ses') && mission < eventAt('seco'), performance.now() / 1000);
+        // Engines: the Merlins as the simulation fires them (nine, throttled through Max-Q and for the crew's 3.1 g;
+        // three for the entry burn; one, throttled, to land), and the vacuum Merlin.
+        const engines = mission < separation ? Math.max(0, state.engines) : boosterNow.engines;
+        vehicle.setFirstPlume(engines, boosterNow.altitude, performance.now() / 1000);
+        vehicle.setSecondPlume(state.engines < 0, performance.now() / 1000);
         ground.updateSmoke(mission, daylight);
     }
 
@@ -113,6 +134,15 @@ export async function createLaunchView(sky) {
     const side = new THREE.Vector3(), back = new THREE.Vector3(), point = new THREE.Vector3(), lookout = new THREE.Vector3(150, 14, 175);
     function stackPoint(group, height, target) { return target.set(0, height, 0).applyQuaternion(group.quaternion).add(group.position); }
     function goal() {
+        if (focus === 'booster' && mission > separation + 1) {
+            // The booster: alongside as it falls tail-first, then low by the barge for the landing.
+            stackPoint(booster, 24, goalTarget);
+            back.set(...boosterNow.direction).negate();   // its tail leads
+            side.crossVectors(back, up); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
+            const near = smooth(mission, landing - 45, landing - 15);
+            goalOffset.copy(side).multiplyScalar(130 - 40 * near).addScaledVector(back, -30 + 20 * near).addScaledVector(up, 25 - 30 * near + 40 * smooth(mission, landing, landing + 8));
+            return;
+        }
         back.set(0, -1, 0).applyQuaternion(upper.quaternion);
         side.crossVectors(back, up); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
         if (mission < 26) {
@@ -159,25 +189,30 @@ export async function createLaunchView(sky) {
     }
 
     let readoutClock = 0;
+    const speedText = metres => Math.round(metres * 3.6).toLocaleString('en-US') + ' km/h';
     function readout() {
         field('launch-clock').textContent = clock(mission);
-        field('launch-rate').textContent = playing ? '×' + warpAt(mission) : 'PAUSED';
+        field('launch-rate').textContent = playing ? '×' + warpAt(mission, focus) : 'PAUSED';
         let current = { label: 'TERMINAL COUNT' };
-        for (const event of events) if (mission >= event.at) current = event;
+        for (const event of events) if (mission >= event.at && (!event.booster || focus === 'booster')) current = event;
         field('launch-event').textContent = current.label;
-        field('launch-altitude').textContent = state.altitude < 1000 ? state.altitude.toFixed(0) + ' m' : (state.altitude / 1000).toFixed(1) + ' km';
-        field('launch-speed').textContent = Math.round(state.speed * 3.6).toLocaleString('en-US') + ' km/h';
-        field('launch-downrange').textContent = (state.downrange / 1000).toFixed(state.downrange < 1e4 ? 1 : 0) + ' km';
-        field('launch-stage').textContent = mission < separation ? 'Falcon 9 + Dragon' : mission < eventAt('dragon') ? 'Second stage + Dragon' : 'Dragon';
+        // The numbers of what the camera follows.
+        const shown = focus === 'booster' ? boosterNow : state;
+        field('launch-altitude').textContent = shown.altitude < 1000 ? shown.altitude.toFixed(0) + ' m' : (shown.altitude / 1000).toFixed(1) + ' km';
+        field('launch-speed').textContent = speedText(shown.speed);
+        field('launch-inertial').textContent = speedText(shown.inertial);
+        field('launch-downrange').textContent = (shown.downrange / 1000).toFixed(shown.downrange < 1e4 ? 1 : 0) + ' km';
+        field('launch-load').textContent = (mission < 0 ? 1 : shown.load).toFixed(2) + ' g';
+        field('launch-q').textContent = (shown.q / 1000).toFixed(shown.q < 1e4 ? 1 : 0) + ' kPa';
         items.forEach((item, k) => item.classList.toggle('done', mission >= events[k].at));
         stationButton.hidden = mission < eventAt('nosecone') + 6;
         const tiles = ground.status.loading;
-        field('launch-source').textContent = (tiles ? 'Loading ground imagery (' + tiles + ' tiles)… · ' : '') + 'Times: NASA (Demo-2) · altitude, speed: DM-1 telemetry · model: Stanley Creative, CC BY 4.0 · imagery: USGS, NASA GIBS';
+        field('launch-source').textContent = (tiles ? 'Loading ground imagery (' + tiles + ' tiles)… · ' : '') + 'Flight simulated (thrust, drag, US-1976 air, Earth’s spin), fitted to NASA’s Demo-2 timeline and DM-1 telemetry · model: Stanley Creative, CC BY 4.0 · imagery: USGS, NASA GIBS';
     }
 
     function update(delta) {
-        if (playing) { time = Math.min(animationDuration, time + delta); if (time >= animationDuration) setPlaying(false); }
-        mission = missionAt(time);
+        if (playing) { time = Math.min(animationDuration(focus), time + delta); if (time >= animationDuration(focus)) setPlaying(false); }
+        mission = missionAt(time, focus);
         sky.update(0, new Date(launchEpoch + mission * 1000));
         placeFrame(); pose(); light(); follow(delta);
         controls.update(delta);
@@ -212,7 +247,7 @@ export async function createLaunchView(sky) {
         enter() {
             active = true; controls.enabled = true; panel.hidden = false; sky.hideLabels();
             setFollow(true); snapCamera = true; resize(viewport.clientWidth, viewport.clientHeight);
-            if (time >= animationDuration) jump(0);
+            if (time >= animationDuration(focus)) jump(0);
             setPlaying(true);
         },
         leave() { active = false; controls.enabled = false; panel.hidden = true; setPlaying(false); },

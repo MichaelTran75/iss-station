@@ -82,6 +82,14 @@ export async function createVehicle(url) {
         pivot.position.copy(at); fin.position.copy(at).negate(); pivot.add(fin); firstStage.add(pivot);
         fins.push({ pivot, axis: new THREE.Vector3(0, -1, 0).cross(radial).normalize() });
     });
+    // Landing legs on their foot hinges (stowed up the side, they swing out and down 120° to land), and the hydraulic
+    // struts, hidden once the legs open (they would have to telescope).
+    const legs = data.legs.map((hinge, index) => {
+        const pivot = new THREE.Group(), leg = part('leg' + index), at = new THREE.Vector3(...hinge.at), radial = new THREE.Vector3(...hinge.radial);
+        pivot.position.copy(at); leg.position.copy(at).negate(); pivot.add(leg); firstStage.add(pivot);
+        return { pivot, axis: new THREE.Vector3(0, 1, 0).cross(radial).normalize() };
+    });
+    const struts = part('pistons'); firstStage.add(struts);
     const secondStage = part('secondStage');
     // Crew Dragon on top: its trunk sits on the second stage's cylinder, nose up.
     const { group: dragon, noseCone, openAngle } = dragonHull();
@@ -105,14 +113,16 @@ export async function createVehicle(url) {
     // Light from the first stage's plume on the pad, the smoke and the rocket.
     const fireLight = new THREE.PointLight(0xffb070, 0, 600, 1.4); fireLight.position.y = -6; firstStage.add(fireLight);
 
-    // Booster burn: thrust 1 = nine engines; the plume swells as the air thins (`altitude` in metres).
-    function setFirstPlume(thrust, altitude, time) {
+    // Booster burn: `engines` firing (nine at full thrust; fractions for throttle); the plume swells as the air thins
+    // (`altitude` in metres).
+    function setFirstPlume(engines, altitude, time) {
+        const thrust = engines / 9;
         const thin = 1 - Math.exp(-altitude / 9000);
         firstPlume.visible = glow.visible = thrust > 0;
         fireLight.intensity = thrust > 0 ? 6e4 * thrust * Math.exp(-altitude / 1500) : 0;
         if (!thrust) return;
-        const engines = Math.max(1, thrust * 9) / 9;
-        shapePlume(firstPlume, 1.4 * Math.sqrt(engines), 2.2 + 26 * thin ** 1.6, 30 + 70 * thin);
+        const share = Math.max(1, engines) / 9;
+        shapePlume(firstPlume, 1.4 * Math.sqrt(share), 2.2 + 26 * thin ** 1.6, 30 + 70 * thin);
         firstPlume.material.uniforms.time.value = time;
         firstPlume.material.uniforms.strength.value = (1.15 - .55 * thin) * Math.min(1, .35 + thrust);
         firstPlume.material.uniforms.spread.value = thin;
@@ -128,10 +138,11 @@ export async function createVehicle(url) {
     }
     function setFins(open) { for (const { pivot, axis } of fins) pivot.quaternion.setFromAxisAngle(axis, open * Math.PI / 2); }
     function setNose(open) { noseCone.rotation.x = openAngle * open; }
+    function setLegs(open) { for (const { pivot, axis } of legs) pivot.quaternion.setFromAxisAngle(axis, open * 2.09); struts.visible = open < .02; }
     setFirstPlume(0, 0, 0); setSecondPlume(false, 0);
 
     return {
-        firstStage, secondStage, dragon, setFirstPlume, setSecondPlume, setFins, setNose,
+        firstStage, secondStage, dragon, setFirstPlume, setSecondPlume, setFins, setNose, setLegs,
         // Heights on the stack: the joint between the stages, the second stage's top, Dragon's top.
         separationY: data.separationY, secondStageTop: data.secondStageTop, dragonTop, source: data.source
     };

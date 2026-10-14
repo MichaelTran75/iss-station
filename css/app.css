@@ -1716,6 +1716,14 @@
             margin-top: 6px;
         }
 
+        .launch-focus {
+            margin: 0 0 9px;
+        }
+
+        .launch-focus button {
+            padding: 0 9px;
+        }
+
         .launch-event {
             margin-top: 2px;
             font: 600 12px/1.4 'IBM Plex Mono', monospace;
