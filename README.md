@@ -99,11 +99,11 @@ Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó s
 
 ## Góc nhìn Launch
 
-Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−10 s. Hai nút **Rocket & Dragon** / **Booster** chọn bám theo tên lửa lên quỹ đạo hay tầng 1 bay về sà lan; mỗi bên có nhịp tua riêng (chậm lại quanh các lần đốt và lúc đáp).
+Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−10 s và chạy tới khi Dragon đến Waypoint 0, 400 m dưới ISS, sau 18 giờ 08 phút. Hai nút **Rocket & Dragon** / **Booster** chọn bám theo tên lửa lên quỹ đạo hay tầng 1 bay về sà lan; mỗi bên có nhịp tua riêng (chậm lại quanh các lần đốt và lúc đáp).
 
 ### Mô phỏng bay (`js/sim/ascent.js`)
 
-Không còn nội suy telemetry: đường bay được tích phân (Runge–Kutta bậc 4, bước 0,05 s) mỗi lần mở góc nhìn, mất khoảng 70 ms.
+Không còn nội suy telemetry: đường bay được tích phân (Runge–Kutta bậc 4, bước 0,05 s; chặng bám đuổi bước 10 s) mỗi lần mở góc nhìn, mất khoảng 100 ms. Tầng 2 tắt máy giữa bước, đúng lúc năng lượng quỹ đạo đạt mục tiêu.
 
 - **Lực:** 9 Merlin 1D (914 kN, Isp 311 s trong chân không mỗi động cơ, trừ 0,68 m² miệng phun × áp suất không khí, nên ở mặt đất còn 845 kN), MVac (981 kN, Isp 348 s), lực cản theo số Mach trên thân 3,66 m, trọng lực, khí quyển chuẩn US-1976. Hệ quán tính, Trái Đất quay bên dưới; khối lượng giảm theo lượng nhiên liệu đốt.
 - **Khối lượng:** tầng 1 khô 25,6 t + 405 t nhiên liệu, tầng 2 khô 4 t + 107,5 t, Crew Dragon 12,5 t (549 t lúc cất cánh, đúng số công bố).
@@ -123,7 +123,21 @@ Không còn nội suy telemetry: đường bay được tích phân (Runge–Kut
 | 9:22 | tầng 1 đốt hạ cánh | mô phỏng |
 | 10:14 | tầng 1 đáp sà lan (NASA: 9:22) | mô phỏng |
 | 12:00 | Dragon tách, lò xo đẩy khoảng 0,4 m/s | lệnh (NASA) |
-| 12:46 | mở nắp mũi, rồi nút *On to the station* | lệnh (NASA) |
+| 12:46 | mở nắp mũi | lệnh (NASA) |
+| 2:30:00 / 3:15:11 | đốt nâng quỹ đạo lên 380 km, rồi tròn hoá (52 + 47 m/s) | mô phỏng |
+| 11:06:40 / 11:52:46 | đốt điều chỉnh độ cao lên 400 km, rồi đốt coelliptic (6 + 6 m/s) | mô phỏng |
+| 17:21:57 | khởi đầu pha cuối (TPI): nửa vòng lên 419,6 km | mô phỏng |
+| 18:08:15 | Waypoint 0, 400 m dưới ISS; nút *On to the station* chuyển sang chặng tiếp cận | mô phỏng |
+
+### Chặng bám đuổi tới ISS
+
+- Từ cuối mô phỏng phóng, Dragon bay tiếp hai vật thể (không lực cản, không J2), bước 10 s, đốt Draco tức thời theo cặp Hohmann như cách Dragon bám đuổi: 216 → 380 km, 380 → 400 km (20 km dưới trạm, quỹ đạo coelliptic), rồi nửa vòng cuối tới 419,6 km. Tổng khoảng 120 m/s.
+- Thời điểm kết thúc theo Demo-2: chạm cổng lúc 14:16 UTC ngày 31/5/2020, tức 18 giờ 53 phút sau khi phóng. Chặng tiếp cận của trang trạm mất 45 phút từ Waypoint 0 tới lúc chạm, nên Dragon tới Waypoint 0 ở T+18:08:15.
+- ISS bay quỹ đạo tròn 420 km cùng mặt phẳng, đặt đúng chỗ gặp Dragon ở Waypoint 0. Muốn biết vị trí thật của trạm ngày 30/5/2020 phải có bộ số quỹ đạo của ngày đó. Lúc vào quỹ đạo, trạm ở phía trước khoảng 6.000 km.
+- Đường chấm nối liền từ bệ phóng tới ISS. Trong lúc phóng, đoạn phóng vẽ theo mặt đất mà tên lửa bay qua, còn các vòng quỹ đạo phía trước vẽ như chúng sẽ đứng trong không gian lúc kết thúc chặng phóng. Sau đó các vòng quỹ đạo vẽ như chúng đang đứng trong không gian (hệ quán tính), đoạn phóng xoay theo để đường không đứt. Nếu vẽ bám mặt đất, sau vài giờ các vòng sẽ quấn quanh địa cầu như cái lồng. Vòng đã bay quá 2 giờ mờ đi.
+- Vòng quỹ đạo của ISS (chấm xanh lá), chấm ISS cùng nhãn độ cao, và ô *Range to ISS* trong bảng sau khi Dragon tách.
+- Nút **Overview**: camera lùi ra nhìn cả Trái Đất, nghiêng 30° so với mặt phẳng quỹ đạo từ phía con tàu. Ở xa, chấm và nhãn đánh dấu con tàu đang bám.
+- Độ sâu chia hai lớp (xa từ 20 km, rồi gần): quỹ đạo cách hàng nghìn km vẫn bị Trái Đất che đúng, trong khi bệ phóng cách vài mét vẫn không bị nhấp nháy.
 
 Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc và góc bay lúc tắt máy của telemetry, nó lên tới khoảng 210 km nên rơi về lâu hơn; hướng đi, khối lượng và lực cản thật của tầng 1 không được công bố đủ để khớp hơn.
 

@@ -1822,6 +1822,10 @@
             cursor: pointer;
         }
 
+        .launch-vehicle-label {
+            color: #9fe3ff;
+        }
+
         .orbit-label.body {
             color: #c9d1d9;
         }
@@ -1884,6 +1888,15 @@
                 top: 46px;
                 right: 12px;
                 width: 46vw;
+            }
+
+            .launch-panel .orbit-warp {
+                position: static;
+                margin: 6px 0 7px;
+            }
+
+            .launch-panel .orbit-warp button {
+                padding: 0 8px;
             }
 
             .launch-event {

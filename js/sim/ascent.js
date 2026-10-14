@@ -85,7 +85,7 @@ function simulate() {
     function rk4(s, mode, info) {
         const k1 = derivative(s, mode, info), at = (k, f) => ({ r: add(s.r, k.r, f), v: add(s.v, k.v, f), m: s.m + k.m * f });
         const k2 = derivative(at(k1, step / 2), mode), k3 = derivative(at(k2, step / 2), mode), k4 = derivative(at(k3, step), mode);
-        return { r: add(s.r, add(add(k1.r, k2.r, 2), add(k3.r, k4.r, 2)), step / 6), v: add(s.v, add(add(k1.v, k2.v, 2), add(k3.v, k4.v, 2)), step / 6), m: s.m + (k1.m + 2 * k2.m + 2 * k3.m + k4.m) * step / 6 };
+        return { r: add(s.r, add(add(k1.r, k2.r, 2), add(k4.r, k3.r, 2)), step / 6), v: add(s.v, add(add(k1.v, k2.v, 2), add(k4.v, k3.v, 2)), step / 6), m: s.m + (k1.m + 2 * k2.m + 2 * k3.m + k4.m) * step / 6 };
     }
     const orbit = s => {
         const r = length(s.r), speed = length(s.v), a = -mu / (2 * (speed * speed / 2 - mu / r)), hv = cross(s.r, s.v), e = Math.sqrt(Math.max(0, 1 - dot(hv, hv) / (mu * a)));
@@ -114,8 +114,14 @@ function simulate() {
             } };
         }
         if (mode.engines) attitude = mode.direction(s, airVelocity(s), unit(s.r));
-        const info = {};
+        const info = {}, before = s;
         s = rk4(s, mode, info);
+        // Cutoff inside a step: redo it at the fraction of thrust that reaches the orbit's energy exactly.
+        if (mode.vacuum && orbit(s).a >= targetA) {
+            const energy = st => length(st.v) ** 2 / 2 - mu / length(st.r), goal = -mu / (2 * targetA);
+            const fraction = Math.max(0, Math.min(1, (goal - energy(before)) / (energy(s) - energy(before))));
+            s = rk4(before, { ...mode, throttle: mode.throttle * fraction }, info);
+        }
         if (t < p.meco && info.q > maxQ.q) maxQ = { q: info.q, at: t };
         const now = t + step;
         if (Math.abs(now - p.meco) < step / 2) reserve = s.m - v.s1Dry - v.s2Dry - v.s2Prop - v.payload;
@@ -157,6 +163,74 @@ function simulate() {
 export const flightData = simulate();
 const sim = flightData;
 
+// From orbit to the ISS: Dragon's phasing over the next 18 hours, two-body (no drag or J2) with impulsive Draco burns,
+// from the stack's state at the end of the ascent (plus Dragon's own drift off the second stage) to Waypoint 0, 400 m
+// below the station, where the station view's approach (js/sim/rendezvous.js) begins. Demo-2 made soft contact at
+// 14:16 UTC on 31 May, 18 h 53 min after liftoff; that approach takes 45 min from Waypoint 0 to contact, so Dragon
+// reaches Waypoint 0 at 18 h 08 min. The burns climb in Hohmann pairs, as Dragon's phasing does: up to 380 km after
+// two and a half hours, to 400 km (20 km under the station, its coelliptic orbit) after eleven, and at terminal phase
+// initiation a last half-orbit transfer to 419.6 km that ends at the waypoint. The ISS flies a circular 420 km orbit
+// in the same plane, placed where this rendezvous meets it (the real station's position on 30 May 2020 would need its
+// elements from then).
+export const issAltitude = 420e3, rendezvousTime = 67995 - 2700;   // contact 18 h 53 min 15 s after liftoff, less the approach
+const phasingStep = 10, issRadius = R + issAltitude, waypointRadius = issRadius - 400;
+const halfTransfer = (from, to) => Math.PI * Math.sqrt(((from + to) / 2) ** 3 / mu);
+function propagate(state, duration, burnsAt) {
+    // RK4 under gravity alone; `burnsAt(time, state)` may change the velocity at the scheduled instants.
+    const derivative = st => ({ r: st.v, v: scale(st.r, -mu / Math.pow(length(st.r), 3)) });
+    let s = state, t = s.t;
+    const list = [];
+    const stepTo = (st, h) => {
+        const k1 = derivative(st), at = (k, f) => ({ r: add(st.r, k.r, f), v: add(st.v, k.v, f) });
+        const k2 = derivative(at(k1, h / 2)), k3 = derivative(at(k2, h / 2)), k4 = derivative(at(k3, h));
+        return { r: add(st.r, add(add(k1.r, k2.r, 2), add(k4.r, k3.r, 2)), h / 6), v: add(st.v, add(add(k1.v, k2.v, 2), add(k4.v, k3.v, 2)), h / 6) };
+    };
+    // Steps land on a 10 s grid (a burn between grid points splits the step), so the samples stay evenly spaced.
+    while (t < duration - 1e-9) {
+        const next = Math.min(duration, (Math.floor(t / phasingStep + 1e-7) + 1) * phasingStep), due = burnsAt ? burnsAt.next(t, next) : null;
+        if (due !== null && due < next - 1e-9) { s = { ...stepTo(s, due - t), t: due }; t = due; s = { ...s, v: burnsAt.apply(s) }; continue; }
+        s = { ...stepTo(s, next - t), t: next }; t = next;
+        if (due !== null) s = { ...s, v: burnsAt.apply(s) };
+        list.push({ t, r: s.r, v: s.v });
+    }
+    return list;
+}
+const horizontal = s => unit(cross(cross(s.r, s.v), s.r));
+const dragonPhasing = (() => {
+    const end = sim.stack[sim.stack.length - 1], since = end.t - guidance.dragon, axis = end.attitude;
+    const start = { t: end.t, r: add(end.r, axis, .4 * since + .004 * since * since), v: add(end.v, axis, .4 + .008 * since) };
+    // The burns: [time, kind, target radius]. A raise sets the speed whose transfer orbit peaks at the target; the
+    // circularization half an orbit later sets circular speed there.
+    const plan = [];
+    const raise = (at, to, label, circularLabel) => { plan.push({ at, to, label, kind: 'raise' }); plan.push({ at: null, to, label: circularLabel, kind: 'circular', after: plan.length - 1 }); };
+    raise(9000, R + 380e3, 'PHASING BURN · TO 380 km', 'CIRCULARIZATION · 380 km');
+    raise(40000, R + 400e3, 'HEIGHT ADJUST · TO 400 km', 'COELLIPTIC BURN · 400 km');
+    raise(rendezvousTime - halfTransfer(R + 400e3, waypointRadius), waypointRadius, 'TERMINAL PHASE INITIATION', 'WAYPOINT 0 · 400 m BELOW THE ISS');
+    const burns = [];
+    const schedule = {
+        next(from, to) { const burn = plan.find(b => b.at !== null && !b.done && b.at > from + 1e-9 && b.at <= to + 1e-9); return burn ? burn.at : null; },
+        apply(s) {
+            const burn = plan.find(b => b.at !== null && !b.done && Math.abs(b.at - s.t) < 1e-6), r = length(s.r);
+            const speed = burn.kind === 'raise' ? Math.sqrt(mu * (2 / r - 2 / (r + burn.to))) : Math.sqrt(mu / r);
+            const v = scale(horizontal(s), speed);
+            burn.done = true; burns.push({ at: s.t, label: burn.label, deltaV: length(add(v, s.v, -1)) });
+            if (burn.kind === 'raise') { const circular = plan[plan.indexOf(burn) + 1]; circular.at = s.t + halfTransfer(r, burn.to); }
+            return v;
+        }
+    };
+    const list = propagate(start, rendezvousTime + 600, schedule);
+    return { list, burns };
+})();
+// The ISS: circular, in Dragon's plane, 400 m above Dragon at the waypoint.
+const meeting = sampleAt(dragonPhasing.list, rendezvousTime);
+const issNormal = unit(cross(meeting.r, meeting.v)), issMeet = scale(unit(meeting.r), issRadius), issRate = Math.sqrt(mu / issRadius ** 3);
+export function issAt(time) {
+    const angle = issRate * (time - rendezvousTime), c = Math.cos(angle), s = Math.sin(angle), k = issNormal, v = issMeet;
+    return add(add(scale(v, c), cross(k, v), s), k, dot(k, v) * (1 - c));
+}
+// The second stage after Dragon leaves: it coasts on (in flight it is sent down to burn up over the Pacific).
+const stagePhasing = propagate({ t: sim.stack[sim.stack.length - 1].t, r: sim.stack[sim.stack.length - 1].r, v: sim.stack[sim.stack.length - 1].v }, 6000, null);
+
 export const events = [
     { at: -3, key: 'ignition', label: 'ENGINE IGNITION' },
     { at: 0, key: 'liftoff', label: 'LIFTOFF' },
@@ -169,16 +243,17 @@ export const events = [
     { at: Math.round(sim.landingStart), key: 'landingburn', label: 'BOOSTER LANDING BURN', booster: true },
     { at: Math.round(sim.landing.at), key: 'landing', label: 'BOOSTER LANDS ON DRONESHIP', booster: true },
     { at: guidance.dragon, key: 'dragon', label: 'DRAGON SEPARATION' },
-    { at: guidance.nosecone, key: 'nosecone', label: 'NOSE CONE OPENS' }
+    { at: guidance.nosecone, key: 'nosecone', label: 'NOSE CONE OPENS' },
+    ...dragonPhasing.burns.map((burn, k) => ({ at: Math.round(burn.at), key: k === dragonPhasing.burns.length - 1 ? 'waypoint' : 'burn' + k, label: burn.label, deltaV: burn.deltaV }))
 ].sort((a, b) => a.at - b.at);
 export const eventAt = key => events.find(event => event.key === key).at;
-export const countdown = -10, ascentDuration = guidance.end;   // the view opens ten seconds before liftoff
+export const countdown = -10, ascentDuration = rendezvousTime + 20;   // from ten seconds before liftoff to Waypoint 0
 
 // Time warp by stretch of the flight: real time at liftoff and round each separation, faster in between. Following
 // the booster, real time round its burns and landing instead.
 const warpPlans = {
-    rocket: [[countdown, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5]],
-    booster: [[countdown, 1], [20, 6], [140, 1.5], [185, 12], [eventAt('entry') - 6, 1.5], [eventAt('entry') + 26, 8], [eventAt('landingburn') - 12, 1], [eventAt('landing') + 6, 12]]
+    rocket: [[countdown, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5], [790, 60], [1000, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15]],
+    booster: [[countdown, 1], [20, 6], [140, 1.5], [185, 12], [eventAt('entry') - 6, 1.5], [eventAt('entry') + 26, 8], [eventAt('landingburn') - 12, 1], [eventAt('landing') + 6, 12], [eventAt('landing') + 60, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15]]
 };
 function plan(name) {
     const warps = warpPlans[name], marks = [[0, countdown]];
@@ -234,9 +309,19 @@ function cosineAt(r, time) {
 // The rocket (first and second stage until separation, then the second stage with Dragon) at a mission time.
 export function vehicleState(mission) {
     if (mission <= 0) return { position: [0, 0, 0], direction: [0, 1, 0], altitude: 0, downrange: 0, speed: 0, inertial: omega * R * Math.cos(phi), q: 0, load: 1, mass: sim.stack[0].m, engines: mission >= -3 ? 9 * .6 : 0 };
-    const entry = sampleAt(sim.stack, mission);
-    return describe(entry, mission, entry.attitude);
+    if (mission <= guidance.end) { const entry = sampleAt(sim.stack, mission); return describe(entry, mission, entry.attitude); }
+    // Dragon on its own, nose along its flight.
+    const entry = { ...sampleAt(dragonPhasing.list, mission), m: vehicle.payload, q: 0, load: 0, engines: 0 };
+    return { ...describe(entry, mission, unit(entry.v)), dragon: true };
 }
+// The second stage after the end of the ascent simulation.
+export function stageState(mission) {
+    const entry = { ...sampleAt(stagePhasing, mission), m: vehicle.s2Dry, q: 0, load: 0, engines: 0 };
+    return describe(entry, mission, unit(entry.v));
+}
+// The ISS in the pad's frame at a time, drawn with Earth turned as at `turn` (see paths).
+export const issPosition = (time, turn = time) => toPad(issAt(time), turn, true);
+export const inertialToPad = (r, turn) => toPad(r, turn, true);
 // The booster after separation: flipping tail-first over 4-40 s, then flying tail-first into the air stream.
 export function boosterState(mission) {
     // Once down it stays on the barge: freeze the clock there, so Earth's turning does not carry its inertial
@@ -259,15 +344,21 @@ export const droneship = (() => {
     const position = toPad(sim.landing.r, sim.landing.at, true), up = unit([position[0], position[1] + R, position[2]]);
     return { position, up, downrange: Math.acos(cosineAt(sim.landing.r, sim.landing.at)) * R };
 })();
-// The two flight paths as dots, one a second, in the pad's frame (each where it was over the turning Earth then):
-// the rocket and Dragon from liftoff, the booster from separation to the barge.
+// The flight paths as inertial points with their times: the rocket and Dragon from liftoff to Waypoint 0 (a point a
+// second for the ascent, every 10 s in orbit), the booster from separation to the barge. The view turns them into the
+// pad's frame: the ascent and the booster where they flew over the turning Earth (each at its own time), Dragon's
+// orbits as they stand in space now (all at the present time, or at the end of the ascent before then), so the line
+// runs on unbroken from the ground track into orbit and up to the station.
 export const paths = {
-    rocket: Array.from({ length: guidance.end + 1 }, (_, t) => ({ t, position: toPad(sampleAt(sim.stack, t).r, t, true) })),
+    rocket: [...Array.from({ length: guidance.end + 1 }, (_, t) => ({ t, r: sampleAt(sim.stack, t).r })),
+        ...dragonPhasing.list.filter(entry => entry.t > guidance.end && entry.t <= rendezvousTime).map(entry => ({ t: entry.t, r: entry.r }))],
     booster: sim.landing ? Array.from({ length: Math.floor(sim.landing.at - guidance.separation) + 1 }, (_, k) => {
-        const t = guidance.separation + k; return { t, position: toPad(sampleAt(sim.booster, t).r, t, true) };
+        const t = guidance.separation + k; return { t, r: sampleAt(sim.booster, t).r };
     }) : []
 };
+export const groundTrackEnd = guidance.end;   // up to here the rocket's path follows the ground
 export const summary = {
+    phasing: dragonPhasing.burns, rendezvousTime,
     meco: describe(sampleAt(sim.stack, guidance.meco), guidance.meco, [0, 1, 0]), orbit: sim.insertion, maxQ: sim.maxQ, reserve: sim.reserve,
     boosterApogee: sim.apogee, landing: sim.landing && { at: sim.landing.at, speed: sim.landing.speed, propellantLeft: sim.landing.m - vehicle.s1Dry }
 };
