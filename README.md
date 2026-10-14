@@ -19,8 +19,11 @@ Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 | `js/ui/` | `ghost` (khối mờ, nét viền), `rendezvous-guide` (đường tiếp cận, điểm chờ, vùng cấm 200 m), `controller` (chọn bộ phận, góc nhìn, nhãn, nút bấm, vòng lặp khung hình) |
 | `js/orbit/sky.js` | bầu trời thật dùng chung: Trái Đất (ngày, đêm, mây), ISS, Mặt Trăng, Mặt Trời, sao, theo giờ hiện tại; vẽ cả nền Trái Đất sau trạm. Tải khi mở lần đầu |
 | `js/orbit/view.js` | góc nhìn quỹ đạo: khung ISS / Earth & Moon / Sun, zoom ra tới 600 triệu km, tua nhanh thời gian |
-| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ), `ground` (ảnh mặt đất quanh bệ, tháp, khói, bầu trời trong khí quyển), `view` (camera, hai lượt vẽ, bảng điều khiển). Tải khi mở lần đầu |
+| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, 39B, VAB, LCC, HIF, bồn chứa), `exhaust` (khói ở bệ và vệt khói trôi theo gió), `view` (camera, hai lượt vẽ, bảng điều khiển). Tải khi mở lần đầu |
 | `js/sim/ascent.js` | mô phỏng bay Falcon 9 (lực đẩy, lực cản, khí quyển, Trái Đất quay) và tầng 1 quay về sà lan, tua thời gian; chỉ có toán |
+| `js/sim/plume.js` | luồng xả Merlin theo điều kiện bay (giãn nở đẳng entropy, chu kỳ sóng sốc, trộn khí, cháy tiếp); chỉ có toán |
+| `js/sim/wind.js` | gió ở Cape Canaveral lúc phóng Demo-2 theo độ cao (bóng thám không KXMR, trạm mặt đất); chỉ có dữ liệu |
+| `js/parts/draco.js` | 16 động cơ Draco của Crew Dragon: vị trí, chọn động cơ theo hướng cần đẩy, tia lửa và khói; dùng chung cho trạm và Launch |
 | `js/sim/rendezvous.js` | mô hình tiếp cận của Crew Dragon (Clohessy–Wiltshire, lịch Crew-2), chỉ có toán |
 | `js/sim/orbit.js` | quỹ đạo từ TLE: SGP4 (satellite.js), bóng Trái Đất, vết trên mặt đất; vị trí Mặt Trời, Mặt Trăng, quỹ đạo Trái Đất (astronomy-engine) |
 | `js/sim/eva.js` | mô hình chuyển động của phi hành gia EVA (khung xương, leo tay vịn, dây, súng PGT), không chứa lưới |
@@ -69,7 +72,13 @@ Theo lịch ghép nối Crew-2 (24/4/2021) và tốc độ của Demo-2. Thời 
 | Tiếp cận cuối | 5 phút | 7 cm/s, chạm cổng ở 5 cm/s | ×4 |
 | Bắt mềm → móc khóa xong | 13 phút | | ×60 |
 
-Nắp mũi đóng suốt chặng xa và chỉ mở khi Dragon dừng ở điểm 2, cách 20 m (chủ ý trình bày: ngoài thực tế nắp mở khoảng một phút sau khi tách tầng hai). Hai động cơ Draco phía trước nằm dưới nắp nên chỉ phun khi nắp đã mở; trước đó việc hãm tốc dùng các vòi chếch về trước ở bốn cụm bên sườn. Xem Dragon (bấm ô CREW DRAGON) thì khung hình bám theo Dragon và phần đường còn lại, kèm đường đi dự kiến, các điểm chờ, vùng cấm 200 m. Ở góc nhìn toàn trạm, khi Dragon ở ngoài khung, một đường chỉ hướng và khoảng cách nằm ở mép màn hình.
+Nắp mũi đóng suốt chặng xa và chỉ mở khi Dragon dừng ở điểm 2, cách 20 m (chủ ý trình bày: ngoài thực tế nắp mở khoảng một phút sau khi tách tầng hai).
+
+Động cơ Draco (`js/parts/draco.js`): Crew Dragon có 16 chiếc, mỗi chiếc 400 N (90 lbf), Isp 300 s, nhiên liệu MMH và N₂O₄ tự bốc cháy khi gặp nhau, bật tắt theo xung ngắn tới 30 ms.
+- 4 chiếc hướng về trước ở vách trước, cạnh vòng ghép, dưới nắp mũi. Vị trí lấy đúng từ lưới của model; chúng chỉ phun khi nắp đã mở và lo các lần đốt lớn (đốt nâng quỹ đạo, đốt rời quỹ đạo).
+- 12 chiếc trong bốn cụm SuperDraco, mỗi cụm 3: một chếch ra sau, hai chiếc ngang (xoay, dịch ngang theo cặp). Vỏ cụm che kín nên vị trí bên trong được đặt theo nhiệm vụ của từng chiếc.
+- Chọn động cơ: chiếc nào có lực đẩy (ngược hướng khí phụt) gần hướng cần đẩy nhất thì phun. Mỗi lần đốt của chặng chuyển kéo dài đúng thời gian thật quy theo nhịp tua (ít nhất 1 giây trên màn hình); dọc trục ghép thì phun theo xung; giữa các lần đốt, thỉnh thoảng một cặp động cơ ngang ở hai cụm đối diện phun xung ngắn để giữ tư thế.
+- Hình ảnh: tia lửa ngắn ở miệng ống, rồi khói trắng phun ra theo hình nón khoảng 30°, loang và tan trong chưa tới một giây (dưới nắng, giọt nhiên liệu chưa cháy và hơi ngưng tụ hiện màu trắng). Xem Dragon (bấm ô CREW DRAGON) thì khung hình bám theo Dragon và phần đường còn lại, kèm đường đi dự kiến, các điểm chờ, vùng cấm 200 m. Ở góc nhìn toàn trạm, khi Dragon ở ngoài khung, một đường chỉ hướng và khoảng cách nằm ở mép màn hình.
 
 ## Góc nhìn quỹ đạo
 
@@ -99,7 +108,7 @@ Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó s
 
 ## Góc nhìn Launch
 
-Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−10 s và chạy tới khi Dragon đến Waypoint 0, 400 m dưới ISS, sau 18 giờ 08 phút. Hai nút **Rocket & Dragon** / **Booster** chọn bám theo tên lửa lên quỹ đạo hay tầng 1 bay về sà lan; mỗi bên có nhịp tua riêng (chậm lại quanh các lần đốt và lúc đáp).
+Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−10 s và chạy tới khi Dragon đến Waypoint 0, 400 m dưới ISS, sau 18 giờ 08 phút. Hai nút **Rocket & Dragon** / **Booster** chọn bám theo tên lửa lên quỹ đạo hay tầng 1 bay về sà lan; mỗi bên có nhịp tua riêng (chậm lại quanh các lần đốt và lúc đáp). Mỗi lần đốt nâng quỹ đạo của Dragon chạy ở ×90 thay vì ×1.500: Dragon xoay tấm chắn nhiệt theo hướng đốt (4 Draco phía trước đẩy nó lùi về sau), phun Draco suốt thời gian đốt (404, 366, rồi khoảng 44 s mỗi lần, với 1,6 kN trên 12,5 t), rồi xoay lại.
 
 ### Mô phỏng bay (`js/sim/ascent.js`)
 
@@ -129,6 +138,35 @@ Không còn nội suy telemetry: đường bay được tích phân (Runge–Kut
 | 17:21:57 | khởi đầu pha cuối (TPI): nửa vòng lên 419,6 km | mô phỏng |
 | 18:08:15 | Waypoint 0, 400 m dưới ISS; nút *On to the station* chuyển sang chặng tiếp cận | mô phỏng |
 
+### Luồng xả và gió
+
+- **Lửa động cơ (`js/sim/plume.js`):** Merlin 1D có buồng đốt 9,7 MPa, tỉ lệ diện tích miệng phun 16, γ 1,22. Giãn nở đẳng entropy cho khí ra ở Mach 3,68 và 62 kPa: ở mặt đất luồng xả hơi quá giãn nở (mép thu vào, có chuỗi "kim cương" sóng sốc cách nhau khoảng 3 m), khớp áp suất ở khoảng 4 km, càng lên cao càng thiếu giãn nở và nở bung.
+  - Chu kỳ sóng sốc theo Pack (1950), khoảng cách đĩa Mach theo Lewis & Carlson (1964), góc bẻ mép luồng theo Prandtl–Meyer.
+  - Lõi nóng dài 4,2 + 1,1·M² lần đường kính (Lau, Morris & Fisher 1979), ngắn lại theo căn tỉ khối khí phụt/không khí (Witze 1974), và dài ra theo (1 + λ)/(1 − λ) khi tên lửa chạy nhanh dần trong chính luồng khí của nó (Brown & Roshko 1974). Đây là cùng luật đồng lưu đã dùng cho hầm gió động cơ ở trang sân bay.
+  - Ngọn lửa cháy tiếp (afterburning) với oxy kéo vào: dài khoảng 72 m lúc cất cánh, khoảng 200 m ở 15 km, tắt dần khi không khí loãng. Từ khoảng 12 km có quầng luồng xả mờ nở rộng; quanh 60 km đó là "con sứa" thường thấy lúc chạng vạng.
+  - Chín động cơ: mỗi chiếc có tia riêng vài chu kỳ sóng sốc đầu, rồi nhập thành một luồng. Động cơ châm bằng TEA-TEB loé xanh lá trong khoảng nửa giây: lúc đánh lửa ở bệ, đốt vào khí quyển, đốt hạ cánh và khi MVac khởi động.
+  - Khi đốt ngược dòng khí (tầng 1 vào khí quyển và hạ cánh), luồng xả chỉ vươn tới nơi lực đẩy còn thắng được áp suất động, khoảng 1,4·√(F/q); phần còn lại bị ép thành chén rộng quanh đuôi.
+- **Gió (`js/sim/wind.js`):** gió thật lúc 19:22 UTC ngày 30/5/2020.
+  - Trên cao: bóng thám không Cape Canaveral (KXMR) lúc 12 và 00 UTC, nội suy theo thời gian.
+  - Mặt đất: trạm Shuttle Landing Facility và Skid Strip, 170–180° khoảng 9 kt, giảm theo hàm log sát đất.
+  - Profile: gió biển từ đông nam ở 1 km thấp nhất, gió tây mạnh dần tới 20–27 m/s ở 10–15 km, gió đông nhẹ trên 19 km.
+  - Nguồn: Iowa Environmental Mesonet.
+- **Khói ở bệ (`js/launch/exhaust.js`):** khói ra từ ba nguồn.
+  - Cuối rãnh lửa phía bắc, khi luồng xả còn đập vào bộ làm lệch hướng.
+  - Mặt bệ, khi tên lửa lên đủ cao để luồng xả đập thẳng vào mặt bệ.
+  - Hơi nước từ hệ phun nước quanh giá phóng.
+  - Mỗi cụm khói là một khối tia rối:
+    - chậm dần theo 1/(1 + v₀t/L) (suy giảm của tia tròn);
+    - to dần theo lượng khí cuốn vào, bằng một phần mười tốc độ tương đối;
+    - bốc lên khi còn nóng;
+    - rung theo bước Langevin như khói ở trang sân bay;
+    - trôi theo gió.
+  - Lăn trên mặt đất và mặt gò. Nhảy thời gian thì phát lại từ lúc đánh lửa.
+- **Vệt khói trên trời:** các cụm khói đặt ở đuôi ngọn lửa dọc đường bay.
+  - Mỗi cụm trôi theo gió ở đúng độ cao của nó và loang theo khuếch tán rối (nhanh hơn ở 2 km thấp nhất, nơi không khí chiều đang đối lưu).
+  - Đặc và trắng ở tầng thấp ẩm, thành vệt ngưng tụ quanh 10 km, mờ trên 30 km.
+  - Gió đổi chiều theo độ cao nên vệt cong và xoắn dần như ảnh phóng thật.
+
 ### Chặng bám đuổi tới ISS
 
 - Từ cuối mô phỏng phóng, Dragon bay tiếp hai vật thể (không lực cản, không J2), bước 10 s, đốt Draco tức thời theo cặp Hohmann như cách Dragon bám đuổi: 216 → 380 km, 380 → 400 km (20 km dưới trạm, quỹ đạo coelliptic), rồi nửa vòng cuối tới 419,6 km. Tổng khoảng 120 m/s.
@@ -145,7 +183,7 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
 
 - Đường bay chấm: xanh cho tên lửa và Dragon, cam cho tầng 1 quay về; sáng ở đoạn đã bay, mờ ở đoạn sắp bay. Chấm đặt dọc đường bay (điểm mỗi giây từ mô phỏng) với khoảng cách tăng theo khoảng cách tới camera (khoảng 1° trên màn hình), nên gần hay xa đều thấy một hàng chấm đều. Một quả cầu vô hình thấp hơn mặt đất 3 km che đoạn đường bay khuất sau đường chân trời.
 - Màn hình phụ ở góc trên bên phải: từ lúc tách tầng, hiện chiếc còn lại (tầng 1 bay về khi màn chính theo Dragon, hoặc ngược lại), có camera tự bám riêng; bấm vào để đổi chỗ hai màn. Vẽ bằng cùng renderer, trong một vùng cắt (scissor) của canvas.
-- Thời gian chạy nhanh dần: ×1 quanh lúc cất cánh và các lần tách, tới ×17 ở giữa. Bấm một mốc trong danh sách để nhảy tới trước mốc đó 4 giây (mốc của tầng 1 tự chuyển sang bám Booster).
+- Thời gian chạy nhanh dần: ×1 quanh lúc cất cánh và các lần tách, tới ×17 ở giữa. Bấm một mốc trong danh sách để nhảy tới trước mốc đó 4 giây (mốc của tầng 1 tự chuyển sang bám Booster; mốc đốt nâng quỹ đạo nhảy tới lúc Dragon bắt đầu xoay).
 - Camera tự bám: bên bệ lúc cất cánh, rồi bên hông tên lửa, sát chỗ tách tầng, trên Dragon; hoặc theo tầng 1 rơi xuống và hạ thấp cạnh sà lan. Kéo chuột để xoay, lăn chuột để ra xa tới 3.000 km. Nút *Follow* trả lại camera tự động.
 - Hai lượt vẽ: bầu trời thật (`sky.js`, đúng ngày giờ Demo-2, đơn vị km) nhìn từ vị trí thật của camera trên quả địa cầu, rồi bệ phóng, mặt đất, tên lửa trong hệ toạ độ của bệ (đơn vị m: x đông, y lên, z nam).
 - Mặt đất: bốn vòng ô ảnh quanh bệ, mỗi vòng 4 × 4 ô, tải từ máy chủ khi mở lần đầu (64 ô, vài MB). Gần nhất là ảnh USGS National Map (public domain) khoảng 2 m, 17 m, 130 m mỗi điểm ảnh. Ngoài cùng là NASA Blue Marble (GIBS, public domain) khoảng 1 km mỗi điểm ảnh ra tới 1.100 km, mép mờ dần vào bản đồ Trái Đất. Ngoài lãnh thổ Mỹ, ô USGS trong suốt nên vòng thô hơn hiện ra.
@@ -154,9 +192,20 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
   - Tháp cố định (FSS) cách giá phóng 26 m về phía tây: 12 m vuông, sàn mỗi 6,1 m (20 ft), mái ở 87 m, cột thu lôi tới 110 m. Hai dây thu lôi kéo từ đỉnh cột xuống mỏ neo cách 340 m về phía bắc và nam.
   - Tay đón phi hành đoàn ở mức 66 m (217 ft), xoay ra khỏi tên lửa như lúc cất cánh, đầu là phòng trắng.
   - Giàn dựng (TE) ở phía nam tên lửa, phía nó đi lên dốc từ nhà lắp ráp HIF, ngả ra sau khi kẹp mở. Khung đế chạy xuống dốc.
-  - Rãnh lửa rộng 18 m chạy 105 m về phía bắc. Khói thoát ra cuối rãnh, một phần là hơi nước từ hệ phun nước quanh giá phóng.
+  - Gò bệ: mặt bê tông 119 × 99 m (390 × 325 ft) cao hơn mặt đất 12 m (48 ft trên mực nước biển), sườn dốc 1:2,5, góc vát nên gần bát giác. Dốc 5% đi lên từ phía nam (đường crawlerway) dài 240 m.
+  - Ảnh vệ tinh phủ lên gò theo một lưới đi đúng các đường gãy (mỗi 3 m, và đúng dọc tường rãnh), nên mép rãnh thẳng. Sườn gò được tô thêm bóng theo vị trí Mặt Trời lúc phóng (cao 61°, hướng tây tây nam).
+  - Giá phóng bằng thép bắc ngang miệng rãnh: bốn chân đứng ngoài tường rãnh, giữa để trống cho luồng xả đi xuống.
+  - Rãnh lửa rộng 18 m, đáy ở mặt đất, tường cao bằng gò hai bên. Rãnh chạy 110 m về phía bắc; dưới giá phóng là bộ làm lệch hướng bẻ luồng xả về bắc.
   - Tháp nước giảm âm cao 89 m, cách 129 m về phía bắc và 77 m về phía đông. Bồn cầu oxy lỏng ở góc tây bắc, bồn cầu hydro cũ ở góc đông bắc.
-  - Chưa có: gò đất nâng mặt bệ cao khoảng 15 m (ảnh mặt đất phẳng), các toà nhà nhỏ, ống dẫn.
+- Khu phóng 39 quanh bệ (`js/launch/complex.js`). Đường viền và vị trí lấy từ OpenStreetMap, đối chiếu với ảnh USGS; kích thước theo NASA. Các công trình xây sau Demo-2 (tháp Starship ở 39A, bồn hydro mới ở 39B) không đưa vào.
+  - Nhà lắp ráp ngang HIF của SpaceX dưới chân dốc: 95 × 48 m, cao khoảng 20 m, cửa lớn quay về bệ; hai ray của giàn dựng chạy từ cửa lên dốc tới giá phóng.
+  - Nhà hỗ trợ Falcon, Operations Building No. 1, kho nhiên liệu hypergol và N₂O₄, các cụm bồn nằm ngang (nitơ, heli, nhiên liệu) trên bệ đỡ.
+  - Bệ 39B cách 2,7 km về phía tây bắc, đúng như ngày Demo-2: bệ trống (đã tháo tháp phục vụ), gò và rãnh lửa, sáu trụ đỡ bệ phóng di động. Ba tháp thu sét cao 183 m (600 ft), thân lưới tới 152 m và cột sợi thủy tinh ở trên, nối nhau bằng dây thu lôi và neo xuống đất. Thêm tháp nước giảm âm, bồn cầu hydro và oxy. Từ chỗ đặt camera lúc cất cánh, 39B hiện ngay sau tên lửa.
+  - Tòa nhà lắp ráp VAB cách 5,3 km về phía tây nam, lệch 13,4° theo lưới khu công nghiệp KSC.
+    - Khối high bay 137 × 157 m, cao 160 m, ở đầu bắc; mỗi mặt đông và tây có hai cửa cao 139 m (cửa dưới rộng 46 m, cửa trên 23 m).
+    - Khối low bay 84 × 134 m, cao 64 m, ở đầu nam.
+    - Lá cờ Mỹ treo dọc 63,7 × 33,5 m và biểu tượng NASA trên mặt nam.
+  - Trung tâm điều khiển phóng LCC ở góc đông nam của VAB, cửa kính các phòng điều khiển nhìn về phía hai bệ, nối với VAB bằng cầu.
 - Sà lan và các công trình là mô hình giản lược. Xi lanh của chân đáp ẩn khi chân bung (chúng không co giãn).
 
 ## Hiệu năng
@@ -195,5 +244,7 @@ Phần lớn trạm dựng bằng code three.js theo số đo từ tệp mẫu `
 | [Falcon 9 - SpaceX](https://sketchfab.com/3d-models/falcon-9-spacex-394f7cf52d124bbd9db69f24d1ff2f08) | Stanley Creative | CC BY 4.0, đã bỏ fairing và cụm bản lề chân đáp, tách 4 cánh lưới và 4 chân đáp, lượng tử hoá lưới (`falcon9.py`) |
 
 Ảnh mặt đất quanh bệ phóng: [USGS National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map) và NASA [GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) (Blue Marble), đều là public domain.
+
+Đường viền và vị trí các công trình quanh khu phóng 39: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL). Gió lúc phóng: bóng thám không KXMR và trạm KTTS, KXMR từ [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/).
 
 Model *Falcon 9 - Crew Dragon* của KUBAHA (CC BY 4.0) không dùng: lưới gộp theo vật liệu nên không tách tầng được, và kích thước lệch thật (cao 64,6 m, rộng 4,14 m).

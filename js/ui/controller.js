@@ -66,7 +66,7 @@ function applyGhost() {
         entry.ghost = ghost;
         entry.group.traverse(child => {
             if (child.userData.lineArt) { child.visible = ghost; return; }
-            if (!child.isMesh) return;
+            if (!child.isMesh || child.userData.puff) return;
             if (ghost) {
                 child.userData.solidMaterial = child.material; child.userData.solidShadow = child.castShadow;
                 child.material = Array.isArray(child.material) ? child.material.map(ghostMaterial) : ghostMaterial(child.material); child.castShadow = false;

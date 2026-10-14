@@ -9,9 +9,11 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { renderer, viewport } from '../core/stage.js';
-import { animationAt, animationDuration, boosterState, countdown, droneship, eventAt, events, groundTrackEnd, inertialToPad, issAltitude, issPosition, launchEpoch, launchSite, missionAt, padFrame, paths, stageState, vehicleState, warpAt } from '../sim/ascent.js';
+import { animationAt, animationDuration, boosterState, countdown, dracoBurns, droneship, eventAt, events, flightData, groundTrackEnd, inertialToPad, issAltitude, issPosition, launchEpoch, launchSite, missionAt, padFrame, paths, stageState, vehicleState, warpAt } from '../sim/ascent.js';
 import { toScene } from '../orbit/sky.js';
-import { createGround, mountHeight } from './ground.js';
+import { createGround, mountHeight, padDeck } from './ground.js';
+import { createExhaust } from './exhaust.js';
+import { attitudePulses, dracoNozzles } from '../parts/draco.js';
 import { createVehicle } from './vehicle.js';
 
 const smooth = (value, from, to) => THREE.MathUtils.smoothstep(value, from, to);
@@ -26,6 +28,8 @@ export async function createLaunchView(sky) {
     // The atmosphere is drawn on its own before the rest (it blends over the sky behind; drawn with the scene's
     // transparent objects it would veil the ground).
     const ground = createGround(), atmosphere = new THREE.Scene(); scene.add(ground.group); atmosphere.add(ground.sky);
+    // The exhaust cloud at the pad and the trail up through the air, drifting on the day's wind.
+    const exhaust = createExhaust(); scene.add(exhaust.group);
     // Booster, second stage and Dragon fly together until each separation.
     const booster = new THREE.Group(), upper = new THREE.Group(), capsule = new THREE.Group();
     booster.add(vehicle.firstStage); upper.add(vehicle.secondStage); capsule.add(vehicle.dragon);
@@ -155,7 +159,9 @@ export async function createLaunchView(sky) {
         const item = document.createElement('li'), button = document.createElement('button');
         button.type = 'button'; button.innerHTML = '<span>' + clock(event.at) + '</span>' + event.label;
         button.addEventListener('click', () => {
-            setFocus(event.booster ? 'booster' : 'rocket'); jump(event.at <= 0 ? 0 : animationAt(event.at - 4, focus)); setFollow(true); setPlaying(true);
+            // A phasing burn starts as Dragon begins turning to burn attitude.
+            const burn = dracoBurns.find(entry => Math.abs(entry.at - event.at) < 1), from = burn ? burn.at - burn.seconds / 2 - burn.turn : event.at - 4;
+            setFocus(event.booster ? 'booster' : 'rocket'); jump(event.at <= 0 ? 0 : animationAt(from, focus)); setFollow(true); setPlaying(true);
         });
         item.append(button); list.append(item); return item;
     });
@@ -180,13 +186,25 @@ export async function createLaunchView(sky) {
     // Poses at a mission time: positions from the simulation (the rocket's base raised onto the launch mount, the
     // booster's onto its legs), the long axis along the thrust or, for the falling booster, tail-first into the air.
     const up = new THREE.Vector3(0, 1, 0), localUp = new THREE.Vector3(), direction = new THREE.Vector3();
-    function place(group, state, lift = mountHeight) {
+    const standing = padDeck + mountHeight;   // the engines' bottom above the ground on the pad
+    function place(group, state, lift = standing) {
         group.position.set(...state.position);
         localUp.set(state.position[0], state.position[1] + 6371000, state.position[2]).normalize();
         group.position.addScaledVector(localUp, lift);
         group.quaternion.setFromUnitVectors(up, direction.set(...state.direction));
     }
     const separation = eventAt('separation'), ignition = eventAt('ses'), landing = eventAt('landing');
+    // Dragon's phasing burns: how far turned to burn attitude (0-1) and whether the Dracos are firing.
+    const flip = new THREE.Quaternion(), sideways = new THREE.Vector3(1, 0, 0), firing = new Float32Array(dracoNozzles.length), turnPivot = new THREE.Vector3(), turnArm = new THREE.Vector3();
+    function burnNow(mission) {
+        for (const burn of dracoBurns) {
+            const start = burn.at - burn.seconds / 2, end = burn.at + burn.seconds / 2;
+            if (mission < start - burn.turn || mission > end + burn.turn) continue;
+            const turned = smooth(mission, start - burn.turn, start - 25) * (1 - smooth(mission, end + 25, end + burn.turn));
+            return { turned, on: mission >= start && mission <= end ? Math.min(1, (mission - start) / 2, (end - mission) / 2) : 0 };
+        }
+        return { turned: 0, on: 0 };
+    }
     const axis = new THREE.Vector3();
     let state = vehicleState(countdown), boosterNow = state;
     function pose() {
@@ -194,11 +212,22 @@ export async function createLaunchView(sky) {
         place(upper, state.dragon ? stageState(mission) : state);
         upper.visible = mission < 5800;
         axis.set(0, 1, 0).applyQuaternion(upper.quaternion);
-        if (state.dragon) place(capsule, state);
+        if (state.dragon) {
+            place(capsule, state);
+            // Burn attitude: for each phasing burn Dragon turns its heat shield along the burn (the forward Dracos push
+            // it backward) and turns back after.
+            const burn = burnNow(mission);
+            if (burn.turned > 0) {
+                // Turned about the capsule's own middle (the group's origin is the stack's base, 60 m back).
+                const middle = (vehicle.secondStageTop + vehicle.dragonTop) / 2, pivot = stackPoint(capsule, middle, turnPivot);
+                capsule.quaternion.multiply(flip.setFromAxisAngle(sideways, Math.PI * burn.turned));
+                capsule.position.copy(pivot).sub(turnArm.set(0, middle, 0).applyQuaternion(capsule.quaternion));
+            }
+        }
         else { capsule.position.copy(upper.position); capsule.quaternion.copy(upper.quaternion); }
         boosterNow = mission < separation ? state : boosterState(mission);
         if (mission < separation) { booster.position.copy(upper.position); booster.quaternion.copy(upper.quaternion); }
-        else place(booster, boosterNow, mountHeight - 3.2 * smooth(mission, landing - 60, landing - 20));   // down onto its legs' reach (2.8 m below the engines)
+        else place(booster, boosterNow, standing - (standing - 2.8) * smooth(mission, landing - 60, landing - 20));   // down onto its legs' reach (2.8 m below the engines)
         vehicle.setFins(smooth(mission - separation, 10, 16));
         vehicle.setLegs(smooth(mission, landing - 9, landing - 4));
         // Springs push Dragon off the second stage; it draws away at about 0.4 m/s.
@@ -208,16 +237,16 @@ export async function createLaunchView(sky) {
         vehicle.setNose(smooth(mission, eventAt('nosecone'), eventAt('nosecone') + 6));
         // Engines: the Merlins as the simulation fires them (nine, throttled through Max-Q and for the crew's 3.1 g;
         // three for the entry burn; one, throttled, to land), and the vacuum Merlin.
-        const engines = mission < separation ? Math.max(0, state.engines) : boosterNow.engines;
-        vehicle.setFirstPlume(engines, boosterNow.altitude, performance.now() / 1000);
-        vehicle.setSecondPlume(state.engines < 0, performance.now() / 1000);
-        ground.updateSmoke(mission, daylight);
+        const engines = mission < separation ? Math.max(0, state.engines) : boosterNow.engines, now = performance.now() / 1000;
+        const lit = mission < separation ? eventAt('ignition') : mission < flightData.landingStart - 1 ? flightData.entry : flightData.landingStart;   // when these engines lit
+        vehicle.setFirstPlume({ engines, altitude: boosterNow.altitude, airspeed: boosterNow.speed, retro: mission > separation, since: mission - lit }, now);
+        vehicle.setSecondPlume(state.engines < 0, now, mission - ignition);
     }
 
     // Camera: a spot by the pad for liftoff, then alongside the stack, close in on each separation, and on Dragon at
     // the end. It follows until someone drags it; it keeps following the vehicle with their angle after that.
     const target = new THREE.Vector3(), goalTarget = new THREE.Vector3(), goalOffset = new THREE.Vector3(), offset = new THREE.Vector3();
-    const side = new THREE.Vector3(), back = new THREE.Vector3(), point = new THREE.Vector3(), lookout = new THREE.Vector3(150, 14, 175);
+    const side = new THREE.Vector3(), back = new THREE.Vector3(), point = new THREE.Vector3(), lookout = new THREE.Vector3(150, 32, 175);
     function stackPoint(group, height, target) { return target.set(0, height, 0).applyQuaternion(group.quaternion).add(group.position); }
     function goal(kind, goalTarget, goalOffset) {
         if (kind === 'booster' && mission > separation + 1) {
@@ -233,7 +262,7 @@ export async function createLaunchView(sky) {
         side.crossVectors(back, up); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
         if (mission < 26) {
             stackPoint(upper, 36, goalTarget);
-            goalTarget.lerp(point.set(0, 30, 0), 1 - smooth(mission, 0, 12));   // the pad stays in frame for the first seconds
+            goalTarget.lerp(point.set(0, padDeck + 30, 0), 1 - smooth(mission, 0, 12));   // the pad stays in frame for the first seconds
             goalOffset.copy(lookout).sub(goalTarget);
             // Ease out toward the chase position from 18 s.
             const blend = smooth(mission, 18, 26);
@@ -307,6 +336,7 @@ export async function createLaunchView(sky) {
     }
 
     let readoutClock = 0, lastReached = null;
+    const flame = { position: new THREE.Vector3(), strength: 0, range: 40 }, flameDown = new THREE.Vector3();
     const speedText = metres => Math.round(metres * 3.6).toLocaleString('en-US') + ' km/h';
     function readout() {
         field('launch-clock').textContent = clock(mission);
@@ -337,7 +367,7 @@ export async function createLaunchView(sky) {
         }
         stationButton.hidden = mission < eventAt('nosecone') + 6;
         const tiles = ground.status.loading;
-        field('launch-source').textContent = (tiles ? 'Loading ground imagery (' + tiles + ' tiles)… · ' : '') + 'Simulated flight, fitted to NASA Demo-2 and DM-1 telemetry · model: Stanley Creative, CC BY 4.0 · imagery: USGS, NASA GIBS';
+        field('launch-source').textContent = (tiles ? 'Loading ground imagery (' + tiles + ' tiles)… · ' : '') + 'Simulated flight, fitted to NASA Demo-2 and DM-1 telemetry · model: Stanley Creative, CC BY 4.0 · imagery: USGS, NASA GIBS · buildings: © OpenStreetMap contributors · winds: Iowa Environmental Mesonet';
     }
 
     function update(delta) {
@@ -349,6 +379,22 @@ export async function createLaunchView(sky) {
         // The wheel speeds up with distance, from metres off the rocket out to whole orbits.
         controls.zoomSpeed = THREE.MathUtils.clamp(1 + .5 * Math.log10(Math.max(1, camera.position.distanceTo(controls.target) / 100)), 1, 4);
         controls.update(delta);
+        camera.updateMatrixWorld();
+        // The cloud and the trail, lit by the Sun and, near the pad, by the flame.
+        flameDown.set(0, -1, 0).applyQuaternion(booster.quaternion);
+        flame.position.copy(booster.position).addScaledVector(flameDown, 8 + vehicle.firstState.flame * .25);
+        flame.strength = vehicle.firstState.strength * (1 - smooth(boosterNow.altitude, 150, 2500)) * 1.3;
+        flame.range = 30 + vehicle.firstState.flame * .35;
+        exhaust.update(mission, camera, sunLocal, daylight, flame);
+        // Dragon's Dracos: the forward four through each phasing burn, attitude-trim pulses on its own before that.
+        firing.fill(0);
+        if (mission > eventAt('dragon') + 2) {
+            const burn = burnNow(mission);
+            if (burn.on > 0) for (let k = 0; k < 4; k++) firing[k] = burn.on * (.9 + .1 * Math.sin(time * 40 + k));
+            else if (playing) attitudePulses(time, firing);
+            if (mission < eventAt('nosecone') + 6) for (let k = 0; k < 4; k++) firing[k] = 0;   // under the closed cone
+        }
+        vehicle.setDracos(playing ? delta : 0, firing);
         readoutClock -= delta;
         if (readoutClock <= 0) { readout(); readoutClock = .1; }
     }

@@ -73,7 +73,7 @@ function creaseSegments(geometry, degrees) {
 export function scheduleLineArt() {
     const jobs = new Map();
     for (const entry of parts.values()) entry.group.traverse(child => {
-        if (!child.isMesh || child.isSkinnedMesh || child.userData.interior) return;
+        if (!child.isMesh || child.isSkinnedMesh || child.userData.interior || child.userData.puff) return;   // no outlines on thruster exhaust
         if (!jobs.has(child.parent)) jobs.set(child.parent, { entry, parent: child.parent, meshes: [] });
         jobs.get(child.parent).meshes.push(child);
     });

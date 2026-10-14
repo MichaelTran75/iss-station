@@ -254,10 +254,26 @@ export const events = [
 export const eventAt = key => events.find(event => event.key === key).at;
 export const countdown = -10, ascentDuration = rendezvousTime + 20;   // from ten seconds before liftoff to Waypoint 0
 
-// Time warp by stretch of the flight: real time at liftoff and round each separation, faster in between. Following
-// the booster, real time round its burns and landing instead.
+// Dragon's phasing burns on its four forward Dracos (1.6 kN on 12.5 t): when, how long, and the window round each
+// for turning to burn attitude (heat shield along the burn) and back.
+export const dracoBurns = dragonPhasing.burns.map(burn => ({ at: burn.at, seconds: burn.deltaV * vehicle.payload / (4 * 400), turn: 150 }));
+// Time warp by stretch of the flight: real time at liftoff and round each separation, faster in between, slower
+// round Dragon's burns so its turn and its Dracos show. Following the booster, real time round its burns and landing
+// instead.
+function slowForBurns(plan, warp) {
+    const out = plan.slice();
+    for (const burn of dracoBurns) {
+        const from = burn.at - burn.seconds / 2 - burn.turn - 20, to = burn.at + burn.seconds / 2 + burn.turn + 20;
+        const before = out.filter(([at]) => at <= from).pop()[1], after = out.filter(([at]) => at <= to).pop()[1];
+        if (before < 1000) continue;   // only out in the long coasts (the last burn, at Waypoint 0, already plays slowly)
+        for (let k = out.length - 1; k >= 0; k--) if (out[k][0] > from && out[k][0] <= to) out.splice(k, 1);
+        out.push([from, warp], [to, after]);
+        out.sort((a, b) => a[0] - b[0]);
+    }
+    return out;
+}
 const warpPlans = {
-    rocket: [[countdown, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5], [790, 60], [1000, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15]],
+    rocket: slowForBurns([[countdown, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5], [790, 60], [1000, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15]], 90),
     booster: [[countdown, 1], [20, 6], [140, 1.5], [185, 12], [eventAt('entry') - 6, 1.5], [eventAt('entry') + 26, 8], [eventAt('landingburn') - 12, 1], [eventAt('landing') + 6, 12], [eventAt('landing') + 60, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15]]
 };
 function plan(name) {

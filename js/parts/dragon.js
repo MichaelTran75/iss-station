@@ -7,6 +7,7 @@ import { ghostOpacity, part, pma2BaseZ, pmaReferenceLength, pmaReferenceOffset, 
 import { modernSolar, payloadCanvas, payloadPillow } from '../core/surfaces.js';
 import { pmaArray } from '../core/pma.js';
 import { createRendezvous, issMeanMotion, rendezvousWaypoints } from '../sim/rendezvous.js';
+import { attitudePulses, createDracoPlumes, dracoNozzles, dracoThrust, selectDracos } from './draco.js';
 
 // BEGIN DRAGON REFERENCE: Crew Dragon measured from the supplied GLB; the zip's scene.gltf and scene.bin hold the
 // same bytes. Each part is a GLB mesh component in the Dragon frame, in metres at the GLB's 1:10 scale, quantised to
@@ -247,7 +248,7 @@ export function setDragonShell(opacity) {
     dragonShell.opacity = opacity; dragonCabin.visible = opacity > 0;
     dragon.group.traverse(child => {
         if (child.userData.lineArt) { child.visible = opacity === ghostOpacity; return; }
-        if (!child.isMesh) return;
+        if (!child.isMesh || child.userData.puff) return;
         for (let parent = child.parent; parent && parent !== dragon.group; parent = parent.parent) if (parent.userData.fittings) return;
         const solid = child.userData.shellSolid || child.material;
         if (!opacity) { if (child.userData.shellSolid) { child.material = solid; child.castShadow = child.userData.shellShadow; delete child.userData.shellSolid; delete child.userData.shellShadow; } return; }
@@ -269,53 +270,37 @@ export const dragonFlightBounds = dragonLocalBounds.clone().translate(lvlhToStat
 dragonFlightBounds.union(dragonLocalBounds.clone().translate(new THREE.Vector3(0, 0, -approach.contactGap).add(dockedOffset)));
 // Dragon's bounds where it is now.
 export const dragonBounds = (target = new THREE.Box3()) => target.copy(dragonLocalBounds).translate(dragon.group.position);
-// Draco thrusters: four clusters round the capsule's upper cone, each with a radial, an aft-canted and a forward-canted
-// nozzle, and two forward nozzles by the docking ring, under the nose cone, which fire only once it is open. A nozzle
-// puffs when it points against the commanded acceleration: a long puff for each burn of the transfer, short pulses
-// while Dragon holds a speed profile on the docking axis.
-const dracoNozzles = [];
-for (const angle of [.25, .75, 1.25, 1.75].map(turn => turn * Math.PI)) {
-    const at = new THREE.Vector3(Math.cos(angle) * 1.62, Math.sin(angle) * 1.62, -1.4);
-    dracoNozzles.push({ at, normal: new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0) });
-    dracoNozzles.push({ at, normal: new THREE.Vector3(Math.cos(angle) * .35, Math.sin(angle) * .35, -1).normalize() });
-    dracoNozzles.push({ at, normal: new THREE.Vector3(Math.cos(angle) * .35, Math.sin(angle) * .35, 1).normalize() });
-}
-for (const x of [-.95, .95]) dracoNozzles.push({ at: new THREE.Vector3(x, 0, -.55), normal: new THREE.Vector3(0, 0, 1), underCone: true });
+// The Dracos (js/parts/draco.js) fire against the commanded acceleration: for each burn of the transfer, as long as
+// the burn would take (a second at least on screen), and in pulses while Dragon holds a speed profile on the docking
+// axis; between them, now and then a short attitude-trim pulse. The forward four only fire once the nose cone is open.
 // The cone swings open half a second into the Waypoint 2 hold, over 4 s of animation on a smoothstep. (In flight it
 // opens soon after orbit insertion; it opens here, 20 m out, where the motion reads at station scale.)
 const coneOpening = { start: rendezvous.phaseStart('hold') + .5, duration: 4 };
-const puffMap = payloadCanvas(64, 64, g => {
-    const glow = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    // Readable on the light paper as well as on black: a white core inside a pale blue-grey rim.
-    glow.addColorStop(0, 'rgba(255,255,255,1)'); glow.addColorStop(.45, 'rgba(236,244,250,.85)'); glow.addColorStop(.75, 'rgba(150,186,204,.45)'); glow.addColorStop(1, 'rgba(150,186,204,0)');
-    g.fillStyle = glow; g.fillRect(0, 0, 64, 64);
+const dracoPlumes = createDracoPlumes(dragon.group, { jetLength: 1.6, puffSpeed: 9 });
+const dragonMass = 12500;
+const burnTimes = rendezvous.impulses.map(impulse => {
+    const direction = lvlhToStation(impulse.deltaV), speed = direction.length(), at = rendezvous.animAt(impulse.mission);
+    // The pods' four aft-canted thrusters push along the axis at cos 26.6° each.
+    const seconds = speed * dragonMass / (4 * dracoThrust * .894), warp = rendezvous.state(impulse.mission).warp || 60;
+    return { at, direction: direction.normalize(), length: Math.max(.9, seconds / warp) };
 });
-for (const nozzle of dracoNozzles) {
-    nozzle.puff = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffMap, transparent: true, opacity: 0, depthWrite: false }));
-    nozzle.puff.visible = false; nozzle.puff.userData.puff = true; dragon.group.add(nozzle.puff);
-}
-const burnTimes = rendezvous.impulses.map(impulse => ({ at: rendezvous.animAt(impulse.mission), direction: lvlhToStation(impulse.deltaV).normalize() }));
-const puffDirection = new THREE.Vector3();
-function updatePuffs() {
+const firing = new Float32Array(dracoNozzles.length), commanded = new THREE.Vector3();
+function updateDracos(delta) {
+    firing.fill(0);
     let strength = 0;
     for (const burn of burnTimes) {
         const since = approach.time - burn.at;
-        if (since >= 0 && since < .9) { strength = 1 - since / .9; puffDirection.copy(burn.direction); }
+        if (since >= 0 && since < burn.length) { strength = 1; commanded.copy(burn.direction); }
     }
-    const thrust = approach.thrust.length();
-    if (!strength && thrust > 1e-5 && approach.time < approach.duration) {
+    const thrust = approach.thrust.length(), flying = approach.time < approach.duration;
+    if (!strength && thrust > 1e-5 && flying) {
         // Short pulses, stronger for harder braking or acceleration.
         const pulse = (approach.time * 1.4) % 1;
-        if (pulse < .22) { strength = THREE.MathUtils.clamp(thrust / 2e-3, .55, 1) * (1 - pulse / .22); puffDirection.copy(approach.thrust).normalize(); }
+        if (pulse < .22) { strength = THREE.MathUtils.clamp(thrust / 2e-3, .55, 1) * (1 - pulse / .22); commanded.copy(approach.thrust).normalize(); }
     }
-    for (const nozzle of dracoNozzles) {
-        const weight = nozzle.underCone && approach.open < .95 ? 0 : strength * Math.max(0, -nozzle.normal.dot(puffDirection));
-        nozzle.puff.visible = weight > .02;
-        if (!nozzle.puff.visible) continue;
-        nozzle.puff.material.opacity = Math.min(1, weight * 1.3);
-        nozzle.puff.position.copy(nozzle.at).addScaledVector(nozzle.normal, .45 + .8 * weight);
-        nozzle.puff.scale.setScalar(.55 + 1.1 * weight);
-    }
+    if (strength) selectDracos(commanded, approach.open > .95, strength, firing);
+    else if (flying) attitudePulses(approach.time, firing);
+    dracoPlumes.update(Math.max(0, delta), firing);
 }
 export function updateApproach(delta) {
     approach.time = Math.min(approach.duration, approach.time + Math.max(0, delta));
@@ -328,7 +313,7 @@ export function updateApproach(delta) {
     lvlhToStation([state.position[0], Math.max(state.position[1], approach.contactGap), state.position[2]], approach.offset);
     lvlhToStation(state.thrust, approach.thrust);
     dragon.group.position.copy(dockedOffset).add(approach.offset);
-    updatePuffs();
+    updateDracos(delta);
     dragon.group.updateMatrixWorld(true);
 }
 // Phase for the readout, with the time warp while the animation compresses time.
