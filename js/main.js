@@ -40,10 +40,10 @@ import { loadZ1Maintenance, z1EVA } from './figures/eva.js';
 import { scheduleLineArt } from './ui/ghost.js';
 import './ui/rendezvous-guide.js';
 import { adoptEvaFigure, advance, configuration, currentView, focusPart, labels, motion, notify, render, resize,
-    restartApproach, selected, selectPart, setConfiguration, setView, stationBounds, getOrbitView, getSky } from './ui/controller.js';
+    restartApproach, selected, selectPart, setConfiguration, setView, stationBounds, getLaunchView, getOrbitView, getSky } from './ui/controller.js';
 
 const loading = document.getElementById('loading');
-window.issAtlas = { z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get sky() { return getSky(); }, get currentView() { return currentView; }, get orbitView() { return getOrbitView(); } };
+window.issAtlas = { z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get sky() { return getSky(); }, get currentView() { return currentView; }, get orbitView() { return getOrbitView(); }, get launchView() { return getLaunchView(); } };
 applyQuality(quality.tier); setConfiguration('modern');
 // Shader programs link in parallel (KHR_parallel_shader_compile) so the page keeps responding while they build.
 // At most 1.5 s: a background tab slows the readiness polling to once a second or less, so after that the first

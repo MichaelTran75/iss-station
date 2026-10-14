@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=c45b42fac9">
+    <link rel="stylesheet" href="css/app.css?v=e1e0c9a53a">
     <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
          trước mọi module theo thứ tự dựng. -->
     <script type="importmap">
@@ -46,7 +46,7 @@
         "./js/parts/nauka.js": "./js/parts/nauka.js?v=22abe4a613",
         "./js/parts/prichal.js": "./js/parts/prichal.js?v=e8df7d74de",
         "./js/sim/rendezvous.js": "./js/sim/rendezvous.js?v=83f290ad04",
-        "./js/parts/dragon.js": "./js/parts/dragon.js?v=08875cadde",
+        "./js/parts/dragon.js": "./js/parts/dragon.js?v=3ecc3c7842",
         "./js/parts/soyuz.js": "./js/parts/soyuz.js?v=c2f348f5a2",
         "./js/parts/robotics.js": "./js/parts/robotics.js?v=a1e546c82a",
         "./js/parts/beam.js": "./js/parts/beam.js?v=c2c04d76ab",
@@ -59,10 +59,14 @@
         "./js/figures/eva.js": "./js/figures/eva.js?v=35ce703c39",
         "./js/ui/ghost.js": "./js/ui/ghost.js?v=e02e8c564f",
         "./js/ui/rendezvous-guide.js": "./js/ui/rendezvous-guide.js?v=c2e18df47a",
-        "./js/ui/controller.js": "./js/ui/controller.js?v=17737ab853",
-        "./js/main.js": "./js/main.js?v=8f998bddb6",
-        "./js/orbit/sky.js": "./js/orbit/sky.js?v=0994192559",
+        "./js/ui/controller.js": "./js/ui/controller.js?v=efbd36e377",
+        "./js/main.js": "./js/main.js?v=b201e06096",
+        "./js/launch/ground.js": "./js/launch/ground.js?v=d0c1291e1b",
+        "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=0275c32a57",
+        "./js/launch/view.js": "./js/launch/view.js?v=f4c09b8467",
+        "./js/orbit/sky.js": "./js/orbit/sky.js?v=48e499c19c",
         "./js/orbit/view.js": "./js/orbit/view.js?v=9166f83b83",
+        "./js/sim/ascent.js": "./js/sim/ascent.js?v=535c402f3e",
         "./js/sim/eva.js": "./js/sim/eva.js?v=2f04194c17",
         "./js/sim/orbit.js": "./js/sim/orbit.js?v=f44737761f"
       }
@@ -95,7 +99,7 @@
     <link rel="modulepreload" href="js/parts/nauka.js?v=22abe4a613">
     <link rel="modulepreload" href="js/parts/prichal.js?v=e8df7d74de">
     <link rel="modulepreload" href="js/sim/rendezvous.js?v=83f290ad04">
-    <link rel="modulepreload" href="js/parts/dragon.js?v=08875cadde">
+    <link rel="modulepreload" href="js/parts/dragon.js?v=3ecc3c7842">
     <link rel="modulepreload" href="js/parts/soyuz.js?v=c2f348f5a2">
     <link rel="modulepreload" href="js/parts/robotics.js?v=a1e546c82a">
     <link rel="modulepreload" href="js/parts/beam.js?v=c2c04d76ab">
@@ -108,8 +112,8 @@
     <link rel="modulepreload" href="js/figures/eva.js?v=35ce703c39">
     <link rel="modulepreload" href="js/ui/ghost.js?v=e02e8c564f">
     <link rel="modulepreload" href="js/ui/rendezvous-guide.js?v=c2e18df47a">
-    <link rel="modulepreload" href="js/ui/controller.js?v=17737ab853">
-    <link rel="modulepreload" href="js/main.js?v=8f998bddb6">
+    <link rel="modulepreload" href="js/ui/controller.js?v=efbd36e377">
+    <link rel="modulepreload" href="js/main.js?v=b201e06096">
     <!-- /modules -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
 </head>
@@ -131,7 +135,8 @@
                         aria-pressed="true">Starboard</button><button data-view="zenith"
                         aria-pressed="false">Zenith</button><button data-view="forward"
                         aria-pressed="false">Forward</button><button data-view="orbit"
-                        aria-pressed="false">Orbit</button></nav>
+                        aria-pressed="false">Orbit</button><button data-view="launch"
+                        aria-pressed="false">Launch</button></nav>
             </div>
         </header>
         <nav class="timeline" aria-label="Assembly milestones">
@@ -209,6 +214,22 @@
                             aria-pressed="false">Sun</button></div>
                     <small id="orbit-source">Loading orbital elements…</small>
                 </section>
+                <section class="orbit-panel launch-panel" id="launch-panel" aria-label="Falcon 9 launch" hidden>
+                    <div class="orbit-time"><b id="launch-clock">T+00:00</b><span id="launch-rate">×1</span></div>
+                    <div class="launch-event" id="launch-event">LIFTOFF</div>
+                    <div class="orbit-warp" role="group" aria-label="Playback"><button type="button" id="launch-play"
+                            aria-pressed="false">Pause</button><button type="button" id="launch-restart">Restart</button><button
+                            type="button" id="launch-follow" aria-pressed="true">Follow</button></div>
+                    <dl class="orbit-readout">
+                        <div><dt>Altitude</dt><dd id="launch-altitude">–</dd></div>
+                        <div><dt>Speed</dt><dd id="launch-speed">–</dd></div>
+                        <div><dt>Downrange</dt><dd id="launch-downrange">–</dd></div>
+                        <div><dt>Flying</dt><dd id="launch-stage">–</dd></div>
+                    </dl>
+                    <ol class="launch-events" id="launch-events" aria-label="Launch events"></ol>
+                    <button type="button" class="launch-station" id="launch-station" hidden>On to the station →</button>
+                    <small id="launch-source"></small>
+                </section>
                 <div class="scale">
                     <div class="scale-line" id="scale-line"></div><span id="scale-label">10 m</span>
                 </div>
@@ -235,6 +256,7 @@
                 <div class="detail-tabs" role="group" aria-label="Crew Dragon view">
                     <button id="dragon-approach" type="button" aria-pressed="true">Docking approach</button>
                     <button id="dragon-cabin" type="button" aria-pressed="false">Crew cabin</button>
+                    <button id="dragon-launch" type="button" aria-pressed="false">Launch</button>
                 </div>
             </div>
             <p id="detail-description"></p>

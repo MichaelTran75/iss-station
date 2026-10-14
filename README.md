@@ -3,7 +3,8 @@
 Mô hình three.js (WebGL) của Trạm Vũ trụ Quốc tế: 26 khối có thể chọn để xem chi tiết, cấu hình hiện tại và cấu hình gốc,
 Crew Dragon tiếp cận và ghép nối theo phương trình Clohessy–Wiltshire với các điểm chờ của Crew-2, phi hành đoàn làm việc
 trong Columbus, phi hành gia đi bộ ngoài không gian ở Z1 (leo bằng tay, móc dây thắt lưng, súng vặn PGT, dây an toàn
-85 ft nối về khóa khí Quest), và góc nhìn quỹ đạo: ISS ở đúng vị trí hiện tại trên quả địa cầu thật tỉ lệ.
+85 ft nối về khóa khí Quest), góc nhìn quỹ đạo (ISS ở đúng vị trí hiện tại trên quả địa cầu thật tỉ lệ) và góc nhìn
+Launch: Falcon 9 đưa Crew Dragon rời bệ LC-39A lên quỹ đạo theo lịch chuyến Demo-2.
 Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 
 | Tệp | Nội dung |
@@ -18,6 +19,8 @@ Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 | `js/ui/` | `ghost` (khối mờ, nét viền), `rendezvous-guide` (đường tiếp cận, điểm chờ, vùng cấm 200 m), `controller` (chọn bộ phận, góc nhìn, nhãn, nút bấm, vòng lặp khung hình) |
 | `js/orbit/sky.js` | bầu trời thật dùng chung: Trái Đất (ngày, đêm, mây), ISS, Mặt Trăng, Mặt Trời, sao, theo giờ hiện tại; vẽ cả nền Trái Đất sau trạm. Tải khi mở lần đầu |
 | `js/orbit/view.js` | góc nhìn quỹ đạo: khung ISS / Earth & Moon / Sun, zoom ra tới 600 triệu km, tua nhanh thời gian |
+| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, lửa động cơ), `ground` (ảnh mặt đất quanh bệ, tháp, khói, bầu trời trong khí quyển), `view` (camera, hai lượt vẽ, bảng điều khiển). Tải khi mở lần đầu |
+| `js/sim/ascent.js` | đường bay Falcon 9: mốc Demo-2, độ cao và vận tốc theo telemetry DM-1, tua thời gian; chỉ có toán |
 | `js/sim/rendezvous.js` | mô hình tiếp cận của Crew Dragon (Clohessy–Wiltshire, lịch Crew-2), chỉ có toán |
 | `js/sim/orbit.js` | quỹ đạo từ TLE: SGP4 (satellite.js), bóng Trái Đất, vết trên mặt đất; vị trí Mặt Trời, Mặt Trăng, quỹ đạo Trái Đất (astronomy-engine) |
 | `js/sim/eva.js` | mô hình chuyển động của phi hành gia EVA (khung xương, leo tay vịn, dây, súng PGT), không chứa lưới |
@@ -25,6 +28,7 @@ Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 | `js/workers/line-art.js` | Web Worker dựng nét viền cho các khối mờ |
 | `data/*.json` | lưới, khung xương, chuyển động lấy từ các mô hình gốc; `orbits.json` là TLE dự phòng của ISS |
 | `tle.py` | làm mới `data/orbits.json` từ CelesTrak (publish.sh tự gọi) |
+| `falcon9.py` | chuyển model Falcon 9 (GLB) thành `data/falcon-9.json` và `assets/falcon-9/first-stage.png`: `python3 falcon9.py ~/Downloads/falcon_9_-_spacex.glb` |
 | `assets/pma-2/*.jpg`, `assets/eva-astronaut/*.jpg` | ảnh texture |
 
 Từ 12/10/2026 repo này là bản gốc để sửa (không còn bản một tệp). Từ 13/10/2026 mã chia thành các module ES như trên.
@@ -93,6 +97,32 @@ Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó s
 
 Ảnh Trái Đất (ngày, đêm, mây, độ nhám) của [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0), bản thu nhỏ trong ví dụ của three.js, lấy trực tiếp từ threejs.org. Ảnh Mặt Trăng là của ví dụ three.js, chưa rõ giấy phép; nên thay bằng ảnh Mặt Trăng 2K của Solar System Scope (CC BY 4.0) đặt trong `assets/`.
 
+## Góc nhìn Launch
+
+Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−10 s.
+
+| T+ | Sự kiện | Trên màn hình |
+|---|---|---|
+| −0:03 | đánh lửa 9 động cơ Merlin | khói từ rãnh lửa, tên lửa còn kẹp trên giá |
+| 0:00 | cất cánh | camera đặt cạnh bệ, rồi bay theo bên hông |
+| 0:58 | Max-Q | động cơ giảm lực đẩy từ khoảng T+0:40 đến 1:08 |
+| 2:33 | tắt máy tầng 1 (MECO) | |
+| 2:36 | tách tầng | piston khí nén đẩy hai tầng xa nhau khoảng 1 m/s |
+| 2:44 | tầng 2 khởi động (SES-1) | MVac cháy; tầng 1 lật đuôi, mở 4 cánh lưới, rơi lại phía sau |
+| 7:15, 9:22 | tầng 1 đốt giảm tốc, đáp sà lan | chỉ ghi trong danh sách (tầng 1 đã ở xa hàng trăm km) |
+| 8:47 | tầng 2 tắt máy (SECO-1) | ~197 km, 27.300 km/h so với mặt đất |
+| 12:00 | Dragon tách khỏi tầng 2 | lò xo đẩy, Dragon rời ra khoảng 0,4 m/s |
+| 12:46 | mở nắp mũi | rồi nút *On to the station* chuyển sang chặng tiếp cận trạm trên nền Trái Đất |
+
+- Mốc thời gian theo NASA (Demo-2, 30/5/2020, LC-39A, tầng 1 đáp xuống sà lan). Độ cao, quãng đường và vận tốc lấy từ telemetry phát sóng của chuyến DM-1 (2/3/2019: cùng bệ, cùng quỹ đạo, cùng kiểu thu hồi tầng 1; repo shahar603/Telemetry-Data, public domain), nén thời gian 3,5% cho khớp MECO và SECO của Demo-2. Vận tốc là vận tốc so với mặt đất, như số liệu hiện trên sóng trực tiếp.
+- Đường bay lấy hướng 44,5° (đông bắc, dọc bờ biển Mỹ tới quỹ đạo 51,6° của ISS) và tính cả độ cong Trái Đất.
+- Thời gian chạy nhanh dần: ×1 quanh lúc cất cánh và các lần tách, nhanh hơn (tới ×17) ở giữa. Cả chuyến 13 phút xem trong khoảng 2,5 phút. Bấm vào một mốc trong danh sách để nhảy tới trước mốc đó 4 giây.
+- Camera tự bám theo: bên bệ lúc cất cánh, rồi bên hông tên lửa, sát chỗ tách tầng, rồi trên Dragon. Kéo chuột để xoay, lăn chuột để ra xa tới 3.000 km; camera vẫn bám theo tên lửa với góc vừa chọn. Nút *Follow* trả lại camera tự động.
+- Hai lượt vẽ: bầu trời thật (`sky.js`, đúng ngày giờ Demo-2, đơn vị km) nhìn từ vị trí thật của camera trên quả địa cầu, rồi bệ phóng, mặt đất, tên lửa trong hệ toạ độ của bệ (đơn vị m: x đông, y lên, z nam).
+- Mặt đất: bốn vòng ô ảnh quanh bệ, mỗi vòng 4 × 4 ô, tải từ máy chủ khi mở lần đầu (64 ô, vài MB). Gần nhất là ảnh USGS National Map (public domain) khoảng 2 m, 17 m, 130 m mỗi điểm ảnh. Ngoài cùng là NASA Blue Marble (GIBS, public domain) khoảng 1 km mỗi điểm ảnh ra tới 1.100 km, mép mờ dần vào bản đồ Trái Đất. Ngoài lãnh thổ Mỹ, ô USGS trong suốt nên vòng thô hơn hiện ra.
+- Bầu trời: lớp khí quyển xanh mỏng dần khi lên cao và mất hẳn ở khoảng 60 km. Lớp sáng ở mép Trái Đất (vỏ khí quyển của `sky.js`) hạ dần từ 178 km xuống khoảng 50 km khi camera xuống thấp, để khỏi thành một dải dày trên đường chân trời.
+- Tháp phóng, giàn dựng và giá phóng là mô hình giản lược. Tay đón phi hành đoàn vẫn để ở vị trí nối với Dragon; thực tế tay này rút ra từ trước khi phóng.
+
 ## Hiệu năng
 
 - `?stats`: hiện số khung hình/giây, mili giây CPU mỗi khung, số lần vẽ, mức chất lượng, nơi chạy hoạt cảnh.
@@ -126,3 +156,8 @@ Phần lớn trạm dựng bằng code three.js theo số đo từ tệp mẫu `
 | [Human](https://sketchfab.com/3d-models/human-5913acb8485d4ef09d0770d8d7d831ba) | doctortex | CC BY 4.0, đã gắn khung xương và tạo dáng |
 | [SpaceX - Dragon 2](https://sketchfab.com/3d-models/spacex-dragon-2-1b125e30a2cb442288580290536fbe5d) | KUBAHA | CC BY 4.0, đã đổi vật liệu, thêm hoạt cảnh ghép nối |
 | [Space X Dragon Suit](https://sketchfab.com/3d-models/space-x-dragon-suit-c600b853268249bdb9dd59bac7ead0b9) | Diuis | CC BY 4.0, đã đổi vật liệu, tư thế ngồi |
+| [Falcon 9 - SpaceX](https://sketchfab.com/3d-models/falcon-9-spacex-394f7cf52d124bbd9db69f24d1ff2f08) | Stanley Creative | CC BY 4.0, đã bỏ fairing và cụm bản lề chân đáp, tách 4 cánh lưới, lượng tử hoá lưới (`falcon9.py`) |
+
+Ảnh mặt đất quanh bệ phóng: [USGS National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map) và NASA [GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) (Blue Marble), đều là public domain.
+
+Model *Falcon 9 - Crew Dragon* của KUBAHA (CC BY 4.0) không dùng: lưới gộp theo vật liệu nên không tách tầng được, và kích thước lệch thật (cao 64,6 m, rộng 4,14 m).

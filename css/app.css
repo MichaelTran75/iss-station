@@ -68,7 +68,7 @@
             background: var(--paper);
         }
 
-        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"]) {
+        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"], [data-scene-view="launch"]) {
             color-scheme: dark;
             --paper: #000000;
             --ink: #e6ece7;
@@ -94,7 +94,7 @@
             text-shadow: 0 1px 2px rgba(226, 214, 192, .85);
         }
 
-        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"]) :is(.header, .timeline, .metric, .colophon) {
+        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"], [data-scene-view="launch"]) :is(.header, .timeline, .metric, .colophon) {
             text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
         }
 
@@ -188,7 +188,7 @@
             color: var(--paper);
         }
 
-        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"]) .view-switch button[aria-pressed="true"] {
+        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"], [data-scene-view="launch"]) .view-switch button[aria-pressed="true"] {
             color: #15231d;
         }
 
@@ -298,7 +298,7 @@
             mask-image: radial-gradient(ellipse at center, black, transparent 68%);
         }
 
-        #app:is([data-backdrop="space"], [data-backdrop="orbit"], [data-scene-view="orbit"]) #viewport::before {
+        #app:is([data-backdrop="space"], [data-backdrop="orbit"], [data-scene-view="orbit"], [data-scene-view="launch"]) #viewport::before {
             display: none;
         }
 
@@ -1573,7 +1573,7 @@
         }
 
         /* Orbit view: the globe replaces the station; station overlays and station-only tools step aside. */
-        #app[data-scene-view="orbit"] :is(#labels, #leaders, #approach-hud, .approach-dist-badge, .crew-thought, .guide-label, .approach-status,
+        #app:is([data-scene-view="orbit"], [data-scene-view="launch"]) :is(#labels, #leaders, #approach-hud, .approach-dist-badge, .crew-thought, .guide-label, .approach-status,
             .interior-focus, .component-picker, .scale, .drawing-note, #labels-toggle, #rotate-toggle, #motion-toggle, #configuration-toggle,
             #backdrop-toggle, .dock .divider) {
             display: none !important;
@@ -1676,6 +1676,99 @@
             text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
         }
 
+        /* Launch view: a daylight sky behind the page's light-on-dark text, so the header, footer and panel get dark
+           veils. */
+        #app[data-scene-view="launch"]::before {
+            background: rgba(3, 6, 12, .52);
+        }
+
+        #app[data-scene-view="launch"] .footer {
+            left: 0;
+            right: 0;
+            padding: 0 30px;
+            background: rgba(3, 6, 12, .52);
+        }
+
+        #app[data-scene-view="launch"] :is(.viewport-meta, .orientation) {
+            text-shadow: 0 0 6px rgba(0, 0, 0, .9), 0 1px 2px rgba(0, 0, 0, .9);
+        }
+
+        .launch-panel {
+            padding: 10px 12px;
+            border: 1px solid rgba(255, 255, 255, .12);
+            border-radius: 6px;
+            background: rgba(3, 6, 12, .62);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        /* Launch view panel: the orbit panel's layout, with the event list. */
+        .launch-panel .orbit-warp {
+            margin: 7px 0 9px;
+        }
+
+        .launch-panel .orbit-readout {
+            gap: 6px 18px;
+            margin-bottom: 9px;
+        }
+
+        .launch-panel small {
+            margin-top: 6px;
+        }
+
+        .launch-event {
+            margin-top: 2px;
+            font: 600 12px/1.4 'IBM Plex Mono', monospace;
+            letter-spacing: .04em;
+            color: var(--accent);
+        }
+
+        .launch-events {
+            display: grid;
+            gap: 1px;
+            margin: 0 0 8px;
+            padding: 0;
+            list-style: none;
+        }
+
+        .launch-events button {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+            padding: 0;
+            border: 0;
+            background: none;
+            color: var(--muted);
+            font: 500 9px/1.45 'IBM Plex Mono', monospace;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .launch-events span {
+            min-width: 50px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .launch-events .done button {
+            color: var(--ink);
+        }
+
+        .launch-events button:hover {
+            color: var(--accent);
+        }
+
+        .launch-station {
+            min-height: 28px;
+            margin: 2px 0 4px;
+            padding: 0 12px;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--accent);
+            font: 600 9px 'IBM Plex Mono', monospace;
+            cursor: pointer;
+        }
+
         .orbit-label.body {
             color: #c9d1d9;
         }
@@ -1728,5 +1821,13 @@
 
             .orbit-panel small {
                 margin-top: 6px;
+            }
+
+            .launch-events {
+                display: none;
+            }
+
+            .launch-event {
+                font-size: 10px;
             }
         }

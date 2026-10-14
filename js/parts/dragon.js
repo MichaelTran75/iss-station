@@ -50,6 +50,14 @@ const dragonSkins = {
     glass: material(0x183241, .22, .48), ring: material(0xc4c8c6, .4, .35), solar: material(0xffffff, .82, .1, dragonCells),
     solarFin: material(0x1d2232, .6, .22), stripe: material(0x511212, .62, .2)
 };
+// The capsule and trunk alone, for the Launch view: hull and nose cone without outlines, cabin or thrusters, in the
+// Dragon frame (+z toward the nose).
+export function dragonHull() {
+    const group = new THREE.Group(), noseCone = new THREE.Group(), kit = new Kit(), coneKit = new Kit();
+    for (const [where, surface, positions, indices] of dragonReference.parts) (where === 'n' ? coneKit : kit).add(dragonMesh(positions, indices, surface), dragonSkins[surface], [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
+    kit.finish(group); coneKit.finish(noseCone); noseCone.position.fromArray(dragonReference.hinge); group.add(noseCone);
+    return { group, noseCone, openAngle: dragonReference.openAngle };
+}
 // The collar meets the face of PMA-2's docking ring, which sits 0.19 m inboard of the tips of its three guide petals.
 // Dragon's own petals, 60 degrees round from them, pass inside the ring.
 const pma2RingFaceZ = pma2BaseZ - pmaReferenceLength + .19;

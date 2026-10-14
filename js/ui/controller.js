@@ -95,7 +95,7 @@ export function selectPart(id) {
     setDragonShell(0);
     if (currentView === 'detail' && (id !== selected || !id)) setView('reverse');
     if (id && id !== 'columbus' && currentView === 'interior') setView('reverse');
-    if (id && currentView === 'orbit') setView('reverse');
+    if (id && globeViews.has(currentView)) setView('reverse');
     if (id && modernParts.has(id) && configuration === 'reference') setConfiguration('modern');
     if (id === 'destiny' && selected !== 'destiny') destinyDetail = 'supports';
     if (id === 'dragon' && selected !== 'dragon') dragonDetail = 'approach';
@@ -160,7 +160,7 @@ export function setConfiguration(name) {
     setPressed('configuration-toggle', name === 'modern');
     document.getElementById('configuration-name').textContent = name === 'modern' ? 'JUNE 2023 / ILLUSTRATIVE CONFIGURATION' : 'CORE ELEMENTS / SIMPLIFIED COMPARISON';
     if (selected && !parts.get(selected).group.visible) selectPart(null);
-    if (currentView !== 'orbit') setView(currentView === 'detail' ? 'reverse' : currentView);
+    if (!globeViews.has(currentView)) setView(currentView === 'detail' ? 'reverse' : currentView);
 }
 // The orthographic frustum that frames `bounds` from the camera's present direction: half its height, the aspect, and
 // the vertical shift (per unit of half-height) that centres the bounds in the space between the page's chrome (and,
@@ -212,36 +212,58 @@ function followDragon(delta) {
     camera.updateProjectionMatrix();
 }
 controls.addEventListener('start', () => { dragonFollow = false; });
-// Orbit view (js/orbit/view.js): the globe with the ISS where it is now, loaded the first time it opens. While it shows,
-// its own camera and controls take the canvas; the station keeps running underneath.
-let orbitView = null, orbitLoading = null, stationTexts = null;
+// Views of the real sky that take the canvas while they show (the station keeps running underneath), each loaded the
+// first time it opens:
+// - Orbit (js/orbit/view.js): the globe with the ISS where it is now.
+// - Launch (js/launch/view.js): Falcon 9 lifting Crew Dragon off LC-39A, close up over the ground round the pad.
+const globeViews = new Set(['orbit', 'launch']);
+let orbitView = null, launchView = null, stationTexts = null;
+const globeLoading = {};
 export const getOrbitView = () => orbitView;
-// The real sky (js/orbit/sky.js), shared by the Orbit view and the Earth backdrop; loaded the first time either opens.
+export const getLaunchView = () => launchView;
+const globeView = () => currentView === 'orbit' ? orbitView : currentView === 'launch' ? launchView : null;
+// The real sky (js/orbit/sky.js), shared by these views and the Earth backdrop; loaded the first time one opens.
 let sky = null, skyLoading = null;
 export const getSky = () => sky;
 const loadSky = () => (skyLoading ||= import('../orbit/sky.js').then(module => (sky = module.createSky())));
-function enterOrbit() {
+const globeTexts = {
+    orbit: ['06 / LOW EARTH ORBIT', 'SGP4 PREDICTION / NOT LIVE TELEMETRY', 'INERTIAL FRAME / NORTH UP'],
+    launch: ['07 / FALCON 9 LAUNCH', 'DEMO-2 PROFILE / 30 MAY 2020 / LC-39A', 'PAD FRAME / NORTH-EAST TRACK']
+};
+const globeLoaders = {
+    orbit: () => Promise.all([import('../orbit/view.js'), loadSky()]).then(([module, loaded]) => (orbitView = module.createOrbitView(loaded))),
+    launch: () => Promise.all([import('../launch/view.js'), loadSky()]).then(([module, loaded]) => module.createLaunchView(loaded)).then(view => {
+        view.onStation = toStation; return (launchView = view);
+    })
+};
+function enterGlobe(name) {
     const configurationName = document.getElementById('configuration-name'), orientation = document.getElementById('orientation-text');
-    if (currentView !== 'orbit') stationTexts = [configurationName.textContent, orientation.textContent];
-    currentView = 'orbit'; app.dataset.sceneView = 'orbit'; inspectionLight.visible = false; dragonFollow = false;
+    if (!globeViews.has(currentView)) stationTexts = [configurationName.textContent, orientation.textContent];
+    else if (currentView !== name) globeView()?.leave();
+    currentView = name; app.dataset.sceneView = name; inspectionLight.visible = false; dragonFollow = false;
     controls.enabled = false; controls.autoRotate = false; setPressed('rotate-toggle', false);
-    document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === 'orbit')));
-    document.getElementById('view-name').textContent = '06 / LOW EARTH ORBIT';
-    configurationName.textContent = 'SGP4 PREDICTION / NOT LIVE TELEMETRY'; orientation.textContent = 'INERTIAL FRAME / NORTH UP';
-    orbitLoading ||= Promise.all([import('../orbit/view.js'), loadSky()]).then(([module, loaded]) => (orbitView = module.createOrbitView(loaded)));
-    orbitLoading.then(view => { if (currentView === 'orbit') { view.enter(); resize(); } }, error => {
-        orbitLoading = null; console.warn('Orbit view unavailable:', error); notify('The orbit view could not load.'); setView('reverse');
+    document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === name)));
+    [document.getElementById('view-name').textContent, configurationName.textContent, orientation.textContent] = globeTexts[name];
+    globeLoading[name] ||= globeLoaders[name]();
+    globeLoading[name].then(view => { if (currentView === name) { view.enter(); resize(); } }, error => {
+        globeLoading[name] = null; console.warn(name + ' view unavailable:', error); notify('The ' + name + ' view could not load.'); setView('reverse');
     });
 }
-function leaveOrbit() {
-    if (currentView !== 'orbit') return;
-    orbitView?.leave(); controls.enabled = true;
+function leaveGlobe() {
+    if (!globeViews.has(currentView)) return;
+    globeView()?.leave(); controls.enabled = true;
     currentView = 'reverse'; app.dataset.sceneView = 'reverse';
     if (stationTexts) [document.getElementById('configuration-name').textContent, document.getElementById('orientation-text').textContent] = stationTexts;
 }
+// From the launch to the station: the docking approach over Earth, following Dragon.
+function toStation() {
+    setView('reverse');
+    if (!orbital) toggleBackdrop();
+    restartApproach(); selectPart('dragon'); focusPart('dragon');
+}
 export function setView(name) {
-    if (name === 'orbit') { enterOrbit(); return; }
-    leaveOrbit();
+    if (globeViews.has(name)) { enterGlobe(name); return; }
+    leaveGlobe();
     inspectionLight.visible = false; dragonFollow = false;
     currentView = name; app.dataset.sceneView = name; controls.autoRotate = false; setPressed('rotate-toggle', false);
     for (const entry of parts.values()) entry.group.visible = name === 'interior' ? entry.id === 'columbus' : !modernParts.has(entry.id) || configuration === 'modern';
@@ -253,7 +275,7 @@ export function setView(name) {
     document.getElementById('view-name').textContent = { overview: '01 / PORT FORWARD', reverse: '02 / STARBOARD FORWARD', zenith: '03 / ZENITH PLAN', forward: '04 / FORWARD ELEVATION', interior: '05 / COLUMBUS LABORATORY' }[name]; render();
 }
 export function focusPart(id) {
-    leaveOrbit();
+    leaveGlobe();
     if (id === 'columbus') { setView('interior'); return; }
     if (currentView === 'interior') setView('reverse');
     const windowDetail = id === 'destiny' && destinyDetail === 'window', cabinDetail = id === 'dragon' && dragonDetail === 'cabin';
@@ -444,7 +466,7 @@ function updateLabels(hidden) {
 const scaleSteps = Array.from({ length: 33 }, (_, k) => [1, 2, 5][k % 3] * 10 ** (Math.floor(k / 3) - 2));
 const scaleText = metres => metres >= 1000 ? (metres / 1000).toLocaleString('en-US') + ' km' : +metres.toPrecision(1) + ' m';
 export function render() {
-    if (currentView === 'orbit') { if (orbitView) orbitView.render(); return; }
+    if (globeViews.has(currentView)) { globeView()?.render(); return; }
     camera.updateMatrixWorld(true); if (inspectionLight.visible) inspectionLight.position.copy(camera.position);
     // Zoomed far out over Earth the station is a few pixels or less: its overlays stand down, and below 14 pixels the
     // backdrop's ISS marker shows where it is.
@@ -467,7 +489,7 @@ export function resize() {
     const width = viewport.clientWidth, height = viewport.clientHeight;
     if (!width || !height) return;
     renderer.setSize(width, height);
-    if (currentView === 'orbit') { orbitView?.resize(width, height); render(); return; }
+    if (globeViews.has(currentView)) { globeView()?.resize(width, height); render(); return; }
     if (currentView === 'interior') fitBox(new THREE.Box3().setFromObject(parts.get('columbus').group), cameraDirection('interior'), 1.25);
     else if (currentView === 'detail' && selected) focusPart(selected); else if (currentView !== 'detail') fitBox(stationBounds, cameraDirection(currentView));
     render();
@@ -478,6 +500,7 @@ document.getElementById('destiny-supports').addEventListener('click', () => setD
 document.getElementById('destiny-window').addEventListener('click', () => setDestinyDetail('window'));
 document.getElementById('dragon-approach').addEventListener('click', () => setDragonDetail('approach'));
 document.getElementById('dragon-cabin').addEventListener('click', () => setDragonDetail('cabin'));
+document.getElementById('dragon-launch').addEventListener('click', () => { selectPart(null); setView('launch'); });
 document.getElementById('shutter-toggle').addEventListener('click', toggleShutter);
 document.getElementById('close-detail').addEventListener('click', () => selectPart(null));
 document.getElementById('focus-detail').addEventListener('click', () => { if (selected) focusPart(selected); });
@@ -497,12 +520,12 @@ document.getElementById('reset').addEventListener('click', () => {
 // Over Earth, below the station's usual range, each press zooms four steps at once: from the station to the whole
 // Earth and Moon is seven orders of magnitude.
 const zoomSteps = () => orbital && camera.zoom < .45 ? 4 : 1;
-for (const [id, multiplier] of [['zoom-in', 1.25], ['zoom-out', .8]]) document.getElementById(id).addEventListener('click', () => { if (currentView === 'orbit') { orbitView?.zoomBy(multiplier); return; } dragonFollow = false; camera.zoom = THREE.MathUtils.clamp(camera.zoom * multiplier ** zoomSteps(), controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); render(); });
+for (const [id, multiplier] of [['zoom-in', 1.25], ['zoom-out', .8]]) document.getElementById(id).addEventListener('click', () => { if (globeViews.has(currentView)) { globeView()?.zoomBy(multiplier); return; } dragonFollow = false; camera.zoom = THREE.MathUtils.clamp(camera.zoom * multiplier ** zoomSteps(), controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); render(); });
 document.getElementById('labels-toggle').addEventListener('click', () => { labelsEnabled = !labelsEnabled; setPressed('labels-toggle', labelsEnabled); render(); });
 document.getElementById('rotate-toggle').addEventListener('click', () => { controls.autoRotate = !controls.autoRotate; setPressed('rotate-toggle', controls.autoRotate); });
 document.getElementById('motion-toggle').addEventListener('click', () => { motion = !motion; setPressed('motion-toggle', motion); render(); });
 document.getElementById('configuration-toggle').addEventListener('click', () => setConfiguration(configuration === 'reference' ? 'modern' : 'reference'));
-document.getElementById('backdrop-toggle').addEventListener('click', () => {
+function toggleBackdrop() {
     orbital = !orbital; app.dataset.backdrop = orbital ? 'orbit' : 'space'; setPressed('backdrop-toggle', orbital);
     // With Earth behind it the station zooms out at true scale until Earth and the Moon's orbit fit the view (the frame
     // a million kilometres high); the station is a dot long before that.
@@ -511,7 +534,8 @@ document.getElementById('backdrop-toggle').addEventListener('click', () => {
     if (orbital) loadSky().then(loaded => { loaded.update(0); render(); }, error => { console.warn('Earth backdrop unavailable:', error); notify('The Earth backdrop could not load.'); });
     else sky?.hideLabels();
     render();
-});
+}
+document.getElementById('backdrop-toggle').addEventListener('click', toggleBackdrop);
 document.getElementById('capture').addEventListener('click', () => {
     render(); const canvas = document.createElement('canvas'); canvas.width = renderer.domElement.width; canvas.height = renderer.domElement.height;
     const context = canvas.getContext('2d'); context.fillStyle = getComputedStyle(app).backgroundColor; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(renderer.domElement, 0, 0);
@@ -526,6 +550,7 @@ renderer.domElement.addEventListener('pointerup', event => {
     pointerStart = null;
     // On the globe a click on the ISS goes back to the station.
     if (currentView === 'orbit') { if (orbitView?.hitsStation(event.clientX, event.clientY)) setView('reverse'); return; }
+    if (currentView === 'launch') return;
     const bounds = renderer.domElement.getBoundingClientRect(); pointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1); raycaster.setFromCamera(pointer, camera);
     // A solid part under the pointer wins over ghosted ones in front of it; a ghost alone selects its part.
     const hits = raycaster.intersectObjects(station.children.filter(group => group.visible), true).filter(intersection => intersection.object.isMesh);
@@ -547,7 +572,7 @@ export function advance(delta) {
         }
     }
     if (dragonFollow && currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach') followDragon(delta);
-    if (currentView === 'orbit' && orbitView) orbitView.update(delta);
+    if (globeViews.has(currentView)) globeView()?.update(delta);
     else if (orbital && sky) sky.update(delta);
     // The wheel speeds up below the station's usual range, so the reach out to the Moon takes a few dozen notches.
     controls.zoomSpeed = orbital && camera.zoom < .45 ? THREE.MathUtils.clamp(1 + 4 * Math.log10(.45 / camera.zoom), 1, 9) : 1;

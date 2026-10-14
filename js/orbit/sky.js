@@ -214,9 +214,10 @@ export function createSky() {
     const basis = new THREE.Matrix4();
     const paths = { moonAt: NaN, earthAt: NaN };
     let lit = 0;
-    function update(delta) {
-        if (time.warp !== 1) time.offset += delta * 1000 * (time.warp - 1);
-        const date = time.date = new Date(Date.now() + time.offset);
+    // `at`: draw the sky at that date instead (the Launch view replays a past launch); the orbiters then wait.
+    function update(delta, at) {
+        if (time.warp !== 1 && !at) time.offset += delta * 1000 * (time.warp - 1);
+        const date = time.date = at || new Date(Date.now() + time.offset);
         toScene(sunPosition(date), sun.position);
         uniforms.sunDirection.value.copy(sun.position).normalize();
         toScene(moonPosition(date), moon.position);
@@ -231,7 +232,7 @@ export function createSky() {
         }
         if (!(Math.abs(date - paths.earthAt) < 86400000)) { setFadedLine(earthOrbit, earthPath(date, 360).map(point => toScene(point)), '#e0c27a', 180); paths.earthAt = date.getTime(); }
         for (const entry of orbiters) {
-            if (!entry.object) continue;
+            if (!entry.object || at) continue;
             entry.state = stateAt(entry.object, date);
             if (!entry.state) { entry.marker.visible = false; continue; }
             toScene(entry.state.position, position);
@@ -258,6 +259,9 @@ export function createSky() {
         }
         moonOrbit.visible = orbitView && fromEarth > 1.2e5;
         earthOrbit.visible = orbitView && fromEarth > 4e6;
+        // The atmosphere's glow sits 178 km up, a limb seen from afar; from lower down (the Launch view climbing through
+        // 100-400 km) it would hang as a band over the horizon, so it settles toward 50 km as the camera comes down.
+        atmosphere.scale.setScalar((1 + THREE.MathUtils.clamp(Math.max(0, (fromEarth - earthRadius) / 420) ** 1.5 * .028, .008, .028)) / 1.028);
         nearest = Math.min(nearest, fromEarth - earthRadius * 1.03, cameraDistance.subVectors(camera.position, moon.position).length() - moonRadius);
         camera.near = Math.max(.001, nearest * .25); camera.far = fromEarth + 3.2e8; camera.updateProjectionMatrix();
         stars.position.copy(camera.position); stars.scale.setScalar(camera.far * .9);
