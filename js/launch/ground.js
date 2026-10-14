@@ -4,10 +4,13 @@
 // - Imagery: USGS National Map orthoimagery (public domain) at about 2 m, 17 m and 130 m a pixel round the pad, and
 //   NASA's Blue Marble (GIBS, public domain) at about 1 km out to 1,100 km, its edge fading into the globe's own map; outside the US the USGS tiles are
 //   transparent and the coarser ring shows through. Tiles load from those servers when the view first opens.
-// - The pad, simplified, where the USGS image shows it: the hardstand 12 m above the ground with the flame trench cut
-//   through it northward, the launch mount over the trench, the fixed service structure with its lightning mast and
-//   catenary wires, the crew access arm swung clear (as at liftoff), the transporter-erector leaning back, the sound
-//   suppression water tower and the two propellant spheres.
+// - The pad as on Demo-2's day, where the USGS image and OpenStreetMap put it, sized by NASA's figures: the hardstand 12 m
+//   above the ground with the flame trench cut through it northward; the launch mount over the trench with its four
+//   hold-down clamps and tail service masts; the fixed service structure (steel lattice, hammerhead crane, lightning mast
+//   and its catenary), the annex SpaceX built up to the crew access level, the crew access arm swung clear (as at
+//   liftoff) and the slide-wire escape baskets; the transporter-erector leaning back with its clamps open, its
+//   umbilicals and hydraulic cylinders, and its frame down the ramp; the sound suppression water tower and the two
+//   propellant spheres.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { launchSite, padFrame } from '../sim/ascent.js';
@@ -19,7 +22,7 @@ const gibs = (z, x, y) => 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/Bl
 // Outer ring first: each ring covers 4 × 4 tiles round the pad.
 const rings = [{ zoom: 7, url: gibs, segments: 16, fade: true }, { zoom: 10, url: usgs, segments: 8 }, { zoom: 13, url: usgs, segments: 3 }, { zoom: 16, url: usgs, segments: 2 }];
 export { padDeck };
-export const mountHeight = 6;   // the rocket stands on the launch mount, its engines 6 m above the pad deck
+export const mountHeight = 4;   // the rocket stands on the launch mount, its engines 4 m above the pad deck (Dragon's hatch then meets the crew access arm, 217 ft up)
 
 export function createGround() {
     const group = new THREE.Group(), pad = padFrame();
@@ -126,39 +129,112 @@ export function createGround() {
         const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b), length = start.distanceTo(end);
         add(colour, new THREE.CylinderGeometry(radius, radius, length, 6).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize())).translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2));
     };
-    const steel = 0x8e9396, white = 0xe8e9e6, dark = 0x3b3f44, tank = 0xdfe2e3;
+    const steel = 0x8e9396, white = 0xe8e9e6, dark = 0x3b3f44, tank = 0xdfe2e3, grating = 0x6f7478;
     // Positions measured on the USGS image of the pad (x east, z south, metres from the launch mount). The tower's
     // and the water tower's lengths are cross-checked against their shadows in the same image. Everything on the
     // hardstand stands on its deck, 12 m up.
     const deck = padDeck, base = deck + mountHeight;
-    // Launch mount over the trench's mouth: a steel frame on four legs outside the trench walls, open in the middle
-    // for the exhaust, with four hold-down clamps round the engines.
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(dark, [sx * 10.6, deck + (mountHeight - 1) / 2, sz * 4.6], [1.6, mountHeight - 1, 1.6]);
-    for (const s of [-1, 1]) { box(dark, [0, base - .8, s * 4.6], [23, 1.6, 1.4]); box(dark, [s * 4.3, base - .5, 0], [1.4, 1, 10.6]); }
-    for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2; box(dark, [Math.cos(a) * 2.6, base + .9, Math.sin(a) * 2.6], [.7, 2.4, .7]); }
-    // Fixed service structure, 26 m west: 12 m square, floors every 6.1 m (20 ft), 87 m to the roof; the crew
-    // access arm at the 66 m level (217 ft) and a 23 m lightning mast on top (110 m in all, as the shadow shows).
-    const tower = [-26, deck, -2], half = 6, top = 87, floor = 6.1;
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(steel, [tower[0] + sx * half, deck + top / 2, tower[2] + sz * half], [1.1, top, 1.1]);
-    for (let y = deck + floor; y <= deck + top; y += floor) {
-        for (const s of [-1, 1]) { box(steel, [tower[0], y, tower[2] + s * half], [2 * half, .6, .6]); box(steel, [tower[0] + s * half, y, tower[2]], [.6, .6, 2 * half]); }
-        for (const s of [-1, 1]) {
-            rod(steel, [tower[0] - half, y - floor, tower[2] + s * half], [tower[0] + half, y, tower[2] + s * half], .2);
-            rod(steel, [tower[0] + s * half, y - floor, tower[2] - half], [tower[0] + s * half, y, tower[2] + half], .2);
-        }
-        box(steel, [tower[0], y - .2, tower[2]], [2 * half, .25, 2 * half]);
+    // Launch mount (the reaction frame) over the trench's mouth: deep girders spanning the trench on legs outside its
+    // walls, open in the middle for the exhaust. The four hold-down clamps face the cardinal directions (the east and
+    // west ones on removable inserts, clear of Falcon Heavy's side cores); two tail service masts on the south side
+    // carry the first stage's umbilicals to the octaweb.
+    const frameTop = base - .6;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(dark, [sx * 10.6, deck + (frameTop - deck) / 2, sz * 4.6], [1.6, frameTop - deck, 1.6]);
+    for (const s of [-1, 1]) {
+        box(dark, [0, frameTop - .9, s * 4.6], [23, 1.8, 1.4]);
+        box(dark, [s * 4.3, frameTop - .55, 0], [1.4, 1.1, 10.6]);
+        box(dark, [s * 7.6, frameTop - .55, 0], [1, 1.1, 10.6]);
     }
-    box(0xb4b8ba, [tower[0] - 2, deck + top / 2, tower[2] + 2], [4, top, 4]);   // elevator and stair core
-    rod(white, [tower[0], deck + top, tower[2]], [tower[0], deck + top + 23, tower[2]], .55);
-    // Crew access arm, swung clear along the tower's north face for liftoff, with the white room at its end.
-    box(white, [tower[0] + half - 1, deck + 66, tower[2] - half - 11], [2.8, 3.4, 22]);
-    box(white, [tower[0] + half - 1, deck + 66, tower[2] - half - 23.5], [4.4, 4.6, 4.4]);
-    // Transporter-erector: the strongback on the rocket's south side, the side it came up the ramp from the hangar,
-    // leaning back once its clamps have opened; its base frame runs down the ramp.
-    const lean = .035;
-    for (const s of [-1, 1]) box(dark, [s * 2.3, deck + 31, 4.9 + 31 * lean], [.9, 62, .9], [lean, 0, 0]);
-    for (let y = 4; y < 62; y += 6) box(dark, [0, deck + y, 4.9 + y * lean], [5.4, .45, .6]);
-    for (const s of [-1, 1]) box(dark, [s * 3.5, deck + 1.4, 22], [1, 2.8, 34]);
+    for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; box(dark, [Math.cos(a) * 2.35, base + 1.1, Math.sin(a) * 2.35], [.9, 3.4, .9], [0, -a, 0]); }
+    for (const s of [-1, 1]) { box(steel, [s * 3.1, base + .9, 3], [.8, 3.4, .8]); box(dark, [s * 2.2, base + 2.3, 2.4], [1.6, .5, .5]); }
+
+    // Fixed service structure, by NASA's figures: 40 ft square, levels every 20 ft from 27 ft over the deck, the tower's
+    // top at 247 ft, the hammerhead crane to 265 ft and an 80 ft fibreglass lightning mast to 347 ft. It stands where
+    // OpenStreetMap and the image put it, west of the rocket and a little north. Steel lattice: corner and mid-face
+    // columns, beams and grating at each level, crossed bracing in every half-bay; an elevator shaft on the north face.
+    const ft = .3048, tower = [-31.3, -9.7], half = 6.1, roof = 247 * ft, crane = 265 * ft, mastTop = 347 * ft, crew = 217 * ft;
+    const [tx, tz] = tower;
+    for (const sx of [-1, 0, 1]) for (const sz of [-1, 0, 1]) if (sx || sz) box(steel, [tx + sx * half, deck + roof / 2, tz + sz * half], sx && sz ? [1, roof, 1] : [.55, roof, .55]);
+    const levels = [0, ...Array.from({ length: 12 }, (_, k) => (27 + 20 * k) * ft)];
+    for (let k = 1; k < levels.length; k++) {
+        const y0 = deck + levels[k - 1], y = deck + levels[k];
+        for (const s of [-1, 1]) { box(steel, [tx, y, tz + s * half], [2 * half, .7, .5]); box(steel, [tx + s * half, y, tz], [.5, .7, 2 * half]); }
+        box(grating, [tx, y - .32, tz], [2 * half - .4, .16, 2 * half - .4]);
+        for (const s of [-1, 1]) for (const [a, b] of [[-half, 0], [0, half]]) {
+            rod(steel, [tx + a, y0, tz + s * half], [tx + b, y, tz + s * half], .15); rod(steel, [tx + b, y0, tz + s * half], [tx + a, y, tz + s * half], .15);
+            rod(steel, [tx + s * half, y0, tz + a], [tx + s * half, y, tz + b], .15); rod(steel, [tx + s * half, y0, tz + b], [tx + s * half, y, tz + a], .15);
+        }
+    }
+    box(grating, [tx, deck + roof + .2, tz], [2 * half + .6, .5, 2 * half + .6]);
+    box(0xc5c9cb, [tx - 2.4, deck + roof / 2, tz - half - 1.6], [3.2, roof, 3.2]);   // elevator shaft
+    // The hammerhead crane on the roof (turret and jib), and the mast on top of it.
+    box(steel, [tx, deck + (roof + crane) / 2, tz], [3.4, crane - roof, 3.4]);
+    box(steel, [tx + 4, deck + crane - .7, tz], [22, 1.4, 1.6]);
+    box(dark, [tx - 6.2, deck + crane - 2, tz], [2.6, 2.4, 2.2]);   // counterweight
+    add(0xd8d8d2, new THREE.CylinderGeometry(.22, .62, mastTop - crane, 10).translate(tx, deck + (crane + mastTop) / 2, tz));
+    // The annex SpaceX built on the south side up to the crew access level (217 ft over the deck, 265 ft above the
+    // sea): its own braced frame, stairs, and the deck the crew walks out from.
+    const annex = { x0: -31.4, x1: -24.7, z0: -3.2, z1: 6, top: crew + 5 };
+    for (const x of [annex.x0, annex.x1]) for (const z of [annex.z0, annex.z1]) box(steel, [x, deck + annex.top / 2, z], [.8, annex.top, .8]);
+    for (let k = 1; k < levels.length && levels[k] < annex.top; k++) {
+        const y0 = deck + levels[k - 1], y = deck + levels[k];
+        box(steel, [(annex.x0 + annex.x1) / 2, y, annex.z1], [annex.x1 - annex.x0, .5, .4]); box(steel, [annex.x1, y, (annex.z0 + annex.z1) / 2], [.4, .5, annex.z1 - annex.z0]);
+        rod(steel, [annex.x0, y0, annex.z1], [annex.x1, y, annex.z1], .13); rod(steel, [annex.x1, y0, annex.z1], [annex.x0, y, annex.z1], .13);
+        rod(steel, [annex.x1, y0, annex.z0], [annex.x1, y, annex.z1], .13); rod(steel, [annex.x1, y0, annex.z1], [annex.x1, y, annex.z0], .13);
+        rod(steel, [annex.x0 + 1.2, y0, annex.z0 + 1.5], [annex.x0 + 1.2, y, annex.z1 - 1.5], .12);   // stair flights, back and forth
+    }
+    box(grating, [(annex.x0 + annex.x1) / 2 + .5, deck + crew - .25, (annex.z0 + annex.z1) / 2], [annex.x1 - annex.x0 + 1, .5, annex.z1 - annex.z0]);
+    box(white, [annex.x0 + 2.6, deck + crew + 1.6, annex.z0 + 2.6], [4.6, 3.4, 4.4]);   // crew access level room
+    // Crew access arm (85 ft with its white room), on a hinge at the annex's east face: swung north along the tower's
+    // east face, clear of the rocket, as at liftoff (it pivots east to meet Dragon's hatch, which faces the tower).
+    const pivot = [annex.x1 - .2, deck + crew, .4], armX = pivot[0] + 1.6;
+    add(steel, new THREE.CylinderGeometry(.5, .5, 7, 12).translate(pivot[0], pivot[1] + 1.5, pivot[2]));
+    box(white, [armX, pivot[1] + 1.5, pivot[2] - 10.8], [2.6, 3, 21.6]);
+    box(steel, [armX, pivot[1] - .5, pivot[2] - 10.8], [2.4, 1, 21.6]);
+    for (let z = 0; z < 21; z += 3) rod(steel, [armX, pivot[1] - 1, pivot[2] - z], [armX, pivot[1], pivot[2] - z - 3], .09);
+    rod(steel, [pivot[0], pivot[1] + 5, pivot[2]], [armX, pivot[1] + 3, pivot[2] - 12], .12);   // tie rod from the hinge post
+    box(white, [armX, pivot[1] + 1.8, pivot[2] - 23.8], [4.4, 4, 4.4]);   // the white room
+    box(dark, [armX + 2.21, pivot[1] + 1.4, pivot[2] - 23.8], [.04, 2.2, 1.2]);
+    // Emergency egress: the refurbished shuttle-era slide-wire baskets, raised to the crew access level in 2018, their
+    // wires running west down to the landing area beyond the pad's perimeter.
+    const egress = [];
+    for (let k = 0; k < 4; k++) {
+        const z = tz - 3 + k * 2.2, from = new THREE.Vector3(tx - half - .6, deck + crew - 1, z), to = new THREE.Vector3(-392, 1.5, -18 + k * 3);
+        box(0x9aa2a8, [from.x - 1, from.y - 1.8, z], [1.6, 1.4, 1.4]);
+        for (let i = 0; i < 40; i++) for (const f of [i / 40, (i + 1) / 40]) egress.push(new THREE.Vector3().lerpVectors(from, to, f).setY(THREE.MathUtils.lerp(from.y, to.y, f) - 9 * 4 * f * (1 - f)));
+    }
+    group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(egress), new THREE.LineBasicMaterial({ color: 0x3a3e42 })));
+
+    // Transporter-erector: the strongback on the rocket's south side, the side it came up the ramp from the hangar. Two
+    // lattice legs joined by cross frames; four clamp arms whose half-rings held the stack (open now); the propellant and
+    // power lines up to the second stage's and Dragon's umbilicals; the hinge at the mount with the two hydraulic
+    // cylinders that raised it; and the transporter frame on its bogies down the ramp. Leaning back 2° with its clamps
+    // open, as at liftoff.
+    const lean = .035, tall = 66, teFront = 2.7;
+    const te = (x, h, z) => [x, deck + 1 + h * Math.cos(lean), z + h * Math.sin(lean)];
+    for (const s of [-1, 1]) {
+        for (const dx of [-.7, .7]) for (const dz of [0, 1.4]) rod(dark, te(s * 2.8 + dx, 0, teFront + dz), te(s * 2.8 + dx, tall, teFront + dz), .17);
+        for (let h = 0; h < tall; h += 4) {
+            rod(dark, te(s * 2.8 - .7, h, teFront), te(s * 2.8 + .7, h + 4, teFront), .07); rod(dark, te(s * 2.8 + .7, h, teFront + 1.4), te(s * 2.8 - .7, h + 4, teFront + 1.4), .07);
+            rod(dark, te(s * 2.8 + s * .7, h, teFront), te(s * 2.8 + s * .7, h + 4, teFront + 1.4), .07);
+        }
+    }
+    for (let h = 2; h < tall; h += 8) { rod(dark, te(-2.1, h, teFront), te(2.1, h, teFront), .12); rod(dark, te(-2.1, h, teFront), te(2.1, h + 8, teFront), .08); }
+    for (const h of [9, 25, 41, 55]) {
+        const centre = te(0, h, 0), ring = new THREE.TorusGeometry(2.55, .17, 6, 18, Math.PI).rotateX(Math.PI / 2).rotateY(Math.PI);
+        add(dark, ring.translate(centre[0], centre[1], centre[2] + .25));
+        for (const s of [-1, 1]) rod(dark, te(s * 2.55, h, .25), te(s * 2.1, h, teFront), .18);
+    }
+    for (const [x, h] of [[-1.2, 46], [-.6, 46], [.6, 58], [1.2, 58]]) rod(steel, te(x, 0, teFront - .25), te(x, h, teFront - .25), .11);
+    box(dark, te(0, 46, teFront - .6), [2.4, 1.2, .6]); box(dark, te(0, 58, teFront - .6), [1.8, 1, .6]);
+    for (const s of [-1, 1]) rod(0xb9bdbf, [s * 2.8, deck + 1.2, 15], te(s * 2.8, 14, teFront + .7), .42);
+    // The transporter frame down the ramp, on bogies over the rails.
+    for (let z = 6; z <= 44; z += 2) {
+        const h = Math.max(terrainHeight(3.5, z), terrainHeight(3.5, z + 2));
+        for (const s of [-1, 1]) box(dark, [s * 3.5, h + 1.6, z + 1], [.9, 1.6, 2.05]);
+        if (z % 6 === 0) box(dark, [0, h + 1.6, z + 1], [7.9, .6, .5]);
+        if (z % 12 === 4) for (const s of [-1, 1]) box(0x4c5156, [s * 4.5, h + .7, z + 1], [1.3, 1.1, 3.2]);
+    }
     // Sound suppression water tower, 129 m north and 77 m east: tank 89 m up on four splayed legs.
     waterTower(add, rod, [77, -129]);
     // Propellant spheres at the pad's north corners (liquid oxygen west, the old hydrogen sphere east).
@@ -168,11 +244,12 @@ export function createGround() {
     const structures = new THREE.Group();
     for (const [colour, geometries] of pieces) structures.add(new THREE.Mesh(mergeGeometries(geometries, false), new THREE.MeshStandardMaterial({ color: colour, roughness: .75, metalness: .2 })));
     group.add(structures);
-    // Lightning protection: catenary wires from the mast down to ground anchors 340 m north and south.
+    // Lightning protection: a stainless cable from an anchor south of the tower up over the mast and down to an anchor
+    // north of it, 340 m out each way.
     const wire = [];
     for (const s of [-1, 1]) for (let k = 0; k <= 40; k++) {
         const f = k / 40, sag = 30 * 4 * f * (1 - f);
-        wire.push(new THREE.Vector3(tower[0], (deck + top + 23) * (1 - f) - sag * (1 - f * .3) + 1, tower[2] + s * 340 * f));
+        wire.push(new THREE.Vector3(tx, (deck + mastTop) * (1 - f) - sag * (1 - f * .3) + 1, tz + s * 340 * f));
     }
     const catenary = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wire.flatMap((point, k) => k % 41 === 40 ? [] : [point, wire[k + 1]])), new THREE.LineBasicMaterial({ color: 0x2b2e31 }));
     group.add(catenary);

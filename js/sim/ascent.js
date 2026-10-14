@@ -385,6 +385,17 @@ export function stageState(mission) {
 // The ISS in the pad's frame at a time, drawn with Earth turned as at `turn` (see paths).
 export const issPosition = (time, turn = time) => toPad(issAt(time), turn, true);
 export const inertialToPad = (r, turn) => toPad(r, turn, true);
+// For many points at once (the view's dotted paths): an inertial point turned back by Earth's rotation over `time`
+// (kept, for points that each take their own time once), and the pad-frame transform for a common turn, as nine
+// factors and an offset: pad = m · r + offset.
+export function turnBack(r, time) {
+    const angle = -omega * time, c = Math.cos(angle), s = Math.sin(angle);
+    return [r[0] * c - r[1] * s, r[0] * s + r[1] * c, r[2]];
+}
+export function padTransform(time) {
+    const angle = -omega * time, c = Math.cos(angle), s = Math.sin(angle), rows = [padEast, padUp, scale(padNorth, -1)];
+    return { m: rows.flatMap(e => [e[0] * c + e[1] * s, e[1] * c - e[0] * s, e[2]]), offset: rows.map(e => -dot(padStart, e)) };
+}
 // The booster after separation: flipping tail-first over 4-40 s, then flying tail-first into the air stream.
 export function boosterState(mission) {
     // Once down it stays on the barge: freeze the clock there, so Earth's turning does not carry its inertial

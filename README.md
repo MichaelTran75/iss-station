@@ -194,7 +194,11 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
 
 ### Cảnh
 
-- Đường bay chấm: xanh cho tên lửa và Dragon, cam cho tầng 1 quay về; sáng ở đoạn đã bay, mờ ở đoạn sắp bay. Chấm đặt dọc đường bay (điểm mỗi giây từ mô phỏng) với khoảng cách tăng theo khoảng cách tới camera (khoảng 1° trên màn hình), nên gần hay xa đều thấy một hàng chấm đều. Một quả cầu vô hình thấp hơn mặt đất 3 km che đoạn đường bay khuất sau đường chân trời.
+- Đường bay chấm: xanh cho tên lửa và Dragon, cam cho tầng 1 quay về; sáng ở đoạn đã bay, mờ ở đoạn sắp bay. Một quả cầu vô hình thấp hơn mặt đất 3 km che đoạn đường bay khuất sau đường chân trời.
+  - Chấm nằm cố định trên một "lưới" độ dài cung tính từ đầu đường bay. Khoảng cách giữa các chấm là luỹ thừa của 2 (mét), chọn theo khoảng cách tới camera (khoảng 1° trên màn hình). Nhờ vậy chấm đứng yên khi camera di chuyển, không trượt dọc đường. Khi khoảng cách chuyển sang mức kế tiếp, các chấm xen giữa mờ dần vào hoặc ra.
+  - Chấm được rải từ vị trí con tàu hiện tại ra hai phía, giới hạn 24.000 chấm. Đường bay 18 giờ có thể dùng hết giới hạn, nhưng phần bị thiếu luôn ở xa con tàu. Trước đây chấm rải từ bệ phóng nên về sau không còn chấm nào quanh Dragon.
+  - Toạ độ chấm được ghi tương đối với camera. Toạ độ tuyệt đối hàng triệu mét ở dạng số thực 32-bit sẽ làm chấm rung khoảng nửa mét khi nhìn gần, như lúc ghép nối.
+  - Mỗi điểm chỉ quay theo Trái Đất một lần lúc khởi tạo; mỗi khung chỉ còn một phép biến đổi chung, không tạo mảng mới. Đường bay chỉ tính lại khi thời gian đổi, chấm chỉ rải lại khi thời gian hoặc camera đổi.
 - Màn hình phụ ở góc trên bên phải: từ lúc tách tầng, hiện chiếc còn lại (tầng 1 bay về khi màn chính theo Dragon, hoặc ngược lại), có camera tự bám riêng; bấm vào để đổi chỗ hai màn. Vẽ bằng cùng renderer, trong một vùng cắt (scissor) của canvas.
 - Thời gian chạy nhanh dần: ×1 quanh lúc cất cánh và các lần tách, tới ×17 ở giữa. Bấm một mốc trong danh sách để nhảy tới trước mốc đó 4 giây (mốc của tầng 1 tự chuyển sang bám Booster; mốc đốt nâng quỹ đạo nhảy tới lúc Dragon bắt đầu xoay).
 - Camera tự bám: bên bệ lúc cất cánh, rồi bên hông tên lửa, sát chỗ tách tầng, trên Dragon; hoặc theo tầng 1 rơi xuống và hạ thấp cạnh sà lan. Kéo chuột để xoay, lăn chuột để ra xa tới 3.000 km. Nút *Follow* trả lại camera tự động.
@@ -202,12 +206,23 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
 - Mặt đất: bốn vòng ô ảnh quanh bệ, mỗi vòng 4 × 4 ô, tải từ máy chủ khi mở lần đầu (64 ô, vài MB). Gần nhất là ảnh USGS National Map (public domain) khoảng 2 m, 17 m, 130 m mỗi điểm ảnh. Ngoài cùng là NASA Blue Marble (GIBS, public domain) khoảng 1 km mỗi điểm ảnh ra tới 1.100 km, mép mờ dần vào bản đồ Trái Đất. Ngoài lãnh thổ Mỹ, ô USGS trong suốt nên vòng thô hơn hiện ra.
 - Bầu trời: lớp khí quyển xanh mỏng dần khi lên cao và mất hẳn ở khoảng 60 km. Lớp sáng ở mép Trái Đất (vỏ khí quyển của `sky.js`) hạ dần từ 178 km xuống khoảng 50 km khi camera xuống thấp, để khỏi thành một dải dày trên đường chân trời.
 - Bệ 39A dựng theo ảnh USGS (vị trí đo trên ảnh, chiều cao kiểm bằng bóng đổ) và số liệu đã công bố:
-  - Tháp cố định (FSS) cách giá phóng 26 m về phía tây: 12 m vuông, sàn mỗi 6,1 m (20 ft), mái ở 87 m, cột thu lôi tới 110 m. Hai dây thu lôi kéo từ đỉnh cột xuống mỏ neo cách 340 m về phía bắc và nam.
-  - Tay đón phi hành đoàn ở mức 66 m (217 ft), xoay ra khỏi tên lửa như lúc cất cánh, đầu là phòng trắng.
-  - Giàn dựng (TE) ở phía nam tên lửa, phía nó đi lên dốc từ nhà lắp ráp HIF, ngả ra sau khi kẹp mở. Khung đế chạy xuống dốc.
+  - Tháp cố định (FSS) theo số liệu NASA, đặt theo OpenStreetMap ở phía tây và hơi lệch bắc so với giá phóng.
+    - 40 ft (12,2 m) vuông, 12 tầng cách nhau 20 ft bắt đầu từ 27 ft trên mặt bệ, nóc tháp ở 247 ft (75,3 m).
+    - Cột góc và cột giữa mặt, dầm và sàn lưới ở mỗi tầng, giằng chéo chữ X ở mọi ô, giếng thang máy ở mặt bắc.
+    - Cần cẩu kiểu búa trên nóc (tới 265 ft), cột thu sét sợi thuỷ tinh 80 ft tới 347 ft (105,8 m). Dây cáp thu sét đi từ mỏ neo phía nam vắt qua đỉnh cột xuống mỏ neo phía bắc, mỗi bên cách 340 m.
+  - Khối phụ SpaceX xây phía nam tháp lên tới tầng đón phi hành đoàn (217 ft trên mặt bệ, tức 265 ft trên mực nước biển): khung giằng, cầu thang và sàn đón có phòng trắng.
+  - Tay đón phi hành đoàn dài 85 ft, kể cả phòng trắng ở đầu. Bản lề ở mặt đông khối phụ; lúc cất cánh tay đã xoay về phía bắc, áp dọc mặt đông tháp. Cửa hông Dragon quay về phía tháp (tây): cả tên lửa giữ góc xoay này suốt chuyến bay. Động cơ đứng cao hơn mặt bệ 4 m, để cửa Dragon ngang tầm tay đón.
+  - Dây trượt thoát hiểm: giỏ trượt thời Shuttle, năm 2018 được nâng lên tầng đón phi hành đoàn. Dây chạy về phía tây xuống bãi đáp ngoài vành đai bệ.
+  - Giàn dựng (TE) ở phía nam tên lửa, phía nó đi lên dốc từ nhà lắp ráp HIF. Lúc cất cánh nó đã ngả ra sau 2°, kẹp mở.
+    - Hai chân dàn lưới nối bằng khung ngang, bốn tay kẹp hình nửa vòng.
+    - Đường ống nạp nhiên liệu và cáp lên tới đầu nối của tầng 2 và của Dragon.
+    - Bản lề ở giá phóng với hai xi lanh thuỷ lực đã dựng nó lên.
+    - Khung vận chuyển trên các cụm bánh chạy xuống dốc theo ray.
   - Gò bệ: mặt bê tông 119 × 99 m (390 × 325 ft) cao hơn mặt đất 12 m (48 ft trên mực nước biển), sườn dốc 1:2,5, góc vát nên gần bát giác. Dốc 5% đi lên từ phía nam (đường crawlerway) dài 240 m.
   - Ảnh vệ tinh phủ lên gò theo một lưới đi đúng các đường gãy (mỗi 3 m, và đúng dọc tường rãnh), nên mép rãnh thẳng. Sườn gò được tô thêm bóng theo vị trí Mặt Trời lúc phóng (cao 61°, hướng tây tây nam).
-  - Giá phóng bằng thép bắc ngang miệng rãnh: bốn chân đứng ngoài tường rãnh, giữa để trống cho luồng xả đi xuống.
+  - Giá phóng (khung phản lực) bằng thép bắc ngang miệng rãnh: dầm sâu trên bốn chân đứng ngoài tường rãnh, giữa để trống cho luồng xả đi xuống.
+    - Bốn kẹp giữ tên lửa quay về bốn hướng chính. Kẹp đông và tây tháo được, để tránh động cơ hai tầng 1 bên của Falcon Heavy.
+    - Hai cột cấp nhiên liệu ở đuôi (tail service mast) phía nam nối vào khung động cơ (octaweb).
   - Rãnh lửa rộng 18 m, đáy ở mặt đất, tường cao bằng gò hai bên. Rãnh chạy 110 m về phía bắc; dưới giá phóng là bộ làm lệch hướng bẻ luồng xả về bắc.
   - Tháp nước giảm âm cao 89 m, cách 129 m về phía bắc và 77 m về phía đông. Bồn cầu oxy lỏng ở góc tây bắc, bồn cầu hydro cũ ở góc đông bắc.
 - Khu phóng 39 quanh bệ (`js/launch/complex.js`). Đường viền và vị trí lấy từ OpenStreetMap, đối chiếu với ảnh USGS; kích thước theo NASA. Các công trình xây sau Demo-2 (tháp Starship ở 39A, bồn hydro mới ở 39B) không đưa vào.

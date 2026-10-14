@@ -17,6 +17,7 @@ import { windAt } from '../sim/wind.js';
 import { air, vehicleState } from '../sim/ascent.js';
 import { clusterPlume } from '../sim/plume.js';
 import { terrainHeight } from './complex.js';
+import { mountHeight } from './ground.js';
 
 const puffVertex = `attribute vec3 offset; attribute float size; attribute float alpha; attribute vec3 tint; attribute float seed;
     varying vec2 vQuad; varying float vAlpha; varying vec3 vTint; varying float vSeed; varying vec3 vWorld;
@@ -128,7 +129,7 @@ export function createExhaust() {
         const state = vehicleState(time);
         return { height: state.altitude, thrust: Math.max(0, state.engines) / 9 };
     }
-    const deckLevel = terrainHeight(0, 0), mount = 6;
+    const deckLevel = terrainHeight(0, 0), mount = mountHeight;
     function step(time, dt) {
         const { height, thrust } = engineState(time), above = height + mount;   // engines' height over the deck
         // Sources: [puffs a second].

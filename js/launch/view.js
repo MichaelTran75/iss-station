@@ -15,7 +15,7 @@ import { markShadowsDirty } from '../core/quality.js';
 import { parts } from '../core/station.js';
 import { approach } from '../parts/dragon.js';
 import { rendezvousGuide } from '../ui/rendezvous-guide.js';
-import { animationAt, animationDuration, boosterState, contactTime, countdown, dockingTime, dracoBurns, droneship, eventAt, events, flightData, groundTrackEnd, inertialToPad, issAltitude, issFrame, issPosition, launchEpoch, launchSite, missionAt, padFrame, paths, proximity, rendezvousTime, stageState, vehicle as vehicleModel, vehicleState, warpAt } from '../sim/ascent.js';
+import { animationAt, animationDuration, boosterState, contactTime, countdown, dockingTime, dracoBurns, droneship, eventAt, events, flightData, groundTrackEnd, issAltitude, issFrame, issPosition, launchEpoch, launchSite, missionAt, padFrame, padTransform, paths, proximity, rendezvousTime, stageState, turnBack, vehicle as vehicleModel, vehicleState, warpAt } from '../sim/ascent.js';
 import { toScene } from '../orbit/sky.js';
 import { createGround, mountHeight, padDeck } from './ground.js';
 import { createExhaust } from './exhaust.js';
@@ -66,7 +66,7 @@ export async function createLaunchView(sky) {
         const canvas = document.createElement('canvas'); canvas.width = canvas.height = 32; const g = canvas.getContext('2d');
         g.fillStyle = '#fff'; g.beginPath(); g.arc(16, 16, 12, 0, Math.PI * 2); g.fill(); return new THREE.CanvasTexture(canvas);
     })();
-    const maxDots = 9000;
+    const maxDots = 24000;
     // `turn(time)`: when Earth's turn is taken for the point at `time` (see js/sim/ascent.js, paths).
     // `lift(time)`: how far the model stands above the simulated point then (see place()), so the dots run through it.
     function trail(list, colour, turn, lift = () => 0) {
@@ -75,7 +75,7 @@ export async function createLaunchView(sky) {
             .setAttribute('color', new THREE.BufferAttribute(new Float32Array(maxDots * 4), 4));
         const points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 5, sizeAttenuation: false, vertexColors: true, map: dotMap, transparent: true, depthWrite: false, alphaTest: .05 }));
         points.frustumCulled = false; points.renderOrder = 2; scene.add(points);
-        points.userData = { inertial: list.map(entry => entry.r), times: list.map(entry => entry.t), path: list.map(() => new THREE.Vector3()), colour: new THREE.Color(colour), turn, lift };
+        points.userData = { inertial: list.map(entry => entry.r), times: list.map(entry => entry.t), path: list.map(() => new THREE.Vector3()), colour: new THREE.Color(colour), turn, lift, laidFor: new THREE.Vector3(Infinity, 0, 0), laidAt: NaN };
         return points;
     }
     // The rocket and Dragon: during the ascent, its track over the ground it flew over, and the orbits ahead as they
@@ -98,14 +98,36 @@ export async function createLaunchView(sky) {
     })();
     trails.approach = trail(approachPlan.map(entry => ({ t: entry.t, r: [0, 0, 0] })), 0x9fe3ff, null);
     trails.approach.userData.straight = true;
-    function turnTrails() {
+    // Each point is turned back once by Earth's rotation to its own time where it takes one (the ascent's track, the
+    // booster's), or kept inertial (Dragon's orbits); then each frame one transform turns them all, for the time the
+    // ascent's points have run on past the end of the ascent and for the time the orbits stand at. The booster's path
+    // never changes after that.
+    let prepared = false, turnedAt = NaN;
+    function prepareTrails() {
         for (const name of ['rocket', 'booster']) {
-            const { inertial, times, path, turn, lift } = trails[name].userData;
-            for (let k = 0; k < path.length; k++) {
-                const point = path[k].set(...inertialToPad(inertial[k], turn(times[k])));
-                point.addScaledVector(raise.set(point.x, point.y + 6371000, point.z).normalize(), lift(times[k]));
-            }
+            const data = trails[name].userData;
+            data.fixed = data.inertial.map((r, k) => name === 'booster' || data.times[k] <= groundTrackEnd ? turnBack(r, data.times[k]) : r);
+            data.lifts = data.times.map(time => data.lift(time));
         }
+        applyTurn(trails.booster.userData, 0, trails.booster.userData.path.length, padTransform(0));
+        prepared = true;
+    }
+    function applyTurn(data, from, to, transform) {
+        const { m, offset } = transform, { fixed, path, lifts } = data;
+        for (let k = from; k < to; k++) {
+            const [x, y, z] = fixed[k], point = path[k];
+            point.set(m[0] * x + m[1] * y + m[2] * z + offset[0], m[3] * x + m[4] * y + m[5] * z + offset[1], m[6] * x + m[7] * y + m[8] * z + offset[2]);
+            point.addScaledVector(raise.set(point.x, point.y + 6371000, point.z).normalize(), lifts[k]);
+        }
+    }
+    const ascentPoints = trails.rocket.userData.times.findIndex(time => time > groundTrackEnd);
+    function turnTrails() {
+        if (!prepared) prepareTrails();
+        if (mission === turnedAt) return;
+        turnedAt = mission;
+        const rocket = trails.rocket.userData;
+        applyTurn(rocket, 0, ascentPoints, padTransform(Math.max(0, mission - groundTrackEnd)));
+        applyTurn(rocket, ascentPoints, rocket.path.length, padTransform(Math.max(mission, groundTrackEnd)));
         const iss = trails.iss.userData, anchor = Math.max(mission, groundTrackEnd);
         issTimes.forEach((f, k) => { iss.times[k] = Infinity; portAt(mission + f * issPeriod, anchor, iss.path[k]); });
         if (trails.approach.visible) {
@@ -134,24 +156,58 @@ export async function createLaunchView(sky) {
         return target.copy(path[k]).multiplyScalar(2 * u3 - 3 * u2 + 1).addScaledVector(slopeA, (u3 - 2 * u2 + u) * span)
             .addScaledVector(path[k + 1], 3 * u2 - 2 * u3).addScaledVector(slopeB, (u3 - u2) * span);
     }
+    // Dots at fixed places along a path: on a lattice of arc length from its start whose spacing, a power of two in
+    // metres, follows the distance from the camera (about 1° apart on screen), so they hold still as the camera moves
+    // instead of sliding along with it; between two spacings the in-between dots fade. They are laid outward from where
+    // the vehicle is now, forward to the end and then back to the start, so when the budget runs out on 18 hours of
+    // orbits it runs out far away. They are written relative to the camera's place and the points moved there (world
+    // coordinates in the millions of metres, in 32-bit floats, would shake by half a metre close up), and laid again
+    // only when the time or the camera has moved.
     function layDots(points, eye) {
-        const { path, times, colour, straight } = points.userData, position = points.geometry.attributes.position, colours = points.geometry.attributes.color;
-        let count = 0, k = 0, along = 0;   // segment k, fraction along it
-        while (k < path.length - 1 && count < maxDots) {
-            curveAt(path, times, k, along, dot, straight);
-            const time = times[k] + (times[k + 1] - times[k]) * along;
-            position.setXYZ(count, dot.x, dot.y, dot.z);
+        const data = points.userData, { path, times, colour, straight } = data, position = points.geometry.attributes.position, colours = points.geometry.attributes.color;
+        if (data.laidAt === mission && data.laidFor.equals(eye)) return;
+        data.laidAt = mission; data.laidFor.copy(eye);
+        points.position.copy(eye); points.updateMatrixWorld();
+        const last = path.length - 1;
+        if (last < 1) { points.geometry.setDrawRange(0, 0); return; }
+        const along = data.along ||= new Float64Array(path.length);
+        for (let k = 0; k < last; k++) along[k + 1] = along[k] + path[k].distanceTo(path[k + 1]);
+        let from = 0;
+        if (Number.isFinite(times[0])) { let lo = 0, hi = last; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (times[mid] <= mission) lo = mid; else hi = mid; } from = lo; }
+        let count = 0;
+        // One step of the walk: the dot at arc length s on segment k, and the lattice spacing there.
+        const place = (k, s, write = true) => {
+            const length = along[k + 1] - along[k], u = length > 0 ? (s - along[k]) / length : 0;
+            curveAt(path, times, k, u, dot, straight);
+            const level = Math.log2(Math.max(1.5, dot.distanceTo(eye) * .017)), steps = Math.ceil(level), spacing = 2 ** (steps - 1);
+            const time = times[k] + (times[k + 1] - times[k]) * u;
             // Bright where it has flown, faint ahead; orbits flown more than two hours ago fade further.
-            colours.setXYZW(count, colour.r, colour.g, colour.b, time > mission ? .42 : time > groundTrackEnd && mission - time > 7200 ? .14 : 1);
-            count++;
-            let step = Math.max(1.5, dot.distanceTo(eye) * .017);
-            while (step > 0 && k < path.length - 1) {
-                const left = path[k].distanceTo(path[k + 1]) * (1 - along);
-                if (step < left) { along += step / path[k].distanceTo(path[k + 1]); step = 0; }
-                else { step -= left; k++; along = 0; }
+            const fade = Math.round(s / spacing) % 2 ? steps - level : 1, alpha = (time > mission ? .42 : time > groundTrackEnd && mission - time > 7200 ? .14 : 1) * fade;
+            if (write && alpha > .05 && count < maxDots) {
+                position.setXYZ(count, dot.x - eye.x, dot.y - eye.y, dot.z - eye.z);
+                colours.setXYZW(count, colour.r, colour.g, colour.b, alpha);
+                count++;
             }
+            return spacing;
+        };
+        // Forward from the vehicle's segment to the end...
+        let k = from, s = along[from];
+        while (k < last && count < maxDots) {
+            while (k < last && s > along[k + 1]) k++;
+            if (k >= last) break;
+            const spacing = place(k, s);
+            s = (Math.floor(s / spacing + 1e-6) + 1) * spacing;
+        }
+        // ...then back from it to the start.
+        k = from; s = along[from];
+        let spacing = place(k, s, false); s = (Math.ceil(s / spacing - 1e-6) - 1) * spacing;
+        while (k >= 0 && s >= 0 && count < maxDots) {
+            while (k > 0 && s < along[k]) k--;
+            spacing = place(k, s);
+            s = (Math.ceil(s / spacing - 1e-6) - 1) * spacing;
         }
         position.needsUpdate = colours.needsUpdate = true; points.geometry.setDrawRange(0, count);
+        position.clearUpdateRanges?.(); colours.clearUpdateRanges?.(); position.addUpdateRange?.(0, count * 3); colours.addUpdateRange?.(0, count * 4);
     }
     function updateTrails() { trails.booster.visible = mission > eventAt('separation'); trails.approach.visible = mission > rendezvousTime - 3600; turnTrails(); }
     // The ISS: a marker and its label (the station itself is the station view's).
@@ -225,11 +281,14 @@ export async function createLaunchView(sky) {
     // booster's onto its legs), the long axis along the thrust or, for the falling booster, tail-first into the air.
     const up = new THREE.Vector3(0, 1, 0), localUp = new THREE.Vector3(), direction = new THREE.Vector3();
     const standing = padDeck + mountHeight;   // the engines' bottom above the ground on the pad
+    // The stack stands with Dragon's side hatch toward the tower in the west (the crew access arm meets it there); the
+    // whole vehicle keeps that roll in flight.
+    const hatchToTower = new THREE.Quaternion().setFromAxisAngle(up, -Math.PI / 2);
     function place(group, state, lift = standing) {
         group.position.set(...state.position);
         localUp.set(state.position[0], state.position[1] + 6371000, state.position[2]).normalize();
         group.position.addScaledVector(localUp, lift);
-        group.quaternion.setFromUnitVectors(up, direction.set(...state.direction));
+        group.quaternion.setFromUnitVectors(up, direction.set(...state.direction)).multiply(hatchToTower);
     }
     const separation = eventAt('separation'), ignition = eventAt('ses'), landing = eventAt('landing');
     // The ISS: the station view's model, its docking port where Dragon's docking ring meets it. At Waypoint 0 the ascent
@@ -471,7 +530,7 @@ export async function createLaunchView(sky) {
     // The approach's Dracos: each burn of the transfer for as long as it would take (a second at least on screen), and
     // pulses while Dragon holds its speed profile on the docking axis, against the commanded acceleration in Dragon's
     // own frame (the capsule's x, -z, y). The cone is long open: the forward four can fire.
-    const commanded = new THREE.Vector3(), turnBack = new THREE.Quaternion();
+    const commanded = new THREE.Vector3(), inverseAttitude = new THREE.Quaternion();
     const approachBurns = proximity.impulses.map(impulse => {
         const size = Math.hypot(...impulse.deltaV), seconds = size * vehicleModel.payload / (4 * dracoThrust * .894), warp = proximity.state(impulse.mission).warp;
         return { at: impulse.mission, length: Math.max(seconds, .9 * warp), deltaV: impulse.deltaV.map(v => v / (size || 1)) };
@@ -485,7 +544,7 @@ export async function createLaunchView(sky) {
         }
         if (!strength) return false;
         commanded.set(0, 0, 0).addScaledVector(dock.radial, lvlh[0]).addScaledVector(dock.along, lvlh[1]).addScaledVector(dock.cross, lvlh[2]);
-        commanded.applyQuaternion(turnBack.copy(capsule.quaternion).invert());
+        commanded.applyQuaternion(inverseAttitude.copy(capsule.quaternion).invert());
         commanded.set(commanded.x, -commanded.z, commanded.y).normalize();
         selectDracos(commanded, true, strength, firing);
         return true;
