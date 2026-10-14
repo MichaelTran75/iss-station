@@ -54,8 +54,11 @@ export function createGround() {
             geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
             geometry.setIndex(indices);
             if (fade) geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 4));
-            // Inner rings draw over outer ones; transparent pixels (no USGS coverage) leave the ring below showing.
-            const material = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 * level, polygonOffsetUnits: -8 * level,
+            // Inner rings draw over outer ones; transparent pixels (no USGS coverage) leave the ring below showing. The
+            // outer rings are pushed back rather than the inner ones pulled forward: pulled toward a low camera, the
+            // ring under the pad would cover the foot of the mount and the rocket at grazing angles.
+            const behind = rings.length - 1 - level;
+            const material = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, polygonOffset: behind > 0, polygonOffsetFactor: 2 * behind, polygonOffsetUnits: 8 * behind,
                 ...(fade ? { vertexColors: true, transparent: true, depthWrite: false } : { alphaTest: .5 }) });
             const mesh = new THREE.Mesh(geometry, material); mesh.visible = false; mesh.renderOrder = -50 + level; mesh.frustumCulled = false;
             group.add(mesh);

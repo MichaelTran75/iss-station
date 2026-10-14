@@ -95,6 +95,7 @@ function simulate() {
     const stack = [], booster = [];
     let s = { r: padStart.slice(), v: cross(spin, padStart), m: v.s1Dry + v.s1Prop + v.s2Dry + v.s2Prop + v.payload };
     let attitude = unit(padStart), seco = null, maxQ = { q: 0, at: 0 }, reserve = 0, separated = null, insertion = null;
+    stack.push({ t: 0, r: s.r, v: s.v, m: s.m, q: 0, load: 0, engines: 9, attitude });   // on the pad at liftoff
     for (let k = 0; ; k++) {
         const t = k * step;
         if (t > p.end + 1e-9) break;
@@ -135,6 +136,7 @@ function simulate() {
     // The booster's own flight.
     let b = separated, entry = null, landingStart = null, landing = null, apogee = 0;
     const retro = st => scale(unit(airVelocity(st)), -1);
+    if (b) booster.push({ t: guidance.separation, r: b.r, v: b.v, m: b.m, q: 0, load: 0, engines: 0, retro: retro(b) });
     for (let k = 0; b && !landing; k++) {
         const t = guidance.separation + k * step;
         if (t > p.end) break;
@@ -156,7 +158,10 @@ function simulate() {
         b = { ...rk4(b, mode, info), attitude: b.attitude };
         const now = t + step;
         if (k % keep === keep - 1) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, retro: retro(b) });
-        if (length(b.r) - R <= 0) landing = { at: now, speed: length(airVelocity(b)), r: b.r, m: b.m };
+        if (length(b.r) - R <= 0) {
+            landing = { at: now, speed: length(airVelocity(b)), r: b.r, m: b.m };
+            if (booster[booster.length - 1].t < now - 1e-9) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, retro: retro(b) });   // the touchdown itself
+        }
     }
     return { stack, booster, seco, maxQ, reserve, insertion, entry, landingStart, landing, apogee, separatedAttitude: separated?.attitude };
 }
@@ -179,7 +184,7 @@ function propagate(state, duration, burnsAt) {
     // RK4 under gravity alone; `burnsAt(time, state)` may change the velocity at the scheduled instants.
     const derivative = st => ({ r: st.v, v: scale(st.r, -mu / Math.pow(length(st.r), 3)) });
     let s = state, t = s.t;
-    const list = [];
+    const list = [{ t, r: s.r, v: s.v }];   // the start sits on the 10 s grid (the ascent ends at 800 s)
     const stepTo = (st, h) => {
         const k1 = derivative(st), at = (k, f) => ({ r: add(st.r, k.r, f), v: add(st.v, k.v, f) });
         const k2 = derivative(at(k1, h / 2)), k3 = derivative(at(k2, h / 2)), k4 = derivative(at(k3, h));
@@ -285,10 +290,16 @@ function toPad(vector, time, point) {
 }
 // Cubic Hermite between samples (positions with their velocities).
 function sampleAt(list, time) {
-    if (time <= list[0].t) return list[0];
-    const last = list[list.length - 1];
-    if (time >= last.t) return last;
-    const dt = list[1].t - list[0].t, k = Math.min(list.length - 2, Math.floor((time - list[0].t) / dt)), a = list[k], b = list[k + 1], u = (time - a.t) / dt;
+    // Outside the samples, carry on along the velocity: holding the end sample still would put it where the vehicle
+    // was at another time, which over the turning Earth is tens of metres off at once.
+    const first = list[0], last = list[list.length - 1];
+    if (time <= first.t) return { ...first, t: time, r: add(first.r, first.v, time - first.t) };
+    if (time >= last.t) return { ...last, t: time, r: add(last.r, last.v, time - last.t) };
+    // Samples are evenly spaced except a last, shorter step (a touchdown): guess the segment, then settle it.
+    let k = Math.min(list.length - 2, Math.max(0, Math.floor((time - first.t) / (list[1].t - first.t))));
+    while (k < list.length - 2 && list[k + 1].t < time) k++;
+    while (k > 0 && list[k].t > time) k--;
+    const a = list[k], b = list[k + 1], dt = b.t - a.t, u = (time - a.t) / dt;
     const h00 = 2 * u ** 3 - 3 * u * u + 1, h10 = u ** 3 - 2 * u * u + u, h01 = -2 * u ** 3 + 3 * u * u, h11 = u ** 3 - u * u;
     const r = [0, 1, 2].map(i => h00 * a.r[i] + h10 * dt * a.v[i] + h01 * b.r[i] + h11 * dt * b.v[i]);
     const vel = [0, 1, 2].map(i => a.v[i] + (b.v[i] - a.v[i]) * u);
@@ -308,7 +319,11 @@ function cosineAt(r, time) {
 }
 // The rocket (first and second stage until separation, then the second stage with Dragon) at a mission time.
 export function vehicleState(mission) {
-    if (mission <= 0) return { position: [0, 0, 0], direction: [0, 1, 0], altitude: 0, downrange: 0, speed: 0, inertial: omega * R * Math.cos(phi), q: 0, load: 1, mass: sim.stack[0].m, engines: mission >= -3 ? 9 * .6 : 0 };
+    if (mission <= 0) {
+        // On the pad: the engines light at T−3 s and run up to full thrust against the hold-down clamps.
+        const f = Math.min(1, Math.max(0, (mission + 3) / 2.5)), engines = mission >= -3 ? 9 * (.6 + .4 * f * f * (3 - 2 * f)) : 0;
+        return { position: [0, 0, 0], direction: [0, 1, 0], altitude: 0, downrange: 0, speed: 0, inertial: omega * R * Math.cos(phi), q: 0, load: 1, mass: sim.stack[0].m, engines };
+    }
     if (mission <= guidance.end) { const entry = sampleAt(sim.stack, mission); return describe(entry, mission, entry.attitude); }
     // Dragon on its own, nose along its flight.
     const entry = { ...sampleAt(dragonPhasing.list, mission), m: vehicle.payload, q: 0, load: 0, engines: 0 };
