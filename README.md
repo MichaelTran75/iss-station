@@ -72,7 +72,7 @@ Theo lịch ghép nối Crew-2 (24/4/2021) và tốc độ của Demo-2. Thời 
 | Tiếp cận cuối | 5 phút | 7 cm/s, chạm cổng ở 5 cm/s | ×4 |
 | Bắt mềm → móc khóa xong | 13 phút | | ×60 |
 
-Nắp mũi đóng suốt chặng xa và chỉ mở khi Dragon dừng ở điểm 2, cách 20 m (chủ ý trình bày: ngoài thực tế nắp mở khoảng một phút sau khi tách tầng hai).
+Nắp mũi mở suốt chặng tiếp cận: ngoài thực tế nắp mở khoảng 13 phút sau khi phóng (Demo-2: T+12:46), lâu trước Waypoint 0, nên tới điểm 2 (20 m) nắp đã mở sẵn và 4 Draco phía trước dưới nắp dùng được cả chặng. (Trước đây trang cho nắp mở ở 20 m cho dễ nhìn; đã bỏ để khớp với góc nhìn Launch.)
 
 Động cơ Draco (`js/parts/draco.js`): Crew Dragon có 16 chiếc, mỗi chiếc 400 N (90 lbf), Isp 300 s, nhiên liệu MMH và N₂O₄ tự bốc cháy khi gặp nhau, bật tắt theo xung ngắn tới 30 ms.
 - 4 chiếc hướng về trước ở vách trước, cạnh vòng ghép, dưới nắp mũi. Vị trí lấy đúng từ lưới của model; chúng chỉ phun khi nắp đã mở và lo các lần đốt lớn (đốt nâng quỹ đạo, đốt rời quỹ đạo).
@@ -108,7 +108,7 @@ Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó s
 
 ## Góc nhìn Launch
 
-Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−10 s và chạy tới khi Dragon đến Waypoint 0, 400 m dưới ISS, sau 18 giờ 08 phút. Hai nút **Rocket & Dragon** / **Booster** chọn bám theo tên lửa lên quỹ đạo hay tầng 1 bay về sà lan; mỗi bên có nhịp tua riêng (chậm lại quanh các lần đốt và lúc đáp). Mỗi lần đốt nâng quỹ đạo của Dragon chạy ở ×90 thay vì ×1.500: Dragon xoay tấm chắn nhiệt theo hướng đốt (4 Draco phía trước đẩy nó lùi về sau), phun Draco suốt thời gian đốt (404, 366, rồi khoảng 44 s mỗi lần, với 1,6 kN trên 12,5 t), rồi xoay lại.
+Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−10 s và chạy liền tới khi Dragon ghép vào ISS: Waypoint 0 (400 m dưới trạm) sau 18 giờ 08 phút, chạm cổng ở T+18:53:15, móc khóa xong ở T+19:06:15. Không phải chuyển sang trang trạm. Hai nút **Rocket & Dragon** / **Booster** chọn bám theo tên lửa lên quỹ đạo hay tầng 1 bay về sà lan; mỗi bên có nhịp tua riêng (chậm lại quanh các lần đốt và lúc đáp). Mỗi lần đốt nâng quỹ đạo của Dragon chạy ở ×90 thay vì ×1.500: Dragon xoay tấm chắn nhiệt theo hướng đốt (4 Draco phía trước đẩy nó lùi về sau), phun Draco suốt thời gian đốt (435 và 466 s cho hai lần lên 410 km, khoảng 22 s cho hai lần hạ xuống 400 km, 43 s cho TPI; 1,6 kN trên 12,5 t), rồi xoay lại. Lần đốt hạ độ cao không cần xoay: mũi đi trước, Draco phía trước đẩy lùi. Lần đốt ở Waypoint 0 để Dragon quay mũi về trạm luôn cho chặng tiếp cận.
 
 ### Mô phỏng bay (`js/sim/ascent.js`)
 
@@ -133,10 +133,15 @@ Không còn nội suy telemetry: đường bay được tích phân (Runge–Kut
 | 10:14 | tầng 1 đáp sà lan (NASA: 9:22) | mô phỏng |
 | 12:00 | Dragon tách, lò xo đẩy khoảng 0,4 m/s | lệnh (NASA) |
 | 12:46 | mở nắp mũi | lệnh (NASA) |
-| 2:30:00 / 3:15:11 | đốt nâng quỹ đạo lên 380 km, rồi tròn hoá (52 + 47 m/s) | mô phỏng |
-| 11:06:40 / 11:52:46 | đốt điều chỉnh độ cao lên 400 km, rồi đốt coelliptic (6 + 6 m/s) | mô phỏng |
+| 1:31:40 / 2:16:55 | đốt nâng quỹ đạo lên 410 km, rồi tròn hoá (56 + 60 m/s) | mô phỏng |
+| 11:06:40 / 11:52:55 | đốt hạ độ cao xuống 400 km, rồi đốt coelliptic (3 + 3 m/s) | mô phỏng |
 | 17:21:57 | khởi đầu pha cuối (TPI): nửa vòng lên 419,6 km | mô phỏng |
-| 18:08:15 | Waypoint 0, 400 m dưới ISS; nút *On to the station* chuyển sang chặng tiếp cận | mô phỏng |
+| 18:08:15 | Waypoint 0, 400 m dưới ISS: Dragon đã quay mũi về trạm | mô phỏng |
+| 18:32:15 | Waypoint 1, 220 m trên trục ghép | lịch Crew-2 |
+| 18:43:15 | Waypoint 2: dừng cách 20 m (go/no-go) | lịch Crew-2 |
+| 18:48:15 | tiếp cận cuối, 7 cm/s | lịch Crew-2 |
+| 18:53:15 | chạm cổng, bắt mềm (Demo-2: 14:16 UTC trên biên giới bắc Trung Quốc – Mông Cổ) | NASA |
+| 19:01:15 / 19:06:15 | bắt cứng (móc đang đóng), ghép xong; nút *Station view* mở trang trạm với Dragon đã ghép | lịch Crew-2 |
 
 ### Luồng xả và gió
 
@@ -169,9 +174,17 @@ Không còn nội suy telemetry: đường bay được tích phân (Runge–Kut
 
 ### Chặng bám đuổi tới ISS
 
-- Từ cuối mô phỏng phóng, Dragon bay tiếp hai vật thể (không lực cản, không J2), bước 10 s, đốt Draco tức thời theo cặp Hohmann như cách Dragon bám đuổi: 216 → 380 km, 380 → 400 km (20 km dưới trạm, quỹ đạo coelliptic), rồi nửa vòng cuối tới 419,6 km. Tổng khoảng 120 m/s.
+- Từ cuối mô phỏng phóng, Dragon bay tiếp hai vật thể (không lực cản, không J2), bước 10 s, đốt Draco tức thời theo cặp Hohmann như cách Dragon bám đuổi: 216 → 410 km, 410 → 400 km (20 km dưới trạm, quỹ đạo coelliptic), rồi nửa vòng cuối tới 419,6 km. Tổng khoảng 132 m/s.
 - Thời điểm kết thúc theo Demo-2: chạm cổng lúc 14:16 UTC ngày 31/5/2020, tức 18 giờ 53 phút sau khi phóng. Chặng tiếp cận của trang trạm mất 45 phút từ Waypoint 0 tới lúc chạm, nên Dragon tới Waypoint 0 ở T+18:08:15.
-- ISS bay quỹ đạo tròn 420 km cùng mặt phẳng, đặt đúng chỗ gặp Dragon ở Waypoint 0. Muốn biết vị trí thật của trạm ngày 30/5/2020 phải có bộ số quỹ đạo của ngày đó. Lúc vào quỹ đạo, trạm ở phía trước khoảng 6.000 km.
+- ISS bay quỹ đạo tròn 420 km cùng mặt phẳng, đặt đúng chỗ gặp Dragon ở Waypoint 0. Thời điểm và độ cao của lần đốt đầu được chọn để chạm cổng đúng nơi NASA công bố: trên biên giới phía bắc Trung Quốc – Mông Cổ (ở đây 41,8° B, 105,1° Đ). Ở đó mặt trời thấp hơn chân trời mặt đất 18°, nên ở độ cao 421 km trạm vẫn còn nắng lúc chạng vạng (giới hạn là 20°); vài phút sau khi ghép, trạm đi vào bóng Trái Đất.
+- Chặng tiếp cận (`proximity` trong `js/sim/ascent.js`) dùng đúng mô hình của trang trạm (`js/sim/rendezvous.js`, Clohessy–Wiltshire), với tốc độ góc của quỹ đạo 420 km này.
+  - Từ Waypoint 0: trôi theo quỹ đạo chuyển tới Waypoint 1, tiến dọc trục ghép tới điểm dừng 20 m, tiếp cận cuối, rồi chạm và bắt; nhịp tua giống trang trạm (×60, ×30, ×30, ×4, ×60).
+  - Toàn bộ trạm (mô hình của trang trạm, dùng chung lưới) được vẽ ngay trong góc nhìn Launch: camera được đưa vào hệ toạ độ của trạm, trục theo quỹ đạo (đỉnh +y, hướng bay −z). Trạm và Dragon dùng chung độ sâu nên che nhau đúng. Trạm chỉ vẽ khi camera cách nó dưới 30 km.
+  - Trạm được chiếu bởi Mặt Trời thật, hoặc chỉ còn ánh sáng nền khi ở trong bóng Trái Đất. Dragon cũng vậy (ở trên cao, độ sáng không còn theo độ cao Mặt Trời ở bệ).
+  - Vòng ghép của Dragon đi đúng quỹ đạo của mô hình quanh cổng PMA-2/IDA-2 của Harmony; Dragon xoay về tư thế ghép trong 2 phút đầu, bản lề nắp mũi hướng lên đỉnh.
+  - Draco phun theo mô hình: các lần đốt của chặng chuyển, các xung giữ đường thẳng dọc trục ghép, và xung giữ tư thế.
+  - Đường chấm vẽ đường tiếp cận dự kiến quanh trạm, nối từ chỗ đường bay lên quỹ đạo kết thúc.
+  - Camera nhìn từ phía cảng của trạm (port side), cao và lùi về sau (cùng hướng khung Dragon của trang trạm), đủ xa để thấy cả Dragon và cổng, lại gần dần khi Dragon tới gần.
 - Đường chấm nối liền từ bệ phóng tới ISS. Trong lúc phóng, đoạn phóng vẽ theo mặt đất mà tên lửa bay qua, còn các vòng quỹ đạo phía trước vẽ như chúng sẽ đứng trong không gian lúc kết thúc chặng phóng. Sau đó các vòng quỹ đạo vẽ như chúng đang đứng trong không gian (hệ quán tính), đoạn phóng xoay theo để đường không đứt. Nếu vẽ bám mặt đất, sau vài giờ các vòng sẽ quấn quanh địa cầu như cái lồng. Vòng đã bay quá 2 giờ mờ đi.
 - Vòng quỹ đạo của ISS (chấm xanh lá), chấm ISS cùng nhãn độ cao, và ô *Range to ISS* trong bảng sau khi Dragon tách.
 - Nút **Overview**: camera lùi ra nhìn cả Trái Đất, nghiêng 30° so với mặt phẳng quỹ đạo từ phía con tàu. Ở xa, chấm và nhãn đánh dấu con tàu đang bám.

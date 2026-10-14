@@ -16,6 +16,10 @@
 // Commanded times (cutoff, separations, nose cone) follow NASA's Demo-2 timeline; Max-Q, second-stage cutoff and the
 // booster's burns and landing are where the simulation puts them.
 // Output in the pad's local frame (metres; x east, y up, z south; origin on the ground at the pad, turning with Earth).
+// From Waypoint 0 the proximity operations follow the station view's model (js/sim/rendezvous.js) about this ISS, so
+// the flight runs on to contact and hooks closed.
+import { createRendezvous } from './rendezvous.js';
+
 
 export const launchSite = { name: 'LC-39A', latitude: 28.60822, longitude: -80.60411 };
 export const launchEpoch = Date.UTC(2020, 4, 30, 19, 22, 45);   // Demo-2 liftoff, 15:22:45 EDT
@@ -172,11 +176,12 @@ const sim = flightData;
 // from the stack's state at the end of the ascent (plus Dragon's own drift off the second stage) to Waypoint 0, 400 m
 // below the station, where the station view's approach (js/sim/rendezvous.js) begins. Demo-2 made soft contact at
 // 14:16 UTC on 31 May, 18 h 53 min after liftoff; that approach takes 45 min from Waypoint 0 to contact, so Dragon
-// reaches Waypoint 0 at 18 h 08 min. The burns climb in Hohmann pairs, as Dragon's phasing does: up to 380 km after
-// two and a half hours, to 400 km (20 km under the station, its coelliptic orbit) after eleven, and at terminal phase
+// reaches Waypoint 0 at 18 h 08 min. The burns go in Hohmann pairs, as Dragon's phasing does: up to 410 km an hour and a
+// half in, down to 400 km (20 km under the station, its coelliptic orbit) after eleven, and at terminal phase
 // initiation a last half-orbit transfer to 419.6 km that ends at the waypoint. The ISS flies a circular 420 km orbit
-// in the same plane, placed where this rendezvous meets it (the real station's position on 30 May 2020 would need its
-// elements from then).
+// in the same plane, placed where this rendezvous meets it. The first burn's time and height are chosen so that contact
+// comes, as NASA reported, over the northern border of China and Mongolia (41.8° N, 105.1° E here), where the station
+// was still in sunlight at orbital dusk (the Sun 18° under the ground's horizon, 20° the limit at 421 km).
 export const issAltitude = 420e3, rendezvousTime = 67995 - 2700;   // contact 18 h 53 min 15 s after liftoff, less the approach
 const phasingStep = 10, issRadius = R + issAltitude, waypointRadius = issRadius - 400;
 const halfTransfer = (from, to) => Math.PI * Math.sqrt(((from + to) / 2) ** 3 / mu);
@@ -208,7 +213,7 @@ const dragonPhasing = (() => {
     // circularization half an orbit later sets circular speed there.
     const plan = [];
     const raise = (at, to, label, circularLabel) => { plan.push({ at, to, label, kind: 'raise' }); plan.push({ at: null, to, label: circularLabel, kind: 'circular', after: plan.length - 1 }); };
-    raise(9000, R + 380e3, 'PHASING BURN · TO 380 km', 'CIRCULARIZATION · 380 km');
+    raise(5500, R + 410e3, 'PHASING BURN · TO 410 km', 'CIRCULARIZATION · 410 km');
     raise(40000, R + 400e3, 'HEIGHT ADJUST · TO 400 km', 'COELLIPTIC BURN · 400 km');
     raise(rendezvousTime - halfTransfer(R + 400e3, waypointRadius), waypointRadius, 'TERMINAL PHASE INITIATION', 'WAYPOINT 0 · 400 m BELOW THE ISS');
     const burns = [];
@@ -218,7 +223,7 @@ const dragonPhasing = (() => {
             const burn = plan.find(b => b.at !== null && !b.done && Math.abs(b.at - s.t) < 1e-6), r = length(s.r);
             const speed = burn.kind === 'raise' ? Math.sqrt(mu * (2 / r - 2 / (r + burn.to))) : Math.sqrt(mu / r);
             const v = scale(horizontal(s), speed);
-            burn.done = true; burns.push({ at: s.t, label: burn.label, deltaV: length(add(v, s.v, -1)) });
+            burn.done = true; burns.push({ at: s.t, label: burn.label, deltaV: length(add(v, s.v, -1)), prograde: length(v) > length(s.v) });
             if (burn.kind === 'raise') { const circular = plan[plan.indexOf(burn) + 1]; circular.at = s.t + halfTransfer(r, burn.to); }
             return v;
         }
@@ -233,6 +238,12 @@ export function issAt(time) {
     const angle = issRate * (time - rendezvousTime), c = Math.cos(angle), s = Math.sin(angle), k = issNormal, v = issMeet;
     return add(add(scale(v, c), cross(k, v), s), k, dot(k, v) * (1 - c));
 }
+// Proximity operations from Waypoint 0 (the station view's model, at this orbit's rate): the transfer to Waypoint 1,
+// the docking axis to the hold at Waypoint 2, the final approach, contact and capture. Mission seconds from
+// `rendezvousTime`; positions in the station's local frame (radial, along-track, cross-track) about its docking port.
+export const proximity = createRendezvous(issRate);
+export const contactTime = rendezvousTime + proximity.phases.find(phase => phase.key === 'capture').start;
+export const dockingTime = rendezvousTime + proximity.missionDuration;   // hooks closed
 // The second stage after Dragon leaves: it coasts on (in flight it is sent down to burn up over the Pacific).
 const stagePhasing = propagate({ t: sim.stack[sim.stack.length - 1].t, r: sim.stack[sim.stack.length - 1].r, v: sim.stack[sim.stack.length - 1].v }, 6000, null);
 
@@ -249,14 +260,18 @@ export const events = [
     { at: Math.round(sim.landing.at), key: 'landing', label: 'BOOSTER LANDS ON DRONESHIP', booster: true },
     { at: guidance.dragon, key: 'dragon', label: 'DRAGON SEPARATION' },
     { at: guidance.nosecone, key: 'nosecone', label: 'NOSE CONE OPENS' },
-    ...dragonPhasing.burns.map((burn, k) => ({ at: Math.round(burn.at), key: k === dragonPhasing.burns.length - 1 ? 'waypoint' : 'burn' + k, label: burn.label, deltaV: burn.deltaV }))
+    ...dragonPhasing.burns.map((burn, k) => ({ at: Math.round(burn.at), key: k === dragonPhasing.burns.length - 1 ? 'waypoint' : 'burn' + k, label: burn.label, deltaV: burn.deltaV })),
+    ...[['vbar', 'waypoint1', 'WAYPOINT 1 · 220 m ON THE DOCKING AXIS'], ['hold', 'waypoint2', 'WAYPOINT 2 · HOLD 20 m OUT'], ['final', 'final', 'FINAL APPROACH'], ['capture', 'contact', 'CONTACT · SOFT CAPTURE']]
+        .map(([phase, key, label]) => ({ at: Math.round(rendezvousTime + proximity.phases.find(item => item.key === phase).start), key, label })),
+    { at: Math.round(contactTime + 480), key: 'hardcapture', label: 'HARD CAPTURE · HOOKS CLOSING' },
+    { at: Math.round(dockingTime), key: 'docked', label: 'DOCKED' }
 ].sort((a, b) => a.at - b.at);
 export const eventAt = key => events.find(event => event.key === key).at;
-export const countdown = -10, ascentDuration = rendezvousTime + 20;   // from ten seconds before liftoff to Waypoint 0
+export const countdown = -10, ascentDuration = dockingTime + 20;   // from ten seconds before liftoff to Dragon docked at the ISS
 
 // Dragon's phasing burns on its four forward Dracos (1.6 kN on 12.5 t): when, how long, and the window round each
 // for turning to burn attitude (heat shield along the burn) and back.
-export const dracoBurns = dragonPhasing.burns.map(burn => ({ at: burn.at, seconds: burn.deltaV * vehicle.payload / (4 * 400), turn: 150 }));
+export const dracoBurns = dragonPhasing.burns.map(burn => ({ at: burn.at, seconds: burn.deltaV * vehicle.payload / (4 * 400), turn: 150, prograde: burn.prograde }));
 // Time warp by stretch of the flight: real time at liftoff and round each separation, faster in between, slower
 // round Dragon's burns so its turn and its Dracos show. Following the booster, real time round its burns and landing
 // instead.
@@ -272,9 +287,10 @@ function slowForBurns(plan, warp) {
     }
     return out;
 }
+const proximityWarps = proximity.phases.map(phase => [rendezvousTime + phase.start, phase.warp]);
 const warpPlans = {
-    rocket: slowForBurns([[countdown, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5], [790, 60], [1000, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15]], 90),
-    booster: [[countdown, 1], [20, 6], [140, 1.5], [185, 12], [eventAt('entry') - 6, 1.5], [eventAt('entry') + 26, 8], [eventAt('landingburn') - 12, 1], [eventAt('landing') + 6, 12], [eventAt('landing') + 60, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15]]
+    rocket: slowForBurns([[countdown, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5], [790, 60], [1000, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15], ...proximityWarps], 90),
+    booster: [[countdown, 1], [20, 6], [140, 1.5], [185, 12], [eventAt('entry') - 6, 1.5], [eventAt('entry') + 26, 8], [eventAt('landingburn') - 12, 1], [eventAt('landing') + 6, 12], [eventAt('landing') + 60, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15], ...proximityWarps]
 };
 function plan(name) {
     const warps = warpPlans[name], marks = [[0, countdown]];
@@ -341,9 +357,25 @@ export function vehicleState(mission) {
         return { position: [0, 0, 0], direction: [0, 1, 0], altitude: 0, downrange: 0, speed: 0, inertial: omega * R * Math.cos(phi), q: 0, load: 1, mass: sim.stack[0].m, engines };
     }
     if (mission <= guidance.end) { const entry = sampleAt(sim.stack, mission); return describe(entry, mission, entry.attitude); }
-    // Dragon on its own, nose along its flight.
-    const entry = { ...sampleAt(dragonPhasing.list, mission), m: vehicle.payload, q: 0, load: 0, engines: 0 };
-    return { ...describe(entry, mission, unit(entry.v)), dragon: true };
+    // Dragon on its own, nose along its flight; from Waypoint 0, where the proximity operations put it about the ISS.
+    if (mission < rendezvousTime) {
+        const entry = { ...sampleAt(dragonPhasing.list, mission), m: vehicle.payload, q: 0, load: 0, engines: 0 };
+        return { ...describe(entry, mission, unit(entry.v)), dragon: true };
+    }
+    const local = proximity.state(mission - rendezvousTime), frame = issInertialFrame(mission);
+    const offset = (vector, base) => add(add(add(base, frame.radial, vector[0]), frame.along, vector[1]), frame.cross, vector[2]);
+    const entry = { r: offset(local.position, frame.r), v: offset(local.velocity, frame.v), m: vehicle.payload, q: 0, load: 0, engines: 0 };
+    return { ...describe(entry, mission, frame.along), dragon: true, proximity: local };
+}
+// The ISS's place and its local frame (radial up, along its flight, the orbit's normal), inertial and in the pad's frame
+// as Earth stands at `turn`.
+function issInertialFrame(time) {
+    const r = issAt(time), radial = unit(r), along = cross(issNormal, radial);
+    return { r, v: scale(along, issRate * issRadius), radial, along, cross: issNormal };
+}
+export function issFrame(time, turn = time) {
+    const frame = issInertialFrame(time);
+    return { position: toPad(frame.r, turn, true), radial: unit(toPad(frame.radial, turn, false)), along: unit(toPad(frame.along, turn, false)), cross: unit(toPad(frame.cross, turn, false)) };
 }
 // The second stage after the end of the ascent simulation.
 export function stageState(mission) {

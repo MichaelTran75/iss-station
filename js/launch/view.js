@@ -1,5 +1,7 @@
 // Launch view: Falcon 9 lifts Crew Dragon off LC-39A and climbs to orbit, as on Demo-2: liftoff, Max-Q, engine
-// cutoff, stage separation, second-stage burn and cutoff, Dragon's separation and its nose cone opening; and the
+// cutoff, stage separation, second-stage burn and cutoff, Dragon's separation and its nose cone opening, its phasing
+// burns, and the proximity operations to contact and hooks closed at the ISS (the station view's own model, drawn
+// where the station flies); and the
 // booster's own flight back: flip, grid fins, entry burn, landing burn, legs, touchdown on the droneship. The flight
 // simulation (js/sim/ascent.js) gives both paths and the times; this view draws them
 // close up, over the ground round the pad (js/launch/ground.js) and the real sky at the time of the launch
@@ -8,12 +10,16 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { renderer, viewport } from '../core/stage.js';
-import { animationAt, animationDuration, boosterState, countdown, dracoBurns, droneship, eventAt, events, flightData, groundTrackEnd, inertialToPad, issAltitude, issPosition, launchEpoch, launchSite, missionAt, padFrame, paths, stageState, vehicleState, warpAt } from '../sim/ascent.js';
+import { hemisphere as stationSky, renderer, scene as stationScene, sunlight as stationSun, viewport } from '../core/stage.js';
+import { markShadowsDirty } from '../core/quality.js';
+import { parts } from '../core/station.js';
+import { approach } from '../parts/dragon.js';
+import { rendezvousGuide } from '../ui/rendezvous-guide.js';
+import { animationAt, animationDuration, boosterState, contactTime, countdown, dockingTime, dracoBurns, droneship, eventAt, events, flightData, groundTrackEnd, inertialToPad, issAltitude, issFrame, issPosition, launchEpoch, launchSite, missionAt, padFrame, paths, proximity, rendezvousTime, stageState, vehicle as vehicleModel, vehicleState, warpAt } from '../sim/ascent.js';
 import { toScene } from '../orbit/sky.js';
 import { createGround, mountHeight, padDeck } from './ground.js';
 import { createExhaust } from './exhaust.js';
-import { attitudePulses, dracoNozzles } from '../parts/draco.js';
+import { attitudePulses, dracoNozzles, dracoThrust, selectDracos } from '../parts/draco.js';
 import { createVehicle } from './vehicle.js';
 
 const smooth = (value, from, to) => THREE.MathUtils.smoothstep(value, from, to);
@@ -81,6 +87,17 @@ export async function createLaunchView(sky) {
     // The station's orbit, a revolution ahead of it, turned the same way as Dragon's orbits.
     const issPeriod = 2 * Math.PI * Math.sqrt((6371000 + issAltitude) ** 3 / 3.986004418e14), issTimes = Array.from({ length: 181 }, (_, k) => k / 180);
     trails.iss = trail(issTimes.map(() => ({ t: 0, r: [0, 0, 0] })), 0x91d8c3, null);
+    // Dragon's path for the proximity operations, about the moving station: the transfer from Waypoint 0, the docking
+    // axis from Waypoint 1 to the hold at Waypoint 2, and on to the port (straight between its points).
+    const approachPlan = (() => {
+        const transfer = proximity.phases[0].seconds, samples = proximity.path(160);
+        // It joins on where the ascent's line ends: the capsule frame's base, behind the ring at Waypoint 0.
+        const list = [{ t: rendezvousTime - 1, local: [-400, -(vehicle.secondStageTop + vehicle.dragonTop - vehicle.dragonRingY), 0] }];
+        samples.forEach((at, k) => list.push({ t: rendezvousTime + (k <= 160 ? transfer * k / 160 : k === 161 ? proximity.phases[1].end : proximity.phases[3].end), local: at }));
+        return list;
+    })();
+    trails.approach = trail(approachPlan.map(entry => ({ t: entry.t, r: [0, 0, 0] })), 0x9fe3ff, null);
+    trails.approach.userData.straight = true;
     function turnTrails() {
         for (const name of ['rocket', 'booster']) {
             const { inertial, times, path, turn, lift } = trails[name].userData;
@@ -90,7 +107,11 @@ export async function createLaunchView(sky) {
             }
         }
         const iss = trails.iss.userData, anchor = Math.max(mission, groundTrackEnd);
-        issTimes.forEach((f, k) => { iss.times[k] = Infinity; iss.path[k].set(...issPosition(mission + f * issPeriod, anchor)); });
+        issTimes.forEach((f, k) => { iss.times[k] = Infinity; portAt(mission + f * issPeriod, anchor, iss.path[k]); });
+        if (trails.approach.visible) {
+            const plan = trails.approach.userData;
+            approachPlan.forEach((entry, k) => plan.path[k].copy(dock.port).addScaledVector(dock.radial, entry.local[0]).addScaledVector(dock.along, entry.local[1]).addScaledVector(dock.cross, entry.local[2]));
+        }
     }
     const dot = new THREE.Vector3(), earthCentre = new THREE.Vector3(0, -6371000, 0), toDot = new THREE.Vector3(), raise = new THREE.Vector3();
     // Hidden behind Earth from `eye`?
@@ -104,9 +125,9 @@ export async function createLaunchView(sky) {
     // neighbouring samples by time (or by count where the samples carry no times, as the station's orbit). Joined
     // straight, samples 10 s apart in orbit would cut inside the curve by up to 100 m.
     const slopeA = new THREE.Vector3(), slopeB = new THREE.Vector3();
-    function curveAt(path, times, k, u, target) {
+    function curveAt(path, times, k, u, target, straight = false) {
         const last = path.length - 1, at = j => Number.isFinite(times[j]) ? times[j] : j, i0 = Math.max(0, k - 1), i1 = Math.min(last, k + 2), span = at(k + 1) - at(k);
-        if (!(span > 0)) return target.lerpVectors(path[k], path[k + 1], u);
+        if (!(span > 0) || straight) return target.lerpVectors(path[k], path[k + 1], u);
         slopeA.subVectors(path[k + 1], path[i0]).divideScalar(at(k + 1) - at(i0));
         slopeB.subVectors(path[i1], path[k]).divideScalar(at(i1) - at(k));
         const u2 = u * u, u3 = u2 * u;
@@ -114,10 +135,10 @@ export async function createLaunchView(sky) {
             .addScaledVector(path[k + 1], 3 * u2 - 2 * u3).addScaledVector(slopeB, (u3 - u2) * span);
     }
     function layDots(points, eye) {
-        const { path, times, colour } = points.userData, position = points.geometry.attributes.position, colours = points.geometry.attributes.color;
+        const { path, times, colour, straight } = points.userData, position = points.geometry.attributes.position, colours = points.geometry.attributes.color;
         let count = 0, k = 0, along = 0;   // segment k, fraction along it
         while (k < path.length - 1 && count < maxDots) {
-            curveAt(path, times, k, along, dot);
+            curveAt(path, times, k, along, dot, straight);
             const time = times[k] + (times[k + 1] - times[k]) * along;
             position.setXYZ(count, dot.x, dot.y, dot.z);
             // Bright where it has flown, faint ahead; orbits flown more than two hours ago fade further.
@@ -132,7 +153,7 @@ export async function createLaunchView(sky) {
         }
         position.needsUpdate = colours.needsUpdate = true; points.geometry.setDrawRange(0, count);
     }
-    function updateTrails() { trails.booster.visible = mission > eventAt('separation'); turnTrails(); }
+    function updateTrails() { trails.booster.visible = mission > eventAt('separation'); trails.approach.visible = mission > rendezvousTime - 3600; turnTrails(); }
     // The ISS: a marker and its label (the station itself is the station view's).
     const issMarker = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotMap, color: 0x91d8c3, sizeAttenuation: false, depthWrite: false, transparent: true }));
     issMarker.scale.setScalar(.022); issMarker.renderOrder = 3; scene.add(issMarker);
@@ -211,15 +232,40 @@ export async function createLaunchView(sky) {
         group.quaternion.setFromUnitVectors(up, direction.set(...state.direction));
     }
     const separation = eventAt('separation'), ignition = eventAt('ses'), landing = eventAt('landing');
+    // The ISS: the station view's model, its docking port where Dragon's docking ring meets it. At Waypoint 0 the ascent
+    // leaves Dragon 400 m straight below the station's point on its orbit, but Dragon's frame starts at the stack's base,
+    // `standing` up from the simulated point, and its ring sits ahead of that: the port goes the same way, so the
+    // ring stands exactly 400 m under it. The station's axes follow its orbit: zenith +y, its flight -z, the orbit's
+    // normal -x (as in the station view).
+    const middle = (vehicle.secondStageTop + vehicle.dragonTop) / 2, ringAhead = 2 * middle - vehicle.dragonRingY;   // ring ahead of the simulated point, nose turned to the station
+    const dock = { port: new THREE.Vector3(), radial: new THREE.Vector3(), along: new THREE.Vector3(), cross: new THREE.Vector3(), ring: new THREE.Vector3(), matrix: new THREE.Matrix4(), inverse: new THREE.Matrix4(), near: false };
+    const xAxis = new THREE.Vector3(), yAxis = new THREE.Vector3(), zAxis = new THREE.Vector3(), dockBasis = new THREE.Matrix4(), dockAttitude = new THREE.Quaternion();
+    function portAt(time, turn, target) {
+        const f = issFrame(time, turn);
+        return target.set(...f.position).add(xAxis.set(...f.radial).multiplyScalar(standing)).add(yAxis.set(...f.along).multiplyScalar(ringAhead));
+    }
+    function placeStation(time) {
+        const f = issFrame(time, Math.max(time, groundTrackEnd));
+        dock.radial.set(...f.radial); dock.along.set(...f.along); dock.cross.set(...f.cross);
+        dock.port.set(...f.position).addScaledVector(dock.radial, standing).addScaledVector(dock.along, ringAhead);
+        dock.matrix.makeBasis(xAxis.copy(dock.cross).negate(), dock.radial, zAxis.copy(dock.along).negate());
+        yAxis.copy(approach.port).applyMatrix4(dock.matrix);
+        dock.matrix.setPosition(dock.port.x - yAxis.x, dock.port.y - yAxis.y, dock.port.z - yAxis.z);
+        dock.inverse.copy(dock.matrix).invert();
+    }
     // The booster comes down onto its legs' reach (2.8 m below the engines) for the landing.
     const boosterLift = time => standing - (standing - 2.8) * smooth(time, landing - 60, landing - 20);
-    // Dragon's phasing burns: how far turned to burn attitude (0-1) and whether the Dracos are firing.
+    // Dragon's phasing burns: how far turned to burn attitude (0-1; heat shield along a burn that speeds it up) and
+    // whether the Dracos are firing.
     const flip = new THREE.Quaternion(), sideways = new THREE.Vector3(1, 0, 0), firing = new Float32Array(dracoNozzles.length), turnPivot = new THREE.Vector3(), turnArm = new THREE.Vector3();
+    const lastBurn = dracoBurns[dracoBurns.length - 1];
     function burnNow(mission) {
         for (const burn of dracoBurns) {
-            const start = burn.at - burn.seconds / 2, end = burn.at + burn.seconds / 2;
-            if (mission < start - burn.turn || mission > end + burn.turn) continue;
-            const turned = smooth(mission, start - burn.turn, start - 25) * (1 - smooth(mission, end + 25, end + burn.turn));
+            // The last, at Waypoint 0, leaves Dragon with its nose to the station: it stays turned for the approach.
+            const start = burn.at - burn.seconds / 2, end = burn.at + burn.seconds / 2, stays = burn === lastBurn;
+            if (mission < start - burn.turn || (!stays && mission > end + burn.turn)) continue;
+            // A burn that slows Dragon (the drop to the coelliptic orbit) needs no turn: nose ahead, the forward Dracos push back.
+            const turned = (burn.prograde ? 1 : 0) * smooth(mission, start - burn.turn, start - 25) * (stays ? 1 : 1 - smooth(mission, end + 25, end + burn.turn));
             return { turned, on: mission >= start && mission <= end ? Math.min(1, (mission - start) / 2, (end - mission) / 2) : 0 };
         }
         return { turned: 0, on: 0 };
@@ -242,6 +288,16 @@ export async function createLaunchView(sky) {
                 capsule.quaternion.multiply(flip.setFromAxisAngle(sideways, Math.PI * burn.turned));
                 capsule.position.copy(pivot).sub(turnArm.set(0, middle, 0).applyQuaternion(capsule.quaternion));
             }
+            if (mission >= rendezvousTime) {
+                // Proximity operations: the docking ring follows the model's path about the port (stopping at contact),
+                // and Dragon rolls onto its docking attitude over two minutes (nose to the port, against the station's
+                // flight; the nose cone's hinge, the capsule's -z, to zenith), turning about the ring.
+                const local = state.proximity;
+                dock.ring.copy(dock.port).addScaledVector(dock.radial, local.position[0]).addScaledVector(dock.along, Math.max(local.position[1], approach.contactGap)).addScaledVector(dock.cross, local.position[2]);
+                dockAttitude.setFromRotationMatrix(dockBasis.makeBasis(xAxis.copy(dock.cross).negate(), yAxis.copy(dock.along).negate(), zAxis.copy(dock.radial).negate()));
+                capsule.quaternion.slerp(dockAttitude, smooth(mission, rendezvousTime, rendezvousTime + 120));
+                capsule.position.copy(dock.ring).sub(turnArm.set(0, vehicle.dragonRingY, 0).applyQuaternion(capsule.quaternion));
+            }
         }
         else { capsule.position.copy(upper.position); capsule.quaternion.copy(upper.quaternion); }
         boosterNow = mission < separation ? state : boosterState(mission);
@@ -252,7 +308,7 @@ export async function createLaunchView(sky) {
         // Springs push Dragon off the second stage; it draws away at about 0.4 m/s.
         const dragonSince = mission - eventAt('dragon');
         if (dragonSince > 0 && !state.dragon) capsule.position.addScaledVector(axis, .4 * dragonSince + .004 * dragonSince * dragonSince);
-        issMarker.position.set(...issPosition(mission, Math.max(mission, groundTrackEnd)));
+        issMarker.position.copy(dock.port);
         vehicle.setNose(smooth(mission, eventAt('nosecone'), eventAt('nosecone') + 6));
         // Engines: the Merlins as the simulation fires them (nine, throttled through Max-Q and for the crew's 3.1 g;
         // three for the entry burn; one, throttled, to land), and the vacuum Merlin.
@@ -298,6 +354,18 @@ export async function createLaunchView(sky) {
             return;
         }
         if (mission < 700) { stackPoint(upper, 54, goalTarget); goalOffset.copy(side).multiplyScalar(75).addScaledVector(back, 35).addScaledVector(up, 10); return; }
+        if (mission >= rendezvousTime) {
+            // The approach: between Dragon and the port, from the station's port side, above and aft (the station
+            // view's framing for Dragon), far enough to hold both, closing in as Dragon nears.
+            const range = state.proximity ? state.proximity.range : 400, blend = smooth(mission, rendezvousTime, rendezvousTime + 90);
+            stackPoint(capsule, middle, goalTarget).lerp(dock.port, .45 * blend);
+            const reach = 30 + 1.3 * range;
+            point.copy(dock.cross).multiplyScalar(165).addScaledVector(dock.radial, 70).addScaledVector(dock.along, -75).setLength(reach);
+            back.set(0, -1, 0).applyQuaternion(capsule.quaternion);
+            side.crossVectors(back, up); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
+            goalOffset.copy(side).multiplyScalar(30).addScaledVector(back, 6).addScaledVector(up, 5).lerp(point, blend);
+            return;
+        }
         stackPoint(capsule, vehicle.secondStageTop + 4, goalTarget);
         goalTarget.lerp(stackPoint(upper, vehicle.secondStageTop, point), .35 * (1 - smooth(mission, eventAt('dragon') + 4, eventAt('dragon') + 24)));
         goalOffset.copy(side).multiplyScalar(30).addScaledVector(back, 6).addScaledVector(up, 5);
@@ -345,12 +413,23 @@ export async function createLaunchView(sky) {
     // Light: the Sun where it was at liftoff time; the ground's imagery dims when it is low.
     const sunLocal = new THREE.Vector3();
     let daylight = 1;
+    // In flight the vehicles have the Sun unless Earth's shadow covers them (a cylinder behind Earth); near the ground,
+    // the Sun's height over the pad sets the light.
+    const toTarget = new THREE.Vector3(), earthCentreLocal = new THREE.Vector3(0, -6371000, 0);
+    function sunlitAt(point) {
+        toTarget.subVectors(point, earthCentreLocal);
+        const along = toTarget.dot(sunLocal);
+        return along > 0 || toTarget.addScaledVector(sunLocal, -along).length() > 6371000 ? 1 : 0;
+    }
     function light() {
         sunLocal.copy(sky.sun.position).normalize().applyQuaternion(frameInverse);
         daylight = THREE.MathUtils.clamp(.25 + sunLocal.y * 1.6, .15, 1);
-        sunlight.intensity = 3.1 * smooth(sunLocal.y, -.08, .05);
+        const high = smooth(controls.target.distanceTo(earthCentreLocal) - 6371000, 20000, 60000), lit = sunlitAt(controls.target);
+        sunlight.intensity = 3.1 * THREE.MathUtils.lerp(smooth(sunLocal.y, -.08, .05), lit, high);
         sunlight.position.copy(controls.target).addScaledVector(sunLocal, 2000); sunlight.target.position.copy(controls.target);
-        skylight.intensity = .2 + .55 * daylight;
+        skylight.intensity = THREE.MathUtils.lerp(.2 + .55 * daylight, .3, high);
+        // The reflections' environment dims in Earth's shadow too, as the station's own fill does there.
+        scene.environmentIntensity = .45 * THREE.MathUtils.lerp(1, .2 + .8 * lit, high);
         ground.setDaylight(daylight);
     }
 
@@ -371,7 +450,7 @@ export async function createLaunchView(sky) {
         // Once Dragon flies on its own, the distance that matters is the one to the station.
         const toStation = focus === 'rocket' && mission > eventAt('dragon'), downrange = field('launch-downrange');
         downrange.previousElementSibling.textContent = toStation ? 'Range to ISS' : 'Downrange';
-        const distance = toStation ? capsule.position.distanceTo(issMarker.position) : shown.downrange;
+        const distance = toStation ? (state.proximity ? state.proximity.range : stackPoint(capsule, vehicle.dragonRingY, point).distanceTo(dock.port)) : shown.downrange;
         downrange.textContent = distance < 1e4 && toStation ? distance.toFixed(0) + ' m' : (distance / 1000).toFixed(distance < 1e4 ? 1 : 0).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' km';
         field('launch-load').textContent = (mission < 0 ? 1 : shown.load).toFixed(2) + ' g';
         field('launch-q').textContent = (shown.q / 1000).toFixed(shown.q < 1e4 ? 1 : 0) + ' kPa';
@@ -384,16 +463,38 @@ export async function createLaunchView(sky) {
             insetName.textContent = label;
             insetText.textContent = other.landed ? 'ON THE DRONESHIP' : (other.altitude < 1000 ? other.altitude.toFixed(0) + ' m' : (other.altitude / 1000).toFixed(1) + ' km') + ' · ' + speedText(other.speed);
         }
-        stationButton.hidden = mission < eventAt('nosecone') + 6;
+        stationButton.hidden = mission < dockingTime;
         const tiles = ground.status.loading;
         field('launch-source').textContent = (tiles ? 'Loading ground imagery (' + tiles + ' tiles)… · ' : '') + 'Simulated flight, fitted to NASA Demo-2 and DM-1 telemetry · model: Stanley Creative, CC BY 4.0 · imagery: USGS, NASA GIBS · buildings: © OpenStreetMap contributors · winds: Iowa Environmental Mesonet';
     }
 
+    // The approach's Dracos: each burn of the transfer for as long as it would take (a second at least on screen), and
+    // pulses while Dragon holds its speed profile on the docking axis, against the commanded acceleration in Dragon's
+    // own frame (the capsule's x, -z, y). The cone is long open: the forward four can fire.
+    const commanded = new THREE.Vector3(), turnBack = new THREE.Quaternion();
+    const approachBurns = proximity.impulses.map(impulse => {
+        const size = Math.hypot(...impulse.deltaV), seconds = size * vehicleModel.payload / (4 * dracoThrust * .894), warp = proximity.state(impulse.mission).warp;
+        return { at: impulse.mission, length: Math.max(seconds, .9 * warp), deltaV: impulse.deltaV.map(v => v / (size || 1)) };
+    });
+    function approachFiring(local) {
+        let strength = 0, lvlh = null;
+        for (const burn of approachBurns) if (local >= burn.at && local < burn.at + burn.length) { strength = 1; lvlh = burn.deltaV; }
+        if (!strength) {
+            const thrust = state.proximity?.thrust || [0, 0, 0], size = Math.hypot(...thrust), pulse = (time * 1.4) % 1;
+            if (size > 1e-5 && pulse < .22) { strength = THREE.MathUtils.clamp(size / 2e-3, .55, 1) * (1 - pulse / .22); lvlh = thrust.map(v => v / size); }
+        }
+        if (!strength) return false;
+        commanded.set(0, 0, 0).addScaledVector(dock.radial, lvlh[0]).addScaledVector(dock.along, lvlh[1]).addScaledVector(dock.cross, lvlh[2]);
+        commanded.applyQuaternion(turnBack.copy(capsule.quaternion).invert());
+        commanded.set(commanded.x, -commanded.z, commanded.y).normalize();
+        selectDracos(commanded, true, strength, firing);
+        return true;
+    }
     function update(delta) {
         if (playing) { time = Math.min(animationDuration(focus), time + delta); if (time >= animationDuration(focus)) setPlaying(false); }
         mission = missionAt(time, focus);
         sky.update(0, new Date(launchEpoch + mission * 1000));
-        placeFrame(); pose(); light(); follow(delta); updateTrails();
+        placeFrame(); placeStation(mission); pose(); light(); follow(delta); updateTrails();
         if (insetShown()) followInset(delta); else inset.snap = true;
         // The wheel speeds up with distance, from metres off the rocket out to whole orbits.
         controls.zoomSpeed = THREE.MathUtils.clamp(1 + .5 * Math.log10(Math.max(1, camera.position.distanceTo(controls.target) / 100)), 1, 4);
@@ -407,10 +508,10 @@ export async function createLaunchView(sky) {
         exhaust.update(mission, camera, sunLocal, daylight, flame);
         // Dragon's Dracos: the forward four through each phasing burn, attitude-trim pulses on its own before that.
         firing.fill(0);
-        if (mission > eventAt('dragon') + 2) {
+        if (mission > eventAt('dragon') + 2 && mission < contactTime) {
             const burn = burnNow(mission);
             if (burn.on > 0) for (let k = 0; k < 4; k++) firing[k] = burn.on * (.9 + .1 * Math.sin(time * 40 + k));
-            else if (playing) attitudePulses(time, firing);
+            else if (!(mission >= rendezvousTime && approachFiring(mission - rendezvousTime)) && playing) attitudePulses(time, firing);
             if (mission < eventAt('nosecone') + 6) for (let k = 0; k < 4; k++) firing[k] = 0;   // under the closed cone
         }
         vehicle.setDracos(playing ? delta : 0, firing);
@@ -437,6 +538,8 @@ export async function createLaunchView(sky) {
         ground.updateSky(view, altitude * 1000, sunLocal, sunLocal.y);
         ground.sky.scale.setScalar(Math.max(1, view.near * 5 / 1000));
         layDots(trails.rocket, view.position); layDots(trails.iss, view.position); if (trails.booster.visible) layDots(trails.booster, view.position);
+        if (trails.approach.visible) layDots(trails.approach, view.position);
+        dock.near = false;
         // Two depth ranges, far then near, so orbits thousands of kilometres off sort against Earth as precisely as the
         // pad does a few metres off.
         renderer.autoClear = false; renderer.clearDepth();
@@ -445,8 +548,28 @@ export async function createLaunchView(sky) {
         if (close < split / 4) {
             view.near = split; view.far = far; view.updateProjectionMatrix(); renderer.render(scene, view); renderer.clearDepth();
             view.near = close; view.far = split * 1.02; view.updateProjectionMatrix(); renderer.render(scene, view);
+            drawStation(view);
         } else { view.near = close; view.far = far; view.updateProjectionMatrix(); renderer.render(scene, view); }
         renderer.autoClear = true;
+    }
+    // The station: the station view's own scene, seen from this camera carried into the station's frame, lit by the real
+    // Sun (or left in Earth's shadow). Its own Dragon and the approach guide stand down (this view flies Dragon), and
+    // its shadows are redrawn when the Sun has turned a degree against it.
+    const stationCamera = new THREE.PerspectiveCamera(); stationCamera.matrixAutoUpdate = false; stationCamera.matrixWorldAutoUpdate = false;
+    const stationLight = new THREE.Vector3(), shadowSun = new THREE.Vector3(9, 9, 9);
+    function drawStation(view) {
+        dock.near = view.position.distanceTo(dock.port) < 30000;
+        if (!dock.near) return;
+        stationCamera.projectionMatrix.copy(view.projectionMatrix); stationCamera.projectionMatrixInverse.copy(view.projectionMatrixInverse);
+        stationCamera.matrixWorld.multiplyMatrices(dock.inverse, view.matrixWorld); stationCamera.matrixWorldInverse.copy(stationCamera.matrixWorld).invert();
+        const dragonPart = parts.get('dragon').group, kept = [stationSun.position.clone(), stationSun.intensity, stationSky.intensity, dragonPart.visible, rendezvousGuide.visible];
+        const sunlit = sunlitAt(dock.port);
+        stationLight.copy(sunLocal).transformDirection(dock.inverse);
+        stationSun.position.copy(stationLight).multiplyScalar(150); stationSun.intensity = 3.2 * sunlit; stationSky.intensity = .3 + .85 * sunlit;
+        dragonPart.visible = false; rendezvousGuide.visible = false;
+        if (stationLight.angleTo(shadowSun) > .017) { renderer.shadowMap.needsUpdate = true; shadowSun.copy(stationLight); }
+        renderer.render(stationScene, stationCamera);
+        stationSun.position.copy(kept[0]); [stationSun.intensity, stationSky.intensity, dragonPart.visible, rendezvousGuide.visible] = kept.slice(1);
     }
     // The ISS's label beside its marker, while it is on screen and not behind Earth; the vehicle's when far out.
     const projected = new THREE.Vector3();
@@ -466,7 +589,8 @@ export async function createLaunchView(sky) {
     }
     function placeIssLabel() {
         projected.copy(issMarker.position).project(camera);
-        const show = active && projected.z < 1 && Math.abs(projected.x) < .97 && Math.abs(projected.y) < .95 && !behindEarth(camera.position, issMarker.position);
+        issMarker.visible = !dock.near;
+        const show = active && !dock.near && projected.z < 1 && Math.abs(projected.x) < .97 && Math.abs(projected.y) < .95 && !behindEarth(camera.position, issMarker.position);
         issLabel.hidden = !show;
         if (!show) return;
         const range = camera.position.distanceTo(issMarker.position) < 2e6 ? capsule.position.distanceTo(issMarker.position) : null;
@@ -509,7 +633,7 @@ export async function createLaunchView(sky) {
             if (time >= animationDuration(focus)) jump(0);
             setPlaying(true);
         },
-        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = true; setPlaying(false); },
+        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = true; setPlaying(false); shadowSun.set(9, 9, 9); markShadowsDirty(); },
         get active() { return active; },
         zoomBy(multiplier) {
             offset.subVectors(camera.position, controls.target);

@@ -20,7 +20,7 @@
         "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
         "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
         "./js/core/data.js": "./js/core/data.js?v=125ebf635a",
-        "./js/core/stage.js": "./js/core/stage.js?v=9483b17d36",
+        "./js/core/stage.js": "./js/core/stage.js?v=7f48886c0b",
         "./js/core/quality.js": "./js/core/quality.js?v=6bd2dc8886",
         "./js/core/kit.js": "./js/core/kit.js?v=b41e843ce9",
         "./js/core/station.js": "./js/core/station.js?v=9b89e755af",
@@ -47,7 +47,7 @@
         "./js/parts/prichal.js": "./js/parts/prichal.js?v=e8df7d74de",
         "./js/sim/rendezvous.js": "./js/sim/rendezvous.js?v=83f290ad04",
         "./js/parts/draco.js": "./js/parts/draco.js?v=600c72af92",
-        "./js/parts/dragon.js": "./js/parts/dragon.js?v=c4454da6f5",
+        "./js/parts/dragon.js": "./js/parts/dragon.js?v=b669931ecf",
         "./js/parts/soyuz.js": "./js/parts/soyuz.js?v=c2f348f5a2",
         "./js/parts/robotics.js": "./js/parts/robotics.js?v=a1e546c82a",
         "./js/parts/beam.js": "./js/parts/beam.js?v=c2c04d76ab",
@@ -60,16 +60,16 @@
         "./js/figures/eva.js": "./js/figures/eva.js?v=35ce703c39",
         "./js/ui/ghost.js": "./js/ui/ghost.js?v=0a0e34b992",
         "./js/ui/rendezvous-guide.js": "./js/ui/rendezvous-guide.js?v=c2e18df47a",
-        "./js/ui/controller.js": "./js/ui/controller.js?v=7f5db51633",
+        "./js/ui/controller.js": "./js/ui/controller.js?v=e28c133825",
         "./js/main.js": "./js/main.js?v=b201e06096",
         "./js/launch/complex.js": "./js/launch/complex.js?v=2b2b83ca9d",
         "./js/launch/exhaust.js": "./js/launch/exhaust.js?v=7c2980a4ec",
         "./js/launch/ground.js": "./js/launch/ground.js?v=0bbc4e6ae1",
-        "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=a4663b3551",
-        "./js/launch/view.js": "./js/launch/view.js?v=af0b08f6ef",
+        "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=5ea1db93c0",
+        "./js/launch/view.js": "./js/launch/view.js?v=7141d11f7a",
         "./js/orbit/sky.js": "./js/orbit/sky.js?v=48e499c19c",
         "./js/orbit/view.js": "./js/orbit/view.js?v=9166f83b83",
-        "./js/sim/ascent.js": "./js/sim/ascent.js?v=31bb3a6f5e",
+        "./js/sim/ascent.js": "./js/sim/ascent.js?v=6d0e1e0f0f",
         "./js/sim/eva.js": "./js/sim/eva.js?v=2f04194c17",
         "./js/sim/orbit.js": "./js/sim/orbit.js?v=f44737761f",
         "./js/sim/plume.js": "./js/sim/plume.js?v=073b15aff4",
@@ -78,7 +78,7 @@
     }
     </script>
     <link rel="modulepreload" href="js/core/data.js?v=125ebf635a">
-    <link rel="modulepreload" href="js/core/stage.js?v=9483b17d36">
+    <link rel="modulepreload" href="js/core/stage.js?v=7f48886c0b">
     <link rel="modulepreload" href="js/core/quality.js?v=6bd2dc8886">
     <link rel="modulepreload" href="js/core/kit.js?v=b41e843ce9">
     <link rel="modulepreload" href="js/core/station.js?v=9b89e755af">
@@ -105,7 +105,7 @@
     <link rel="modulepreload" href="js/parts/prichal.js?v=e8df7d74de">
     <link rel="modulepreload" href="js/sim/rendezvous.js?v=83f290ad04">
     <link rel="modulepreload" href="js/parts/draco.js?v=600c72af92">
-    <link rel="modulepreload" href="js/parts/dragon.js?v=c4454da6f5">
+    <link rel="modulepreload" href="js/parts/dragon.js?v=b669931ecf">
     <link rel="modulepreload" href="js/parts/soyuz.js?v=c2f348f5a2">
     <link rel="modulepreload" href="js/parts/robotics.js?v=a1e546c82a">
     <link rel="modulepreload" href="js/parts/beam.js?v=c2c04d76ab">
@@ -118,7 +118,7 @@
     <link rel="modulepreload" href="js/figures/eva.js?v=35ce703c39">
     <link rel="modulepreload" href="js/ui/ghost.js?v=0a0e34b992">
     <link rel="modulepreload" href="js/ui/rendezvous-guide.js?v=c2e18df47a">
-    <link rel="modulepreload" href="js/ui/controller.js?v=7f5db51633">
+    <link rel="modulepreload" href="js/ui/controller.js?v=e28c133825">
     <link rel="modulepreload" href="js/main.js?v=b201e06096">
     <!-- /modules -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
@@ -240,7 +240,7 @@
                         <div><dt>Dynamic pressure</dt><dd id="launch-q">–</dd></div>
                     </dl>
                     <ol class="launch-events" id="launch-events" aria-label="Launch events"></ol>
-                    <button type="button" class="launch-station" id="launch-station" hidden>On to the station →</button>
+                    <button type="button" class="launch-station" id="launch-station" hidden>Station view →</button>
                     <small id="launch-source"></small>
                 </section>
                 <div class="scale">

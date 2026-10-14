@@ -26,7 +26,7 @@ controls.maxZoom = 8;
 controls.autoRotateSpeed = .55;
 controls.maxPolarAngle = Math.PI * .92;
 controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
-const hemisphere = new THREE.HemisphereLight(0xeef2f6, 0x6d727e, 1.15);
+export const hemisphere = new THREE.HemisphereLight(0xeef2f6, 0x6d727e, 1.15);
 scene.add(hemisphere);
 export const sunlight = new THREE.DirectionalLight(0xfffbf2, 3.2);
 sunlight.position.set(-65, 110, -85);

@@ -241,6 +241,8 @@ function enterGlobe(name) {
     if (!globeViews.has(currentView)) stationTexts = [configurationName.textContent, orientation.textContent];
     else if (currentView !== name) globeView()?.leave();
     currentView = name; app.dataset.sceneView = name; inspectionLight.visible = false; dragonFollow = false;
+    // The Launch view draws the station itself for the docking: whole, not ghosted round a selected part.
+    if (name === 'launch' && selected) selectPart(null);
     controls.enabled = false; controls.autoRotate = false; setPressed('rotate-toggle', false);
     document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === name)));
     [document.getElementById('view-name').textContent, configurationName.textContent, orientation.textContent] = globeTexts[name];
@@ -255,11 +257,11 @@ function leaveGlobe() {
     currentView = 'reverse'; app.dataset.sceneView = 'reverse';
     if (stationTexts) [document.getElementById('configuration-name').textContent, document.getElementById('orientation-text').textContent] = stationTexts;
 }
-// From the launch to the station: the docking approach over Earth, following Dragon.
+// From the launch, once docked there, to the station view: Dragon at the port, over Earth.
 function toStation() {
     setView('reverse');
     if (!orbital) toggleBackdrop();
-    restartApproach(); selectPart('dragon'); focusPart('dragon');
+    approach.time = approach.duration; updateApproach(0); selectPart('dragon'); focusPart('dragon');
 }
 export function setView(name) {
     if (globeViews.has(name)) { enterGlobe(name); return; }

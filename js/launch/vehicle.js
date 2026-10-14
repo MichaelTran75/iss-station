@@ -215,6 +215,7 @@ export async function createVehicle(url) {
     return {
         firstStage, secondStage, dragon, setFirstPlume, setSecondPlume, setFins, setNose, setLegs, firstState, setDracos: dracos.update,
         // Heights on the stack: the joint between the stages, the second stage's top, Dragon's top.
-        separationY: data.separationY, secondStageTop: data.secondStageTop, dragonTop, source: data.source
+        separationY: data.separationY, secondStageTop: data.secondStageTop, dragonTop, source: data.source,
+        dragonRingY: dragon.position.y   // the docking ring's face (the Dragon frame's origin) up the stack
     };
 }
