@@ -380,12 +380,19 @@ export const droneship = (() => {
 // pad's frame: the ascent and the booster where they flew over the turning Earth (each at its own time), Dragon's
 // orbits as they stand in space now (all at the present time, or at the end of the ascent before then), so the line
 // runs on unbroken from the ground track into orbit and up to the station.
+// From Dragon's separation the line follows Dragon as it draws away from the second stage (the springs' push, as the
+// view and the phasing both take it), so it runs on unbroken into Dragon's own orbit.
+const dragonDrift = since => .4 * since + .004 * since * since;
+function rocketTrack(t) {
+    const entry = sampleAt(sim.stack, t);
+    return t > guidance.dragon ? add(entry.r, entry.attitude, dragonDrift(t - guidance.dragon)) : entry.r;
+}
 export const paths = {
-    rocket: [...Array.from({ length: guidance.end + 1 }, (_, t) => ({ t, r: sampleAt(sim.stack, t).r })),
+    rocket: [...Array.from({ length: guidance.end + 1 }, (_, t) => ({ t, r: rocketTrack(t) })),
         ...dragonPhasing.list.filter(entry => entry.t > guidance.end && entry.t <= rendezvousTime).map(entry => ({ t: entry.t, r: entry.r }))],
-    booster: sim.landing ? Array.from({ length: Math.floor(sim.landing.at - guidance.separation) + 1 }, (_, k) => {
+    booster: sim.landing ? [...Array.from({ length: Math.floor(sim.landing.at - guidance.separation) + 1 }, (_, k) => {
         const t = guidance.separation + k; return { t, r: sampleAt(sim.booster, t).r };
-    }) : []
+    }), ...(sim.landing.at % 1 > 1e-6 ? [{ t: sim.landing.at, r: sim.landing.r }] : [])] : []   // and the touchdown itself
 };
 export const groundTrackEnd = guidance.end;   // up to here the rocket's path follows the ground
 export const summary = {

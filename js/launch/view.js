@@ -62,13 +62,14 @@ export async function createLaunchView(sky) {
     })();
     const maxDots = 9000;
     // `turn(time)`: when Earth's turn is taken for the point at `time` (see js/sim/ascent.js, paths).
-    function trail(list, colour, turn) {
+    // `lift(time)`: how far the model stands above the simulated point then (see place()), so the dots run through it.
+    function trail(list, colour, turn, lift = () => 0) {
         const geometry = new THREE.BufferGeometry()
             .setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxDots * 3), 3))
             .setAttribute('color', new THREE.BufferAttribute(new Float32Array(maxDots * 4), 4));
         const points = new THREE.Points(geometry, new THREE.PointsMaterial({ size: 5, sizeAttenuation: false, vertexColors: true, map: dotMap, transparent: true, depthWrite: false, alphaTest: .05 }));
         points.frustumCulled = false; points.renderOrder = 2; scene.add(points);
-        points.userData = { inertial: list.map(entry => entry.r), times: list.map(entry => entry.t), path: list.map(() => new THREE.Vector3()), colour: new THREE.Color(colour), turn };
+        points.userData = { inertial: list.map(entry => entry.r), times: list.map(entry => entry.t), path: list.map(() => new THREE.Vector3()), colour: new THREE.Color(colour), turn, lift };
         return points;
     }
     // The rocket and Dragon: during the ascent, its track over the ground it flew over, and the orbits ahead as they
@@ -76,19 +77,22 @@ export async function createLaunchView(sky) {
     // along so the line stays unbroken from the launch up to the station. (Drawn over the turning ground, hours of
     // orbits would wind round the globe like a cage.)
     const orbitTurn = time => time <= groundTrackEnd ? time + Math.max(0, mission - groundTrackEnd) : Math.max(mission, groundTrackEnd);
-    const trails = { rocket: trail(paths.rocket, 0x9fe3ff, orbitTurn), booster: trail(paths.booster, 0xffb35c, time => time) };
+    const trails = { rocket: trail(paths.rocket, 0x9fe3ff, orbitTurn, () => standing), booster: trail(paths.booster, 0xffb35c, time => time, time => boosterLift(time)) };
     // The station's orbit, a revolution ahead of it, turned the same way as Dragon's orbits.
     const issPeriod = 2 * Math.PI * Math.sqrt((6371000 + issAltitude) ** 3 / 3.986004418e14), issTimes = Array.from({ length: 181 }, (_, k) => k / 180);
     trails.iss = trail(issTimes.map(() => ({ t: 0, r: [0, 0, 0] })), 0x91d8c3, null);
     function turnTrails() {
         for (const name of ['rocket', 'booster']) {
-            const { inertial, times, path, turn } = trails[name].userData;
-            for (let k = 0; k < path.length; k++) path[k].set(...inertialToPad(inertial[k], turn(times[k])));
+            const { inertial, times, path, turn, lift } = trails[name].userData;
+            for (let k = 0; k < path.length; k++) {
+                const point = path[k].set(...inertialToPad(inertial[k], turn(times[k])));
+                point.addScaledVector(raise.set(point.x, point.y + 6371000, point.z).normalize(), lift(times[k]));
+            }
         }
         const iss = trails.iss.userData, anchor = Math.max(mission, groundTrackEnd);
         issTimes.forEach((f, k) => { iss.times[k] = Infinity; iss.path[k].set(...issPosition(mission + f * issPeriod, anchor)); });
     }
-    const dot = new THREE.Vector3(), earthCentre = new THREE.Vector3(0, -6371000, 0), toDot = new THREE.Vector3();
+    const dot = new THREE.Vector3(), earthCentre = new THREE.Vector3(0, -6371000, 0), toDot = new THREE.Vector3(), raise = new THREE.Vector3();
     // Hidden behind Earth from `eye`?
     function behindEarth(eye, point) {
         toDot.subVectors(point, eye); const length = toDot.length(); toDot.divideScalar(length);
@@ -96,11 +100,24 @@ export async function createLaunchView(sky) {
         if (along <= 0 || along >= length) return false;
         return eye.clone().addScaledVector(toDot, along).distanceTo(earthCentre) < 6371000 - 2000;
     }
+    // A point a fraction `u` of the way from sample k to k + 1 on a cubic through them, its slopes taken from the
+    // neighbouring samples by time (or by count where the samples carry no times, as the station's orbit). Joined
+    // straight, samples 10 s apart in orbit would cut inside the curve by up to 100 m.
+    const slopeA = new THREE.Vector3(), slopeB = new THREE.Vector3();
+    function curveAt(path, times, k, u, target) {
+        const last = path.length - 1, at = j => Number.isFinite(times[j]) ? times[j] : j, i0 = Math.max(0, k - 1), i1 = Math.min(last, k + 2), span = at(k + 1) - at(k);
+        if (!(span > 0)) return target.lerpVectors(path[k], path[k + 1], u);
+        slopeA.subVectors(path[k + 1], path[i0]).divideScalar(at(k + 1) - at(i0));
+        slopeB.subVectors(path[i1], path[k]).divideScalar(at(i1) - at(k));
+        const u2 = u * u, u3 = u2 * u;
+        return target.copy(path[k]).multiplyScalar(2 * u3 - 3 * u2 + 1).addScaledVector(slopeA, (u3 - 2 * u2 + u) * span)
+            .addScaledVector(path[k + 1], 3 * u2 - 2 * u3).addScaledVector(slopeB, (u3 - u2) * span);
+    }
     function layDots(points, eye) {
         const { path, times, colour } = points.userData, position = points.geometry.attributes.position, colours = points.geometry.attributes.color;
         let count = 0, k = 0, along = 0;   // segment k, fraction along it
         while (k < path.length - 1 && count < maxDots) {
-            dot.lerpVectors(path[k], path[k + 1], along);
+            curveAt(path, times, k, along, dot);
             const time = times[k] + (times[k + 1] - times[k]) * along;
             position.setXYZ(count, dot.x, dot.y, dot.z);
             // Bright where it has flown, faint ahead; orbits flown more than two hours ago fade further.
@@ -194,6 +211,8 @@ export async function createLaunchView(sky) {
         group.quaternion.setFromUnitVectors(up, direction.set(...state.direction));
     }
     const separation = eventAt('separation'), ignition = eventAt('ses'), landing = eventAt('landing');
+    // The booster comes down onto its legs' reach (2.8 m below the engines) for the landing.
+    const boosterLift = time => standing - (standing - 2.8) * smooth(time, landing - 60, landing - 20);
     // Dragon's phasing burns: how far turned to burn attitude (0-1) and whether the Dracos are firing.
     const flip = new THREE.Quaternion(), sideways = new THREE.Vector3(1, 0, 0), firing = new Float32Array(dracoNozzles.length), turnPivot = new THREE.Vector3(), turnArm = new THREE.Vector3();
     function burnNow(mission) {
@@ -227,7 +246,7 @@ export async function createLaunchView(sky) {
         else { capsule.position.copy(upper.position); capsule.quaternion.copy(upper.quaternion); }
         boosterNow = mission < separation ? state : boosterState(mission);
         if (mission < separation) { booster.position.copy(upper.position); booster.quaternion.copy(upper.quaternion); }
-        else place(booster, boosterNow, standing - (standing - 2.8) * smooth(mission, landing - 60, landing - 20));   // down onto its legs' reach (2.8 m below the engines)
+        else place(booster, boosterNow, boosterLift(mission));
         vehicle.setFins(smooth(mission - separation, 10, 16));
         vehicle.setLegs(smooth(mission, landing - 9, landing - 4));
         // Springs push Dragon off the second stage; it draws away at about 0.4 m/s.
