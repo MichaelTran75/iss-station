@@ -34,6 +34,30 @@ for (const tank of Object.values(tanks)) {
     tank.oxygenVolume = area * tank.oxygen + 2 * domeVolume;
 }
 export const tankLayout = tanks;
+// Where the parts are, for their labels in the inside views: each in its stage's frame, `tier` 1 named whenever the
+// stage is large enough on screen, 2 only close up; the tanks say which propellant they hold.
+export const landmarks = (() => {
+    const one = tanks.first, two = tanks.second, ring = (r, a, y) => [Math.cos(a) * r, y, Math.sin(a) * r], onDome = (rim, r) => rim - dome * Math.sqrt(1 - (r / radius) ** 2);
+    return [
+        { stage: 'first', name: 'Stage 1 LOX tank', at: [0, (one.common + one.forward) / 2 + 3, 0], tier: 1, holds: 'oxygen' },
+        { stage: 'first', name: 'Stage 1 RP-1 tank', at: [0, (one.aft + one.common) / 2 + 2, 0], tier: 1, holds: 'kerosene' },
+        { stage: 'first', name: 'Common bulkhead', at: [1.25, onDome(one.common, 1.25), 0], tier: 2 },
+        { stage: 'first', name: 'LOX feed line through the RP-1', at: [0, one.aft + 3, 0], tier: 2 },
+        { stage: 'first', name: 'Helium COPVs', at: ring(1.05, Math.PI / 6, one.forward - 1.6), tier: 2 },
+        { stage: 'first', name: 'Stringers and ring frames', at: [0, one.aft + 9, radius - .05], tier: 2 },
+        { stage: 'first', name: 'Octaweb thrust structure', at: ring(1.68, Math.PI / 8, 2.55), tier: 2 },
+        { stage: 'first', name: 'Turbopump and gas generator', at: [0, 2.05, .37], tier: 2 },
+        { stage: 'first', name: 'Merlin 1D engines ×9', at: [0, 1, 0], tier: 1 },
+        { stage: 'first', name: 'Interstage', at: [radius - .05, 45.2, 0], tier: 1 },
+        { stage: 'first', name: 'Grid fin actuators', at: ring(1.45, Math.PI / 4, 42.1), tier: 2 },
+        { stage: 'first', name: 'Nitrogen bottles (cold-gas thrusters)', at: [0, 46.8, 1.35], tier: 2 },
+        { stage: 'second', name: 'Stage 2 LOX tank', at: [0, (two.common + two.forward) / 2, 0], tier: 1, holds: 'oxygen' },
+        { stage: 'second', name: 'Stage 2 RP-1 tank', at: [0, (two.aft + two.common) / 2, 0], tier: 1, holds: 'kerosene' },
+        { stage: 'second', name: 'Insulated common bulkhead', at: [1.25, onDome(two.common, 1.25), 0], tier: 2 },
+        { stage: 'second', name: 'Helium COPVs ×3', at: ring(1.05, Math.PI / 6, two.forward - .9), tier: 2 },
+        { stage: 'second', name: 'Merlin Vacuum engine', at: [1.2, 45.2, 0], tier: 1 }
+    ];
+})();
 
 // An elliptical dome's outline from its apex to its rim (`down` when it bows downward), as [radius, height] points.
 function domeOutline(rim, down, steps = 14) {
@@ -115,9 +139,10 @@ export function createInternals(data) {
             const outline = oxygen
                 ? [...domeOutline(tank.common, true), new THREE.Vector2(radius, tank.forward), ...domeOutline(tank.forward, false).reverse()]
                 : [...domeOutline(tank.aft, true), new THREE.Vector2(radius, tank.common), ...domeOutline(tank.common, true).reverse()];
-            const level = new THREE.Plane(), material = surface(oxygen ? 0x9fd2ff : 0xe2b35c, { roughness: .15, metalness: 0, transparent: true, opacity: oxygen ? .78 : .85, depthWrite: false });
+            // Coloured and half transparent: liquid oxygen blue, kerosene amber.
+            const level = new THREE.Plane(), material = surface(oxygen ? 0x1f7dff : 0xff8a12, { roughness: .25, metalness: 0, transparent: true, opacity: .5, depthWrite: false });
             const body = new THREE.Mesh(lathe(outline.map(p => new THREE.Vector2(Math.max(0, p.x - .015), p.y))), material);
-            const top = new THREE.Mesh(new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2), surface(oxygen ? 0xc4e4ff : 0xf0cb7a, { roughness: .1, metalness: 0, transparent: true, opacity: .9, depthWrite: false }));
+            const top = new THREE.Mesh(new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2), surface(oxygen ? 0x6fb4ff : 0xffb347, { roughness: .15, metalness: 0, transparent: true, opacity: .5, depthWrite: false }));
             body.renderOrder = top.renderOrder = 3;
             groups[stage].add(body, top);
             material.clippingPlanes = [cut[stage], level]; top.material.clippingPlanes = [cut[stage]];

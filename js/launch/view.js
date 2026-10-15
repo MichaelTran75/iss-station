@@ -21,6 +21,7 @@ import { createGround, mountHeight, padDeck } from './ground.js';
 import { createExhaust } from './exhaust.js';
 import { attitudePulses, dracoNozzles, dracoThrust, selectDracos } from '../parts/draco.js';
 import { createDroneship } from './droneship.js';
+import { createPartLabels } from './part-labels.js';
 import { createVehicle } from './vehicle.js';
 
 const smooth = (value, from, to) => THREE.MathUtils.smoothstep(value, from, to);
@@ -218,6 +219,8 @@ export async function createLaunchView(sky) {
     const vehicleMarker = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotMap, color: 0x9fe3ff, sizeAttenuation: false, depthWrite: false, depthTest: false, transparent: true }));
     vehicleMarker.scale.setScalar(.016); vehicleMarker.renderOrder = 3; scene.add(vehicleMarker);
     const vehicleLabel = document.createElement('div'); vehicleLabel.className = 'orbit-label launch-vehicle-label'; vehicleLabel.hidden = true; viewport.appendChild(vehicleLabel);
+    // The parts' names in the inside views.
+    const partLabels = createPartLabels(viewport);
     const occluder = new THREE.Mesh(new THREE.SphereGeometry(6371000 - 3000, 128, 64), new THREE.MeshBasicMaterial({ colorWrite: false }));
     occluder.position.y = -6371000; occluder.renderOrder = -60; scene.add(occluder);
 
@@ -607,10 +610,12 @@ export async function createLaunchView(sky) {
             const v = vehicleModel, before = mission < separation;
             const first = before ? state.mass - v.s1Dry - v.s2Dry - v.s2Prop - v.payload : boosterNow.mass - v.s1Dry;
             const second = mission < ignition ? v.s2Prop : vehicleState(Math.min(mission, flightData.stack[flightData.stack.length - 1].t)).mass - v.s2Dry - v.payload;
-            vehicle.updateCutaway(camera, { first: first / v.s1Prop, second: second / v.s2Prop });
+            const left = { first: first / v.s1Prop, second: second / v.s2Prop };
+            vehicle.updateCutaway(camera, left);
+            partLabels.update(camera, { first: vehicle.firstStage, second: vehicle.secondStage }, left, { first: v.s1Prop, second: v.s2Prop });
             // The see-through view's lines: dark against the sky, light against space (by the camera's height).
             if (xray) vehicle.xrayContrast(smooth(camera.position.distanceTo(earthCentreLocal) - 6371000, 25000, 70000));
-        }
+        } else partLabels.hide();
         // The cloud and the trail, lit by the Sun and, near the pad, by the flame.
         flameDown.set(0, -1, 0).applyQuaternion(booster.quaternion);
         flame.position.copy(booster.position).addScaledVector(flameDown, 8 + vehicle.firstState.flame * .25);
@@ -744,7 +749,7 @@ export async function createLaunchView(sky) {
             if (time >= animationDuration(focus)) jump(0);
             setPlaying(true);
         },
-        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = true; setPlaying(false); shadowSun.set(9, 9, 9); markShadowsDirty(); },
+        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = true; partLabels.hide(); setPlaying(false); shadowSun.set(9, 9, 9); markShadowsDirty(); },
         get active() { return active; },
         zoomBy(multiplier) {
             offset.subVectors(camera.position, controls.target);

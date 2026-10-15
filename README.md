@@ -19,7 +19,7 @@ Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 | `js/ui/` | `ghost` (khối mờ, nét viền), `rendezvous-guide` (đường tiếp cận, điểm chờ, vùng cấm 200 m), `controller` (chọn bộ phận, góc nhìn, nhãn, nút bấm, vòng lặp khung hình) |
 | `js/orbit/sky.js` | bầu trời thật dùng chung: Trái Đất (ngày, đêm, mây), ISS, Mặt Trăng, Mặt Trời, sao, theo giờ hiện tại; vẽ cả nền Trái Đất sau trạm. Tải khi mở lần đầu |
 | `js/orbit/view.js` | góc nhìn quỹ đạo: khung ISS / Earth & Moon / Sun, zoom ra tới 600 triệu km, tua nhanh thời gian |
-| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, 39B, VAB, LCC, HIF, bồn chứa), `exhaust` (khói ở bệ, trên sà lan và vệt khói trôi theo gió), `internals` (cấu trúc bên trong hai tầng cho chế độ cắt dọc), `droneship` (sà lan đáp), `view` (camera, hai lượt vẽ, bảng điều khiển). Tải khi mở lần đầu |
+| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, 39B, VAB, LCC, HIF, bồn chứa), `exhaust` (khói ở bệ, trên sà lan và vệt khói trôi theo gió), `internals` (cấu trúc bên trong hai tầng cho chế độ cắt dọc và nhìn xuyên), `part-labels` (nhãn tên bộ phận bên trong), `droneship` (sà lan đáp), `view` (camera, hai lượt vẽ, bảng điều khiển). Tải khi mở lần đầu |
 | `js/sim/ascent.js` | mô phỏng bay Falcon 9 (lực đẩy, lực cản, khí quyển, Trái Đất quay) và tầng 1 quay về sà lan, tua thời gian; chỉ có toán |
 | `js/sim/plume.js` | luồng xả Merlin theo điều kiện bay (giãn nở đẳng entropy, chu kỳ sóng sốc, trộn khí, cháy tiếp); chỉ có toán |
 | `js/sim/wind.js` | gió ở Cape Canaveral lúc phóng Demo-2 theo độ cao (bóng thám không KXMR, trạm mặt đất); chỉ có dữ liệu |
@@ -269,6 +269,11 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
   - Nét viền hiện đủ 100%: cạnh gãy trên 40° và cạnh biên, tìm một lần bằng worker nét viền của trang trạm (như các khối mờ ở trang trạm). Nét sẫm trên nền trời, sáng trên nền vũ trụ.
   - Click lần nữa để tắt. Click (không kéo) giữ nguyên camera bám. Tên lửa nhỏ ở xa thì click trong vòng 24 px quanh trục cũng tính.
   - Bật cùng nút **Inside** thì nửa phía camera bị cắt, nửa còn lại mờ.
+- Nhãn tên các bộ phận (khi nhìn xuyên hoặc cắt dọc, `js/launch/part-labels.js`):
+  - Bồn LOX và RP-1 hai tầng kèm số tấn còn lại, vách chung, ống LOX, COPV, thanh dọc và vành khung, khung octaweb, bơm tua-bin, 9 Merlin, đoạn nối, cơ cấu cánh lưới, bình nitơ, MVac.
+  - Nhãn đứng hai bên thân, vuông góc với trục tên lửa trên màn hình, xen kẽ hai bên theo độ cao, có đường dẫn tới bộ phận. Nhãn cùng một bên giãn cách theo kích thước chữ; tên lửa nằm ngang thì nhãn ở trên và dưới. Hai tầng còn nối thì dùng chung cột nhãn.
+  - Chi tiết nhỏ chỉ hiện khi tên lửa đủ lớn trên màn hình; quá nhỏ thì không hiện nhãn nào. Điểm neo tính cùng hằng số với hình dựng (`landmarks` trong `internals.js`).
+- Nhiên liệu tô màu, trong suốt 50%: LOX xanh dương, RP-1 vàng cam.
 - Các công trình trên mặt đất là mô hình giản lược. Xi lanh của chân đáp ẩn khi chân bung (chúng không co giãn).
 
 ## Hiệu năng

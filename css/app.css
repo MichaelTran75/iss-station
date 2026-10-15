@@ -1826,6 +1826,37 @@
             color: #9fe3ff;
         }
 
+        /* Launch view, inside the rocket: the parts' names beside each stage with leader lines (js/launch/part-labels.js). */
+        .launch-parts {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .launch-parts svg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, .9));
+        }
+
+        .launch-parts line {
+            stroke: rgba(236, 246, 255, .9);
+            stroke-width: 1;
+        }
+
+        .launch-parts circle {
+            fill: #ecf6ff;
+        }
+
+        .launch-part-label {
+            color: #ecf6ff;
+            font-size: 10px;
+        }
+
         .orbit-label.body {
             color: #c9d1d9;
         }
