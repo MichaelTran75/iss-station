@@ -15,13 +15,14 @@ import { markShadowsDirty } from '../core/quality.js';
 import { parts } from '../core/station.js';
 import { approach } from '../parts/dragon.js';
 import { rendezvousGuide } from '../ui/rendezvous-guide.js';
-import { animationAt, animationDuration, boosterState, contactTime, countdown, dockingTime, dracoBurns, droneship, eventAt, events, flightData, groundTrackEnd, issAltitude, issFrame, issPosition, launchEpoch, launchSite, merlinSpool, missionAt, padFrame, padTransform, paths, proximity, rendezvousTime, spoolUp, stageState, tailOff, turnBack, vehicle as vehicleModel, vehicleState, warpAt } from '../sim/ascent.js';
+import { air, animationAt, animationDuration, boosterState, contactTime, countdown, dockingTime, dracoBurns, droneship, eventAt, events, flightData, groundTrackEnd, issAltitude, issFrame, issPosition, launchEpoch, launchSite, merlinSpool, missionAt, padFrame, padTransform, paths, proximity, rendezvousTime, spoolUp, stageState, tailOff, turnBack, vehicle as vehicleModel, vehicleState, warpAt } from '../sim/ascent.js';
 import { toScene } from '../orbit/sky.js';
 import { createGround, mountHeight, padDeck } from './ground.js';
 import { createExhaust } from './exhaust.js';
 import { attitudePulses, dracoNozzles, dracoThrust, selectDracos } from '../parts/draco.js';
 import { createDroneship } from './droneship.js';
 import { createPartLabels } from './part-labels.js';
+import { createEngineAudio } from './engine-audio.js';
 import { createVehicle } from './vehicle.js';
 
 const smooth = (value, from, to) => THREE.MathUtils.smoothstep(value, from, to);
@@ -267,6 +268,50 @@ export async function createLaunchView(sky) {
     let inside = false;
     const insideButton = field('launch-inside');
     insideButton.addEventListener('click', () => { inside = !inside; vehicle.setCutaway(inside); insideButton.setAttribute('aria-pressed', String(inside)); });
+    // Engine sound (js/launch/engine-audio.js): made on entering the view or on the first touch of it (the browser
+    // plays sound only after the visitor has interacted), on or off as the visitor last left it.
+    let audio = null, soundOn = true;
+    try { soundOn = localStorage.getItem('iss.launch.sound') !== 'off'; } catch (error) { /* no storage: on */ }
+    const soundButton = field('launch-sound');
+    const syncSound = () => soundButton.setAttribute('aria-pressed', String(soundOn));
+    syncSound();
+    function startAudio() {
+        if (audio) { if (active && audio.context.state === 'suspended') audio.context.resume(); return; }
+        const Context = window.AudioContext || window.webkitAudioContext;
+        if (!Context) return;
+        try { audio = createEngineAudio(new Context()); audio.setMuted(!soundOn); audio.context.resume(); }
+        catch (error) { audio = null; console.warn('Engine sound unavailable:', error); }
+    }
+    soundButton.addEventListener('click', () => {
+        soundOn = !soundOn; syncSound();
+        try { localStorage.setItem('iss.launch.sound', soundOn ? 'on' : 'off'); } catch (error) { /* not kept */ }
+        startAudio(); audio?.setMuted(!soundOn);
+    });
+    viewport.addEventListener('pointerdown', () => { if (active) startAudio(); });
+    document.addEventListener('visibilitychange', () => { if (!audio) return; if (document.hidden) audio.context.suspend(); else if (active) audio.context.resume(); });
+    // Light-offs heard: the nine at T−3 s, the booster's three for its entry burn and its one to land (each 0.2 s after
+    // its command).
+    const lightOffs = [eventAt('ignition') + merlinSpool.delay, flightData.entry + merlinSpool.delay, flightData.landingStart + merlinSpool.delay];
+    let heardAt = NaN;
+    const jetWay = new THREE.Vector3(), toListener = new THREE.Vector3(), heard = new THREE.Vector3();
+    function updateAudio() {
+        if (!audio) return;
+        // The first stage's engines (the whole stack's until separation), heard at the camera.
+        const r = camera.position.distanceTo(booster.position);
+        const airAt = height => Math.min(1, air(Math.max(0, height)).rho / 1.225);
+        const cameraHeight = camera.position.distanceTo(earthCentreLocal) - 6371000;
+        jetWay.set(0, -1, 0).applyQuaternion(booster.quaternion);
+        toListener.subVectors(camera.position, booster.position).normalize();
+        heard.copy(booster.position).project(camera);
+        const jumped = !(Math.abs(mission - heardAt) < 1.5);
+        heardAt = mission;
+        audio.update({
+            thrust: Math.max(0, boosterNow.engines) / 9, distance: r, air: Math.sqrt(airAt(boosterNow.altitude) * airAt(cameraHeight)),
+            angle: Math.acos(Math.max(-1, Math.min(1, jetWay.dot(toListener)))), pan: heard.z < 1 ? heard.x : 0,
+            impinge: 1 - smooth(boosterNow.altitude, 30, 200), lights: lightOffs.filter(at => mission >= at).length, jumped,
+            warp: warpAt(mission, focus), quiet: !active || !playing
+        });
+    }
     // See-through: a left click on the rocket (a click, not a drag; within 24 px of it on screen counts, for a small
     // rocket far off) turns its skin half transparent with its line art, over the whole inside; again turns it back.
     // The click leaves the camera following as it was.
@@ -645,6 +690,7 @@ export async function createLaunchView(sky) {
         controls.zoomSpeed = THREE.MathUtils.clamp(1 + .5 * Math.log10(Math.max(1, camera.position.distanceTo(controls.target) / 100)), 1, 4);
         controls.update(delta);
         camera.updateMatrixWorld();
+        updateAudio();
         // Inside: the propellant left in each stage, from the simulated masses (the stack's until separation, then the
         // booster's; the second stage's from its ignition to the end of the ascent simulation, then what stayed).
         if (inside || xray) {
@@ -785,12 +831,12 @@ export async function createLaunchView(sky) {
         get mission() { return mission; },
         set onStation(callback) { stationButton.onclick = callback; },
         enter() {
-            active = true; controls.enabled = true; panel.hidden = false; sky.hideLabels();
+            active = true; controls.enabled = true; panel.hidden = false; sky.hideLabels(); startAudio();
             setFollow(true); snapCamera = true; resize(viewport.clientWidth, viewport.clientHeight);
             if (time >= animationDuration(focus)) jump(0);
             setPlaying(true);
         },
-        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = countElement.hidden = true; partLabels.hide(); setPlaying(false); shadowSun.set(9, 9, 9); markShadowsDirty(); },
+        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = countElement.hidden = true; partLabels.hide(); setPlaying(false); audio?.update({ thrust: 0, distance: 1e3, air: 0, angle: 0, pan: 0, impinge: 0, lights: 0, jumped: true, warp: 1, quiet: true }); shadowSun.set(9, 9, 9); markShadowsDirty(); },
         get active() { return active; },
         zoomBy(multiplier) {
             offset.subVectors(camera.position, controls.target);

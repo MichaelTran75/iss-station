@@ -19,7 +19,7 @@ Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 | `js/ui/` | `ghost` (khối mờ, nét viền), `rendezvous-guide` (đường tiếp cận, điểm chờ, vùng cấm 200 m), `controller` (chọn bộ phận, góc nhìn, nhãn, nút bấm, vòng lặp khung hình) |
 | `js/orbit/sky.js` | bầu trời thật dùng chung: Trái Đất (ngày, đêm, mây), ISS, Mặt Trăng, Mặt Trời, sao, theo giờ hiện tại; vẽ cả nền Trái Đất sau trạm. Tải khi mở lần đầu |
 | `js/orbit/view.js` | góc nhìn quỹ đạo: khung ISS / Earth & Moon / Sun, zoom ra tới 600 triệu km, tua nhanh thời gian |
-| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, 39B, VAB, LCC, HIF, bồn chứa), `exhaust` (khói ở bệ, trên sà lan và vệt khói trôi theo gió), `internals` (cấu trúc bên trong hai tầng cho chế độ cắt dọc và nhìn xuyên), `part-labels` (nhãn tên bộ phận bên trong), `droneship` (sà lan đáp), `view` (camera, hai lượt vẽ, bảng điều khiển). Tải khi mở lần đầu |
+| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, 39B, VAB, LCC, HIF, bồn chứa), `exhaust` (khói ở bệ, trên sà lan và vệt khói trôi theo gió), `internals` (cấu trúc bên trong hai tầng cho chế độ cắt dọc và nhìn xuyên), `part-labels` (nhãn tên bộ phận bên trong), `engine-audio` (âm thanh động cơ), `droneship` (sà lan đáp), `view` (camera, hai lượt vẽ, bảng điều khiển). Tải khi mở lần đầu |
 | `js/sim/ascent.js` | mô phỏng bay Falcon 9 (lực đẩy, lực cản, khí quyển, Trái Đất quay) và tầng 1 quay về sà lan, tua thời gian; chỉ có toán |
 | `js/sim/plume.js` | luồng xả Merlin theo điều kiện bay (giãn nở đẳng entropy, chu kỳ sóng sốc, trộn khí, cháy tiếp); chỉ có toán |
 | `js/sim/wind.js` | gió ở Cape Canaveral lúc phóng Demo-2 theo độ cao (bóng thám không KXMR, trạm mặt đất); chỉ có dữ liệu |
@@ -180,6 +180,13 @@ Không còn nội suy telemetry: đường bay được tích phân (Runge–Kut
 - **Trên sà lan:** vài giây cuối của lần đốt hạ cánh, ngọn lửa chạm mặt sàn và loang ra theo mặt sàn (tia khí va tường), vẽ thành một đĩa sáng có vệt tỏa ra, rộng theo phần ngọn lửa vượt quá mặt sàn.
   - Khói thoát ra theo mặt sàn, lăn qua mép xuống mặt biển và trôi theo gió. Tối hơn khói ở bệ vì không có nước phun, chỉ có muội của lửa dầu, lẫn ít hơi nước.
   - Dùng chung mô hình cụm khói với bệ, tính trong hệ toạ độ của sà lan (mặt sàn ở 0, mặt biển thấp hơn 3 m).
+- **Âm thanh động cơ (`js/launch/engine-audio.js`):** tổng hợp bằng Web Audio, không dùng file thu sẵn, cùng cách làm với động cơ phản lực ở trang sân bay. Nút **Sound** bật/tắt, nhớ lựa chọn.
+  - Tiếng gầm: tiếng trộn rối của tia khí với không khí. Phổ đỉnh ở số Strouhal f·D/V khoảng 0,03 (NASA SP-8072), với tia khoảng 3 m ở 3 km/s ra khoảng 35–60 Hz, trầm hơn hẳn động cơ phản lực, có vai rộng lên vài kHz; xoáy lớn làm tiếng gầm cuộn chậm. Công suất âm theo công suất cơ của tia, nên theo lực đẩy (biên độ theo căn bậc hai, dốc hơn lúc máy đang lên đà).
+  - Tiếng lốp bốp: các xung áp suất nhọn (sóng N) của tia đầy sóng xung kích, khi đủ lực; mạnh nhất lúc cất cánh khi lửa còn đập vào rãnh và mặt bệ.
+  - Đánh lửa: mỗi lần bắt lửa (TEA-TEB) một tiếng "phụt" trầm kèm vài tiếng nổ lách tách: chín máy ở T−2,8 s, ba máy lúc đốt vào khí quyển, một máy lúc đáp.
+  - Khoảng cách và không khí: mức âm giảm theo 1/r, không khí lấy mất âm cao theo quãng đường, âm tới trễ r/343 s (thấy lửa trước khi nghe, cao độ hạ dần khi tên lửa đi xa). Không có âm trong chân không: mức âm theo mật độ khí ở nguồn và ở camera.
+  - Mặt đất dội lại một lần rồi vọng dài như vùng đất trống; phía sau dòng tia (sóng Mach, khoảng 45° lệch trục) to hơn bên hông; trái/phải theo vị trí động cơ trên màn hình.
+  - Đo bằng kết xuất offline (camera 231 m): im lặng tới khi âm tới lúc T−2,13 (trễ 0,67 s sau khi bắt lửa), tiếng phụt nổi hơn 32 dB so với tiếng gầm đang lên, tiếng gầm dâng từ −28 lên −21 dBFS theo lực đẩy, đỉnh phổ 35 Hz.
 - **Vệt khói trên trời:** các cụm khói đặt ở đuôi ngọn lửa dọc đường bay.
   - Mỗi cụm trôi theo gió ở đúng độ cao của nó và loang theo khuếch tán rối (nhanh hơn ở 2 km thấp nhất, nơi không khí chiều đang đối lưu).
   - Đặc và trắng ở tầng thấp ẩm, thành vệt ngưng tụ quanh 10 km, mờ trên 30 km.
