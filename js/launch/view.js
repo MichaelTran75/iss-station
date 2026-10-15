@@ -292,6 +292,8 @@ export async function createLaunchView(sky) {
     // Light-offs heard: the nine at T−3 s, the booster's three for its entry burn and its one to land (each 0.2 s after
     // its command).
     const lightOffs = [eventAt('ignition') + merlinSpool.delay, flightData.entry + merlinSpool.delay, flightData.landingStart + merlinSpool.delay];
+    let dragonNear = 0;
+    const heardFiring = new Float32Array(dracoNozzles.length);
     let heardAt = NaN;
     const jetWay = new THREE.Vector3(), toListener = new THREE.Vector3(), heard = new THREE.Vector3(), bargeSpot = new THREE.Vector3(), joint = new THREE.Vector3();
     // The booster's sonic boom as heard at the landing zone, by the droneship. Sound sent at t arrives at t + d/c (d the
@@ -320,8 +322,8 @@ export async function createLaunchView(sky) {
         jetWay.set(0, -1, 0).applyQuaternion(booster.quaternion);
         toListener.subVectors(camera.position, booster.position).normalize();
         heard.copy(booster.position).project(camera);
-        const before = heardAt, jumped = !(Math.abs(mission - heardAt) < 1.5);
-        heardAt = mission;
+        const before = heardAt, jumped = leapt || !(Math.abs(mission - heardAt) < 3600);
+        heardAt = mission; leapt = false;
         // The boom, as the clock passes its arrival (not on a jump), the camera near the landing zone.
         const fromBarge = droneship ? camera.position.distanceTo(bargeSpot.set(...droneship.position)) : Infinity;
         if (!jumped && before < boomAt && mission >= boomAt && fromBarge < 5e4) audio.boom(Math.min(1, 6000 / Math.max(6000, fromBarge)));
@@ -333,6 +335,11 @@ export async function createLaunchView(sky) {
             if (near < 400) { const strength = Math.min(1, 80 / Math.max(80, near)); if (passed(separation)) audio.staging(strength); else audio.vacuumStart(strength); }
         }
         if (droneship && passed(flightData.landing.at) && fromBarge < 2e4) audio.touchdown(r);
+        // Docking, inside Dragon, with the camera near it: contact and soft capture, the ring drawn in, the hooks for hard
+        // capture (the approach's phase turns to HARD CAPTURE 480 s after contact), the preload reached.
+        const nearDragon = Math.min(1, 300 / Math.max(300, camera.position.distanceTo(capsule.position))) * (camera.position.distanceTo(capsule.position) < 5000 ? 1 : 0);
+        if (nearDragon > 0) for (const [at, stage] of [[contactTime, 'soft'], [contactTime + 120, 'retract'], [contactTime + 480, 'hard'], [dockingTime, 'docked']]) if (passed(at)) audio.docking(stage, nearDragon);
+        dragonNear = nearDragon;
         audio.update({
             thrust: Math.max(0, boosterNow.engines) / 9, distance: r, air: Math.sqrt(airAt(boosterNow.altitude) * airAt(cameraHeight)),
             angle: Math.acos(Math.max(-1, Math.min(1, jetWay.dot(toListener)))), pan: heard.z < 1 ? heard.x : 0,
@@ -396,7 +403,8 @@ export async function createLaunchView(sky) {
         return (seconds < 0 ? 'T−' : 'T+') + (s >= 3600 ? Math.floor(s / 3600) + ':' + two(Math.floor(s / 60) % 60) : two(Math.floor(s / 60))) + ':' + two(s % 60);
     }
     let snapCamera = true;
-    function jump(to) { time = to; mission = missionAt(time, focus); snapCamera = true; }
+    let leapt = true;   // the clock jumped (an event picked, a restart): the sounds of the moments jumped over stay silent
+    function jump(to) { time = to; mission = missionAt(time, focus); snapCamera = true; leapt = true; }
 
     // The pad's frame on the globe (the sky's Earth turns under it with the date).
     const pad = padFrame(), toKm = vector => ({ x: vector[0] / 1000, y: vector[1] / 1000, z: vector[2] / 1000 });
@@ -746,6 +754,12 @@ export async function createLaunchView(sky) {
             if (mission < eventAt('nosecone') + 6) for (let k = 0; k < 4; k++) firing[k] = 0;   // under the closed cone
         }
         vehicle.setDracos(playing ? delta : 0, firing);
+        // The Dracos heard inside Dragon: a knock for each valve that opened this frame, a roar while they burn.
+        if (audio) {
+            let onsets = 0, level = 0;
+            for (let k = 0; k < firing.length; k++) { if (firing[k] >= .05 && heardFiring[k] < .05) onsets++; level += firing[k] / 4; heardFiring[k] = firing[k]; }
+            audio.dracos(playing ? onsets : 0, playing ? level : 0, dragonNear);
+        }
         readoutClock -= delta;
         if (readoutClock <= 0) { readout(); readoutClock = .1; }
     }

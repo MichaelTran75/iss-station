@@ -20,6 +20,11 @@
 // - Touchdown on the droneship, in the air like the engines (late by the distance, its highs taken by the air): the
 //   four feet striking the steel deck, the legs' crushable honeycomb giving, the deck and legs ringing, and the
 //   booster venting its gas for some seconds after.
+// - Dragon's Dracos and its docking, as heard inside the capsule (no air outside; the crew hears them through the
+//   structure): each thruster's valve opening a sharp knock, so the approach's trim pulses come as a train of knocks;
+//   a long burn a muffled roar while it lasts. At contact the soft-capture ring's thud and its three latches, the
+//   ring's motor drawing it in, the twelve hooks driving shut in two gangs for hard capture, and the last clunk as
+//   the preload is reached.
 // - The returning booster's sonic boom: the triple boom Falcon 9 boosters are known for, three N-waves (the shocks of
 //   the engine end with its legs, of the grid fins and interstage, and of the top) 0.38 and 0.32 s apart, each a
 //   sudden rise, a fall through zero over 0.16 s and a sudden return, their edges softened a little by kilometres of
@@ -129,6 +134,43 @@ export function createEngineAudio(ctx) {
         burst(brown, 'lowpass', 120, .8, .75 * strength, .01, .45, onboard, at);
         burst(pink, 'lowpass', 220, .7, .22 * strength, .25, .9, onboard, at + .05);
     }
+    // Dracos through the capsule: `onsets` valves opened this frame, `level` 0-1 of thrust (the forward four at full),
+    // `near` 0-1 (the camera's nearness to Dragon; nothing from afar).
+    const dracoRoar = gain(0); chain(source(pink, .9), filter('lowpass', 520, .7), dracoRoar, onboard);
+    const dracoHiss = gain(0); chain(source(white, 1.05), filter('bandpass', 2400, .9), dracoHiss, onboard);
+    function dracos(onsets, level, near) {
+        toward(dracoRoar.gain, .32 * Math.min(1, level) * near, .03); toward(dracoHiss.gain, .045 * Math.min(1, level) * near, .03);
+        if (onsets > 0 && near > 0) {
+            const at = ctx.currentTime, s = Math.min(1, .5 + .25 * onsets) * near;
+            burst(brown, 'lowpass', 180, .9, .7 * s, .002, .05, onboard, at);
+            burst(white, 'bandpass', 1600, 1.2, .3 * s, .001, .02, onboard, at);
+            ring([[340, .08, 1], [610, .06, .6], [1120, .04, .4]], .1 * s, onboard, at);
+        }
+    }
+    // Docking through the capsule: 'soft' contact and capture, 'retract' the ring drawn in, 'hard' the hooks, 'docked'.
+    function docking(stage, near = 1) {
+        const at = ctx.currentTime;
+        if (stage === 'soft') {
+            burst(brown, 'lowpass', 120, .8, .8 * near, .006, .4, onboard, at);
+            ring([[143, .9, 1], [231, .7, .7], [377, .5, .5], [598, .35, .35]], .22 * near, onboard, at + .01);
+            for (const delay of [.12, .19, .27]) burst(white, 'bandpass', 2600, 1.5, .28 * near, .001, .015, onboard, at + delay);
+        } else if (stage === 'retract') {
+            const motor = ctx.createOscillator(), shape = filter('lowpass', 420, .8), level = gain(0);
+            motor.type = 'sawtooth'; motor.frequency.setValueAtTime(92, at); motor.frequency.linearRampToValueAtTime(110, at + 2.8);
+            chain(motor, shape, level, onboard);
+            level.gain.setValueAtTime(0, at); level.gain.linearRampToValueAtTime(.07 * near, at + .3); level.gain.setValueAtTime(.07 * near, at + 2.5); level.gain.linearRampToValueAtTime(0, at + 2.9);
+            motor.start(at); motor.stop(at + 3);
+        } else if (stage === 'hard') {
+            for (let k = 0; k < 12; k++) {
+                const when = at + (k < 6 ? k * .07 : .55 + (k - 6) * .07);
+                burst(white, 'bandpass', 1800, 1.1, .22 * near, .001, .025, onboard, when);
+                burst(brown, 'lowpass', 160, .8, .25 * near, .002, .06, onboard, when);
+            }
+        } else if (stage === 'docked') {
+            burst(brown, 'lowpass', 100, .8, .7 * near, .005, .5, onboard, at);
+            ring([[118, 1.2, 1], [203, .9, .7], [331, .6, .45]], .18 * near, onboard, at + .01);
+        }
+    }
     // Touchdown, in the air from the booster's place; `distance` from the camera (m).
     function touchdown(distance) {
         const at = ctx.currentTime, level = Math.min(1.6, 250 / Math.max(15, distance));
@@ -180,7 +222,7 @@ export function createEngineAudio(ctx) {
         toward(master.gain, muted || state.quiet ? 0 : 1, .25);
     }
     return {
-        context: ctx, update, boom, staging, vacuumStart, touchdown,
+        context: ctx, update, boom, staging, vacuumStart, touchdown, dracos, docking,
         setMuted(value) { muted = !!value; toward(master.gain, muted ? 0 : master.gain.value, .05); },
         get muted() { return muted; }
     };
