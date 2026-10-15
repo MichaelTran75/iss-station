@@ -6,6 +6,7 @@ import { pmaArray } from '../core/pma.js';
 import { dragonHull } from '../parts/dragon.js';
 import { createDracoPlumes } from '../parts/draco.js';
 import { createInternals } from './internals.js';
+import { creaseSegments } from '../ui/ghost.js';
 import { clusterPlume, enginePlume } from '../sim/plume.js';
 import { air, merlinSpool, spoolUp } from '../sim/ascent.js';
 
@@ -126,7 +127,8 @@ export async function createVehicle(url) {
             for (const set of [materials, secondMaterials]) { set[index].map = texture; set[index].needsUpdate = true; }
         });
     });
-    // One mesh per part and material.
+    // One mesh per part and material; the parts' groups and meshes are kept for the see-through view.
+    const partGroups = [], skin = [];
     function part(name, set = materials) {
         const group = new THREE.Group(), { centre, primitives } = data.parts[name];
         for (const primitive of primitives) {
@@ -140,9 +142,9 @@ export async function createVehicle(url) {
             if (primitive.uv) geometry.setAttribute('uv', new THREE.BufferAttribute(pmaArray(primitive.uv, Float32Array), 2));
             geometry.setIndex(new THREE.BufferAttribute(pmaArray(primitive.index, primitive.wide ? Uint32Array : Uint16Array), 1));
             const mesh = new THREE.Mesh(geometry, set[primitive.material]); mesh.castShadow = mesh.receiveShadow = true;
-            group.add(mesh);
+            group.add(mesh); skin.push(mesh);
         }
-        group.name = name;
+        group.name = name; partGroups.push(group);
         return group;
     }
 
@@ -294,17 +296,66 @@ export async function createVehicle(url) {
     // tanks with the propellant left in them, the feed lines, the engines' insides.
     const internals = createInternals(data);
     firstStage.add(internals.first); secondStage.add(internals.second);
-    let cutaway = false;
+    let cutaway = false, xray = false;
     function setCutaway(on) {
-        cutaway = on; internals.setShown(on);
+        cutaway = on; internals.setShown(cutaway || xray);
         for (const material of materials) material.clippingPlanes = on ? [internals.cut.first] : null;
         for (const material of secondMaterials) material.clippingPlanes = on ? [internals.cut.second] : null;
     }
     // `left`: the share of each stage's propellant left, { first, second } (0-1).
-    function updateCutaway(camera, left) { if (cutaway) internals.update({ first: firstStage, second: secondStage }, camera, left); }
+    function updateCutaway(camera, left) { if (cutaway || xray) internals.update({ first: firstStage, second: secondStage }, camera, left, cutaway); }
+
+    // See-through (a left click on the rocket): the skin of both stages half transparent, only its near faces and
+    // drawn after the propellant inside, over the whole inside; and its line art at full strength, the crease and
+    // boundary edges as on the station's ghosted parts, found once in the station's line-art worker. The lines are
+    // dark against the sky and light against space.
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x1f2b33, transparent: true, depthWrite: false });
+    const lineDark = new THREE.Color(0x1f2b33), lineLight = new THREE.Color(0xd2e4ee);
+    const solid = [...materials, ...secondMaterials].map(material => ({ material, transparent: material.transparent, opacity: material.opacity, depthWrite: material.depthWrite, side: material.side }));
+    let lines = null;
+    function buildLines() {
+        lines = [];
+        const jobs = partGroups.map(group => ({ group, meshes: group.children.filter(child => child.isMesh) })).filter(job => job.meshes.length);
+        const attach = (job, points) => {
+            if (!points.length) return;
+            const segments = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(points, 3)), lineMaterial);
+            segments.renderOrder = 6; segments.visible = xray; job.group.add(segments); lines.push(segments);
+        };
+        let worker = null;
+        try { worker = new Worker(new URL('../workers/line-art.js?v=8b3d432c47', import.meta.url), { type: 'module' }); } catch (error) { worker = null; }
+        const here = () => { for (const job of jobs.splice(0)) for (const mesh of job.meshes) attach(job, creaseSegments(mesh.geometry, 40)); };
+        if (!worker) { here(); return; }
+        let current = null;
+        const send = () => {
+            current = jobs.shift();
+            if (!current) { worker.terminate(); return; }
+            const meshes = current.meshes.map(mesh => {
+                mesh.updateMatrix();
+                return { position: mesh.geometry.attributes.position.array.slice(), index: mesh.geometry.index ? mesh.geometry.index.array.slice() : null, matrix: Float64Array.from(mesh.matrix.elements) };
+            });
+            worker.postMessage({ meshes, degrees: 40 }, meshes.flatMap(mesh => mesh.index ? [mesh.position.buffer, mesh.index.buffer] : [mesh.position.buffer]));
+        };
+        worker.onmessage = ({ data }) => { attach(current, data.points); send(); };
+        worker.onerror = event => { event.preventDefault(); worker.terminate(); if (current) jobs.unshift(current); here(); };
+        send();
+    }
+    function setXray(on) {
+        xray = on;
+        for (const entry of solid) {
+            Object.assign(entry.material, on ? { transparent: true, opacity: .5, depthWrite: false, side: THREE.FrontSide } : { transparent: entry.transparent, opacity: entry.opacity, depthWrite: entry.depthWrite, side: entry.side });
+            entry.material.needsUpdate = true;
+        }
+        for (const mesh of skin) mesh.renderOrder = on ? 4 : 0;
+        if (on && !lines) buildLines();
+        if (lines) for (const segments of lines) segments.visible = on;
+        internals.setShown(cutaway || xray);
+    }
+    // 0 against the sky, 1 against space.
+    const xrayContrast = space => lineMaterial.color.lerpColors(lineDark, lineLight, space);
 
     return {
         firstStage, secondStage, dragon, setFirstPlume, setSecondPlume, setFins, setNose, setLegs, firstState, setDracos: dracos.update, setCutaway, updateCutaway,
+        setXray, xrayContrast, pickable: skin,
         // Heights on the stack: the joint between the stages, the second stage's top, Dragon's top.
         separationY: data.separationY, secondStageTop: data.secondStageTop, dragonTop, source: data.source,
         dragonRingY: dragon.position.y   // the docking ring's face (the Dragon frame's origin) up the stack

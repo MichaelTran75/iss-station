@@ -58,7 +58,7 @@
         "./js/parts/external-payloads.js": "./js/parts/external-payloads.js?v=50123c1b56",
         "./js/parts/assembly.js": "./js/parts/assembly.js?v=495148cc5c",
         "./js/figures/eva.js": "./js/figures/eva.js?v=1e34df1430",
-        "./js/ui/ghost.js": "./js/ui/ghost.js?v=0a0e34b992",
+        "./js/ui/ghost.js": "./js/ui/ghost.js?v=71585d0e21",
         "./js/ui/rendezvous-guide.js": "./js/ui/rendezvous-guide.js?v=c2e18df47a",
         "./js/ui/controller.js": "./js/ui/controller.js?v=e28c133825",
         "./js/main.js": "./js/main.js?v=b201e06096",
@@ -66,9 +66,9 @@
         "./js/launch/droneship.js": "./js/launch/droneship.js?v=8f75ee397c",
         "./js/launch/exhaust.js": "./js/launch/exhaust.js?v=46cc7222a7",
         "./js/launch/ground.js": "./js/launch/ground.js?v=b55a0c1b19",
-        "./js/launch/internals.js": "./js/launch/internals.js?v=53c6d2f127",
-        "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=ed5401c1e9",
-        "./js/launch/view.js": "./js/launch/view.js?v=c1608fd27d",
+        "./js/launch/internals.js": "./js/launch/internals.js?v=b4c0588d93",
+        "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=282d264bcb",
+        "./js/launch/view.js": "./js/launch/view.js?v=287be07a04",
         "./js/orbit/sky.js": "./js/orbit/sky.js?v=48e499c19c",
         "./js/orbit/view.js": "./js/orbit/view.js?v=9166f83b83",
         "./js/sim/ascent.js": "./js/sim/ascent.js?v=d703446d43",
@@ -118,7 +118,7 @@
     <link rel="modulepreload" href="js/parts/external-payloads.js?v=50123c1b56">
     <link rel="modulepreload" href="js/parts/assembly.js?v=495148cc5c">
     <link rel="modulepreload" href="js/figures/eva.js?v=1e34df1430">
-    <link rel="modulepreload" href="js/ui/ghost.js?v=0a0e34b992">
+    <link rel="modulepreload" href="js/ui/ghost.js?v=71585d0e21">
     <link rel="modulepreload" href="js/ui/rendezvous-guide.js?v=c2e18df47a">
     <link rel="modulepreload" href="js/ui/controller.js?v=e28c133825">
     <link rel="modulepreload" href="js/main.js?v=b201e06096">
@@ -233,8 +233,9 @@
                     <div class="orbit-frame launch-focus" role="group" aria-label="Follow"><button type="button" data-focus="rocket"
                             aria-pressed="true">Rocket &amp; Dragon</button><button type="button" data-focus="booster"
                             aria-pressed="false">Booster</button></div>
-                    <div class="orbit-frame launch-inside" role="group" aria-label="Cutaway"><button type="button" id="launch-inside"
-                            aria-pressed="false">Inside: tanks &amp; engines</button></div>
+                    <div class="orbit-frame launch-inside" role="group" aria-label="Inside the rocket"><button type="button" id="launch-inside"
+                            aria-pressed="false">Inside: tanks &amp; engines</button><button type="button" id="launch-xray" aria-pressed="false"
+                            title="Or click the rocket">See-through</button></div>
                     <dl class="orbit-readout">
                         <div><dt>Altitude</dt><dd id="launch-altitude">–</dd></div>
                         <div><dt>Ground speed</dt><dd id="launch-speed">–</dd></div>

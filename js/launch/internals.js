@@ -173,13 +173,15 @@ export function createInternals(data) {
     groups.first.visible = groups.second.visible = false;
     groups.first.name = 'internals'; groups.second.name = 'internals';
 
-    // Each frame of the cutaway: the cut through each stage's axis, square to the camera, keeping the far half; the
-    // liquids at the levels of the propellant left (fractions of the stage's load, 0-1).
+    // Each frame the inside shows: when `cutting`, the cut through each stage's axis, square to the camera, keeping the
+    // far half (otherwise, for the see-through view, a plane that keeps everything); the liquids at the levels of the
+    // propellant left (fractions of the stage's load, 0-1).
     const origin = new THREE.Vector3(), axis = new THREE.Vector3(), toCamera = new THREE.Vector3(), point = new THREE.Vector3();
-    function update(stages, camera, left) {
+    function update(stages, camera, left, cutting = true) {
         for (const stage of ['first', 'second']) {
             const object = stages[stage];
             object.updateMatrixWorld();
+            if (!cutting) { cut[stage].set(axis.set(0, 1, 0), 1e9); continue; }
             origin.setFromMatrixPosition(object.matrixWorld); axis.set(0, 1, 0).transformDirection(object.matrixWorld);
             toCamera.subVectors(camera.position, origin); toCamera.addScaledVector(axis, -toCamera.dot(axis));
             if (toCamera.lengthSq() < 1e-9) toCamera.set(1, 0, 0).transformDirection(object.matrixWorld);

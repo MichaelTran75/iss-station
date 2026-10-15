@@ -226,7 +226,8 @@ export async function createLaunchView(sky) {
     const controls = new OrbitControls(camera, renderer.domElement);
     Object.assign(controls, { enabled: false, enableDamping: true, dampingFactor: .08, enablePan: false, minDistance: 5, maxDistance: 1e8, rotateSpeed: .5 });
     let auto = true;
-    controls.addEventListener('start', () => setFollow(false));
+    let followBeforeDrag = true;
+    controls.addEventListener('start', () => { followBeforeDrag = auto; setFollow(false); });
 
     // Time: animation seconds, played with the warp for what the camera follows (the rocket and Dragon, or the
     // booster); the mission clock follows.
@@ -243,6 +244,36 @@ export async function createLaunchView(sky) {
     let inside = false;
     const insideButton = field('launch-inside');
     insideButton.addEventListener('click', () => { inside = !inside; vehicle.setCutaway(inside); insideButton.setAttribute('aria-pressed', String(inside)); });
+    // See-through: a left click on the rocket (a click, not a drag; within 24 px of it on screen counts, for a small
+    // rocket far off) turns its skin half transparent with its line art, over the whole inside; again turns it back.
+    // The click leaves the camera following as it was.
+    let xray = false;
+    const xrayButton = field('launch-xray');
+    function setXray(on) { xray = on; vehicle.setXray(on); xrayButton.setAttribute('aria-pressed', String(on)); }
+    xrayButton.addEventListener('click', () => setXray(!xray));
+    const pointer = new THREE.Vector2(), raycaster = new THREE.Raycaster(), ends = [new THREE.Vector3(), new THREE.Vector3()];
+    let pressed = null;
+    renderer.domElement.addEventListener('pointerdown', event => { pressed = active && event.button === 0 ? { x: event.clientX, y: event.clientY, at: performance.now() } : null; });
+    renderer.domElement.addEventListener('pointerup', event => {
+        const press = pressed; pressed = null;
+        if (!active || !press || event.button !== 0 || Math.hypot(event.clientX - press.x, event.clientY - press.y) > 5 || performance.now() - press.at > 500) return;
+        const rect = renderer.domElement.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
+        pointer.set(x / rect.width * 2 - 1, 1 - y / rect.height * 2);
+        raycaster.setFromCamera(pointer, camera);
+        let hit = raycaster.intersectObjects(vehicle.pickable, false).length > 0;
+        // Near the stack's axis on screen: the booster, the upper stage, Dragon (after each separation they part).
+        for (const [group, from, to] of [[booster, 0, vehicle.separationY], [upper, vehicle.separationY - 5, vehicle.secondStageTop], [capsule, vehicle.secondStageTop, vehicle.dragonTop]]) {
+            if (hit) break;
+            const [a, b] = ends.map((end, k) => end.set(0, k ? to : from, 0).applyMatrix4(group.matrixWorld).project(camera));
+            if (a.z > 1 || b.z > 1) continue;
+            const ax = (a.x + 1) / 2 * rect.width, ay = (1 - a.y) / 2 * rect.height, bx = (b.x + 1) / 2 * rect.width, by = (1 - b.y) / 2 * rect.height;
+            const dx = bx - ax, dy = by - ay, u = THREE.MathUtils.clamp(((x - ax) * dx + (y - ay) * dy) / Math.max(1e-6, dx * dx + dy * dy), 0, 1);
+            hit = Math.hypot(ax + u * dx - x, ay + u * dy - y) < 24;
+        }
+        if (!hit) return;
+        setXray(!xray);
+        if (followBeforeDrag) setFollow(true);
+    });
     function setPlaying(value) { playing = value; playButton.textContent = value ? 'Pause' : 'Play'; playButton.setAttribute('aria-pressed', String(!value)); }
     playButton.addEventListener('click', () => { if (time >= animationDuration(focus)) time = 0; setPlaying(!playing); });
     const focusButtons = [...panel.querySelectorAll('[data-focus]')];
@@ -572,11 +603,13 @@ export async function createLaunchView(sky) {
         camera.updateMatrixWorld();
         // Inside: the propellant left in each stage, from the simulated masses (the stack's until separation, then the
         // booster's; the second stage's from its ignition to the end of the ascent simulation, then what stayed).
-        if (inside) {
+        if (inside || xray) {
             const v = vehicleModel, before = mission < separation;
             const first = before ? state.mass - v.s1Dry - v.s2Dry - v.s2Prop - v.payload : boosterNow.mass - v.s1Dry;
             const second = mission < ignition ? v.s2Prop : vehicleState(Math.min(mission, flightData.stack[flightData.stack.length - 1].t)).mass - v.s2Dry - v.payload;
             vehicle.updateCutaway(camera, { first: first / v.s1Prop, second: second / v.s2Prop });
+            // The see-through view's lines: dark against the sky, light against space (by the camera's height).
+            if (xray) vehicle.xrayContrast(smooth(camera.position.distanceTo(earthCentreLocal) - 6371000, 25000, 70000));
         }
         // The cloud and the trail, lit by the Sun and, near the pad, by the flame.
         flameDown.set(0, -1, 0).applyQuaternion(booster.quaternion);

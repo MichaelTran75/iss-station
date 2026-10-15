@@ -264,6 +264,11 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
   - Khoang động cơ: khung octaweb (khung bát giác, dầm tới máy giữa), mỗi Merlin có buồng đốt, bơm tua-bin một trục, bộ sinh khí và ống xả của nó, khớp lái và hai xi lanh lái. Ống nhiên liệu 10 cm từ bồn tới chín bơm.
   - Đoạn nối: cơ cấu cánh lưới ở chân, bình nitơ cho động cơ khí lạnh.
   - Mức nhiên liệu trong từng bồn theo khối lượng còn lại trong mô phỏng, luôn dồn về phía đuôi (khi đốt máy và khi rơi đuôi trước qua khí quyển): đầy trên bệ, cạn dần khi bay, tầng 1 gần cạn lúc MECO và lúc đáp.
+- Click chuột trái vào tên lửa (hoặc nút **See-through**) để nhìn xuyên: vỏ hai tầng mờ 50%, cấu trúc bên trong hiện nguyên vẹn, không cắt.
+  - Chỉ vẽ mặt gần của vỏ, và vẽ sau nhiên liệu bên trong, nên lớp vỏ phủ lên chất lỏng đúng thứ tự.
+  - Nét viền hiện đủ 100%: cạnh gãy trên 40° và cạnh biên, tìm một lần bằng worker nét viền của trang trạm (như các khối mờ ở trang trạm). Nét sẫm trên nền trời, sáng trên nền vũ trụ.
+  - Click lần nữa để tắt. Click (không kéo) giữ nguyên camera bám. Tên lửa nhỏ ở xa thì click trong vòng 24 px quanh trục cũng tính.
+  - Bật cùng nút **Inside** thì nửa phía camera bị cắt, nửa còn lại mờ.
 - Các công trình trên mặt đất là mô hình giản lược. Xi lanh của chân đáp ẩn khi chân bung (chúng không co giãn).
 
 ## Hiệu năng

@@ -25,7 +25,7 @@ export function ghostMaterial(source) {
 // Crease and boundary edges, as THREE.EdgesGeometry finds them, but on typed-array hashes rather than string
 // keys: corners weld on a 0.1 mm grid, and an edge shared by two faces is kept when their normals part by more
 // than the threshold. Returns segment end points.
-function creaseSegments(geometry, degrees) {
+export function creaseSegments(geometry, degrees) {
     const position = geometry.attributes.position, index = geometry.index, corners = index ? index.count : position.count;
     const cosLimit = Math.cos(degrees * Math.PI / 180), tableSize = count => 1 << Math.ceil(Math.log2(Math.max(16, count * 2)));
     const weldSize = tableSize(position.count), weldSlots = new Int32Array(weldSize).fill(-1), grid = new Int32Array(position.count * 3), weld = new Int32Array(position.count);
