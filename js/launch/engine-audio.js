@@ -14,6 +14,12 @@
 //   away); none in airless space (the level goes with the air's density at the source and at the camera).
 // - The ground: a reflection and the long rolling echo of open country; louder downstream of the jet (Mach waves,
 //   about 45° off its axis) than beside or ahead of it; panned by where the engines are on screen.
+// - Stage separation, as the structure carries it (at 75 km there is no air to carry sound to the camera; this is
+//   what a microphone on the vehicle picks up): the pneumatic pushers' thud, the release's metallic clank ringing in
+//   the tanks' walls, the nitrogen hissing out; eight seconds later the vacuum Merlin's light-off, a deep thump.
+// - Touchdown on the droneship, in the air like the engines (late by the distance, its highs taken by the air): the
+//   four feet striking the steel deck, the legs' crushable honeycomb giving, the deck and legs ringing, and the
+//   booster venting its gas for some seconds after.
 // - The returning booster's sonic boom: the triple boom Falcon 9 boosters are known for, three N-waves (the shocks of
 //   the engine end with its legs, of the grid fins and interstage, and of the top) 0.38 and 0.32 s apart, each a
 //   sudden rise, a fall through zero over 0.16 s and a sudden return, their edges softened a little by kilometres of
@@ -93,6 +99,44 @@ export function createEngineAudio(ctx) {
         return b;
     })();
     const boomLevel = gain(0); boomLevel.connect(squeeze); boomLevel.connect(echo);
+    // Sounds carried by the structure go straight to the mix (no air, no travel, no echo).
+    const onboard = gain(1); onboard.connect(squeeze);
+    // Short sounds: a burst of noise through a filter, and struck metal ringing in a few modes.
+    function burst(noise, type, frequency, Q, peak, rise, decay, into, at = ctx.currentTime) {
+        const s = ctx.createBufferSource(), shape = filter(type, frequency, Q), level = gain(0);
+        s.buffer = noise; chain(s, shape, level, into);
+        level.gain.setValueAtTime(0, at); level.gain.linearRampToValueAtTime(peak, at + rise); level.gain.setTargetAtTime(0, at + rise, decay);
+        s.start(at, random() * 3); s.stop(at + rise + decay * 7);
+    }
+    function ring(modes, peak, into, at = ctx.currentTime) {
+        for (const [frequency, decay, share] of modes) {
+            const o = ctx.createOscillator(), level = gain(0);
+            o.frequency.value = frequency * (.985 + .03 * random()); chain(o, level, into);
+            level.gain.setValueAtTime(peak * share, at); level.gain.setTargetAtTime(0, at, decay);
+            o.start(at); o.stop(at + decay * 7);
+        }
+    }
+    // Stage separation, through the structure; `strength` 0-1 by the camera's nearness.
+    function staging(strength = 1) {
+        const at = ctx.currentTime;
+        burst(brown, 'lowpass', 140, .8, .75 * strength, .004, .18, onboard, at);   // the pushers
+        ring([[180, .5, 1], [267, .42, .8], [411, .35, .6], [655, .25, .45], [930, .18, .35], [1460, .1, .25]], .3 * strength, onboard, at + .01);   // the release
+        burst(white, 'bandpass', 4500, .8, .12 * strength, .05, .45, onboard, at + .03);   // the nitrogen
+    }
+    // The vacuum Merlin lighting, through the structure.
+    function vacuumStart(strength = 1) {
+        const at = ctx.currentTime;
+        burst(brown, 'lowpass', 120, .8, .75 * strength, .01, .45, onboard, at);
+        burst(pink, 'lowpass', 220, .7, .22 * strength, .25, .9, onboard, at + .05);
+    }
+    // Touchdown, in the air from the booster's place; `distance` from the camera (m).
+    function touchdown(distance) {
+        const at = ctx.currentTime, level = Math.min(1.6, 250 / Math.max(15, distance));
+        burst(brown, 'lowpass', 110, .8, .85 * level, .004, .35, sum, at);    // the feet striking the deck
+        burst(white, 'bandpass', 1200, .7, .45 * level, .003, .12, sum, at);  // the honeycomb crushing
+        ring([[92, 1.4, 1], [157, 1.1, .8], [238, .9, .7], [410, .7, .5], [690, .5, .35], [1130, .3, .2]], .22 * level, sum, at + .005);   // deck and legs
+        burst(white, 'bandpass', 3800, .6, .1 * level, .5, 1.6, sum, at + .8);   // venting
+    }
     function boom(strength = 1) {
         const s = ctx.createBufferSource(); s.buffer = boomBuffer;
         boomLevel.gain.setValueAtTime(1.25 * Math.min(1.2, strength), ctx.currentTime);
@@ -136,7 +180,7 @@ export function createEngineAudio(ctx) {
         toward(master.gain, muted || state.quiet ? 0 : 1, .25);
     }
     return {
-        context: ctx, update, boom,
+        context: ctx, update, boom, staging, vacuumStart, touchdown,
         setMuted(value) { muted = !!value; toward(master.gain, muted ? 0 : master.gain.value, .05); },
         get muted() { return muted; }
     };

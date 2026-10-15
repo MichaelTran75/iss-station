@@ -293,7 +293,7 @@ export async function createLaunchView(sky) {
     // its command).
     const lightOffs = [eventAt('ignition') + merlinSpool.delay, flightData.entry + merlinSpool.delay, flightData.landingStart + merlinSpool.delay];
     let heardAt = NaN;
-    const jetWay = new THREE.Vector3(), toListener = new THREE.Vector3(), heard = new THREE.Vector3(), bargeSpot = new THREE.Vector3();
+    const jetWay = new THREE.Vector3(), toListener = new THREE.Vector3(), heard = new THREE.Vector3(), bargeSpot = new THREE.Vector3(), joint = new THREE.Vector3();
     // The booster's sonic boom as heard at the landing zone, by the droneship. Sound sent at t arrives at t + d/c (d the
     // distance to the barge, c the mean speed of sound between); over the stretch flown faster than sound the
     // wavefronts pile up where that arrival is earliest (the booster closing on the barge at the speed of sound), and
@@ -325,6 +325,14 @@ export async function createLaunchView(sky) {
         // The boom, as the clock passes its arrival (not on a jump), the camera near the landing zone.
         const fromBarge = droneship ? camera.position.distanceTo(bargeSpot.set(...droneship.position)) : Infinity;
         if (!jumped && before < boomAt && mission >= boomAt && fromBarge < 5e4) audio.boom(Math.min(1, 6000 / Math.max(6000, fromBarge)));
+        // Stage separation and the vacuum Merlin's light-off through the structure, near the stages; touchdown on the
+        // deck in the air (the graph delays it by the distance), near the barge.
+        const passed = at => !jumped && before < at && mission >= at;
+        if (passed(separation) || passed(ignition)) {
+            const near = camera.position.distanceTo(stackPoint(booster, vehicle.separationY, joint));
+            if (near < 400) { const strength = Math.min(1, 80 / Math.max(80, near)); if (passed(separation)) audio.staging(strength); else audio.vacuumStart(strength); }
+        }
+        if (droneship && passed(flightData.landing.at) && fromBarge < 2e4) audio.touchdown(r);
         audio.update({
             thrust: Math.max(0, boosterNow.engines) / 9, distance: r, air: Math.sqrt(airAt(boosterNow.altitude) * airAt(cameraHeight)),
             angle: Math.acos(Math.max(-1, Math.min(1, jetWay.dot(toListener)))), pan: heard.z < 1 ? heard.x : 0,
