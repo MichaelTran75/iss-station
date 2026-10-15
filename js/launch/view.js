@@ -293,7 +293,24 @@ export async function createLaunchView(sky) {
     // its command).
     const lightOffs = [eventAt('ignition') + merlinSpool.delay, flightData.entry + merlinSpool.delay, flightData.landingStart + merlinSpool.delay];
     let heardAt = NaN;
-    const jetWay = new THREE.Vector3(), toListener = new THREE.Vector3(), heard = new THREE.Vector3();
+    const jetWay = new THREE.Vector3(), toListener = new THREE.Vector3(), heard = new THREE.Vector3(), bargeSpot = new THREE.Vector3();
+    // The booster's sonic boom as heard at the landing zone, by the droneship. Sound sent at t arrives at t + d/c (d the
+    // distance to the barge, c the mean speed of sound between); over the stretch flown faster than sound the
+    // wavefronts pile up where that arrival is earliest (the booster closing on the barge at the speed of sound), and
+    // the boom arrives then: T+578 s, 33 s before touchdown, the booster still 2 km up in its landing burn (what it
+    // sent from higher and faster arrives after, in reverse order). A camera riding along with the booster is never
+    // crossed by its Mach cone: the boom is the landing zone's, heard while the camera is within 50 km of it.
+    const boomAt = (() => {
+        if (!droneship || !flightData.landing) return Infinity;
+        let earliest = Infinity;
+        for (let t = flightData.entry; t <= flightData.landing.at; t += .05) {
+            const s = boosterState(t), sound = air(s.altitude).a;
+            if (s.speed < sound) continue;
+            const d = Math.hypot(s.position[0] - droneship.position[0], s.position[1] - droneship.position[1], s.position[2] - droneship.position[2]);
+            earliest = Math.min(earliest, t + d / ((sound + 340.3) / 2));
+        }
+        return earliest;
+    })();
     function updateAudio() {
         if (!audio) return;
         // The first stage's engines (the whole stack's until separation), heard at the camera.
@@ -303,8 +320,11 @@ export async function createLaunchView(sky) {
         jetWay.set(0, -1, 0).applyQuaternion(booster.quaternion);
         toListener.subVectors(camera.position, booster.position).normalize();
         heard.copy(booster.position).project(camera);
-        const jumped = !(Math.abs(mission - heardAt) < 1.5);
+        const before = heardAt, jumped = !(Math.abs(mission - heardAt) < 1.5);
         heardAt = mission;
+        // The boom, as the clock passes its arrival (not on a jump), the camera near the landing zone.
+        const fromBarge = droneship ? camera.position.distanceTo(bargeSpot.set(...droneship.position)) : Infinity;
+        if (!jumped && before < boomAt && mission >= boomAt && fromBarge < 5e4) audio.boom(Math.min(1, 6000 / Math.max(6000, fromBarge)));
         audio.update({
             thrust: Math.max(0, boosterNow.engines) / 9, distance: r, air: Math.sqrt(airAt(boosterNow.altitude) * airAt(cameraHeight)),
             angle: Math.acos(Math.max(-1, Math.min(1, jetWay.dot(toListener)))), pan: heard.z < 1 ? heard.x : 0,

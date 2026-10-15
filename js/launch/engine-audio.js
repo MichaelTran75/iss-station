@@ -14,6 +14,10 @@
 //   away); none in airless space (the level goes with the air's density at the source and at the camera).
 // - The ground: a reflection and the long rolling echo of open country; louder downstream of the jet (Mach waves,
 //   about 45° off its axis) than beside or ahead of it; panned by where the engines are on screen.
+// - The returning booster's sonic boom: the triple boom Falcon 9 boosters are known for, three N-waves (the shocks of
+//   the engine end with its legs, of the grid fins and interstage, and of the top) 0.38 and 0.32 s apart, each a
+//   sudden rise, a fall through zero over 0.16 s and a sudden return, their edges softened a little by kilometres of
+//   air, with the rolling echo after (see the view for when it arrives).
 const speedOfSound = 343;
 
 export function createEngineAudio(ctx) {
@@ -75,6 +79,25 @@ export function createEngineAudio(ctx) {
     const thump = gain(0); chain(source(brown, .8), filter('lowpass', 150, .8), thump, sum);
     const pops = gain(0); chain(source(crackle, 1.6), filter('highpass', 900, .7), pops, sum);
 
+    // The triple boom, made once: three N-waves.
+    const boomBuffer = (() => {
+        const span = Math.floor(rate * 1.3), b = ctx.createBuffer(1, span, rate), d = b.getChannelData(0);
+        const wave = (at, peak, lasting) => {
+            const from = Math.floor(at * rate), n = Math.floor(lasting * rate);
+            for (let k = 0; k < n && from + k < span; k++) d[from + k] += peak * (1 - 2 * k / n);
+        };
+        wave(.02, 1, .16); wave(.40, .7, .14); wave(.72, .9, .15);
+        // Kilometres of air round off the shocks' fronts (a few milliseconds).
+        let low = 0; const keep = Math.exp(-1 / (.0018 * rate));
+        for (let i = 0; i < span; i++) { low = low * keep + d[i] * (1 - keep); d[i] = low; }
+        return b;
+    })();
+    const boomLevel = gain(0); boomLevel.connect(squeeze); boomLevel.connect(echo);
+    function boom(strength = 1) {
+        const s = ctx.createBufferSource(); s.buffer = boomBuffer;
+        boomLevel.gain.setValueAtTime(1.25 * Math.min(1.2, strength), ctx.currentTime);
+        s.connect(boomLevel); s.start();
+    }
     const toward = (param, value, settle = .06) => param.setTargetAtTime(value, ctx.currentTime, settle);
     const smooth = (x, a, b) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     let muted = false, lights = 0, lastDelay = 0;
@@ -113,7 +136,7 @@ export function createEngineAudio(ctx) {
         toward(master.gain, muted || state.quiet ? 0 : 1, .25);
     }
     return {
-        context: ctx, update,
+        context: ctx, update, boom,
         setMuted(value) { muted = !!value; toward(master.gain, muted ? 0 : master.gain.value, .05); },
         get muted() { return muted; }
     };
