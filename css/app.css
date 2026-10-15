@@ -1762,8 +1762,36 @@
             margin: 0 0 9px;
         }
 
-        .launch-focus button {
-            padding: 0 9px;
+        /* The panel's button groups span it and share it out, and wrap inside their border rather than run past the
+           panel's edge. */
+        .launch-panel :is(.orbit-warp, .orbit-frame) {
+            width: auto;
+            flex-wrap: wrap;
+        }
+
+        .launch-panel :is(.orbit-warp, .orbit-frame) button {
+            flex: 1 1 auto;
+            padding: 0 6px;
+        }
+
+        /* The last seconds counted over the scene (3, 2, 1, then LIFTOFF), each swelling in and fading; centred in
+           the free part of the view (js/launch/view.js sets the left). */
+        .launch-count {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            z-index: 2;
+            pointer-events: none;
+            font: 600 128px/1 'IBM Plex Mono', monospace;
+            font-variant-numeric: tabular-nums;
+            color: #f4f8fb;
+            text-shadow: 0 0 22px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .8);
+            will-change: transform, opacity;
+        }
+
+        .launch-count.word {
+            font-size: 46px;
+            letter-spacing: .14em;
         }
 
         .launch-event {

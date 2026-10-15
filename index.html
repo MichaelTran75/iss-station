@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=39ddb0b553">
+    <link rel="stylesheet" href="css/app.css?v=853debabfe">
     <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
          trước mọi module theo thứ tự dựng. -->
     <script type="importmap">
@@ -69,7 +69,7 @@
         "./js/launch/internals.js": "./js/launch/internals.js?v=2b5bfeb96c",
         "./js/launch/part-labels.js": "./js/launch/part-labels.js?v=372106f472",
         "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=282d264bcb",
-        "./js/launch/view.js": "./js/launch/view.js?v=53f1dbf7cf",
+        "./js/launch/view.js": "./js/launch/view.js?v=17ba40a526",
         "./js/orbit/sky.js": "./js/orbit/sky.js?v=48e499c19c",
         "./js/orbit/view.js": "./js/orbit/view.js?v=9166f83b83",
         "./js/sim/ascent.js": "./js/sim/ascent.js?v=d703446d43",
@@ -235,7 +235,7 @@
                             aria-pressed="true">Rocket &amp; Dragon</button><button type="button" data-focus="booster"
                             aria-pressed="false">Booster</button></div>
                     <div class="orbit-frame launch-inside" role="group" aria-label="Inside the rocket"><button type="button" id="launch-inside"
-                            aria-pressed="false">Inside: tanks &amp; engines</button><button type="button" id="launch-xray" aria-pressed="false"
+                            aria-pressed="false" title="Cut the rocket open: tanks, propellant, lines and engines">Cutaway</button><button type="button" id="launch-xray" aria-pressed="false"
                             title="Or click the rocket">See-through</button></div>
                     <dl class="orbit-readout">
                         <div><dt>Altitude</dt><dd id="launch-altitude">–</dd></div>

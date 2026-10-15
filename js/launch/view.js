@@ -164,10 +164,28 @@ export async function createLaunchView(sky) {
     // orbits it runs out far away. They are written relative to the camera's place and the points moved there (world
     // coordinates in the millions of metres, in 32-bit floats, would shake by half a metre close up), and laid again
     // only when the time or the camera has moved.
+    // Each vehicle covers its own stretch of the line: no dots inside the booster, the second stage or Dragon (their
+    // bodies as they stand this frame, a cylinder 2.4 m round each axis). The path ahead of a rocket in flight runs up
+    // through its body, and there the fixed dots would stream back through it as it flies; the path itself stays
+    // fixed in space, as it must.
+    const bodies = [{ group: booster, from: -1, to: () => vehicle.separationY + 1 }, { group: upper, from: () => vehicle.separationY - 6, to: () => vehicle.secondStageTop + 1 },
+        { group: capsule, from: () => vehicle.secondStageTop - 1, to: () => vehicle.dragonTop + 1 }].map(body => ({ ...body, start: new THREE.Vector3(), axis: new THREE.Vector3(), low: 0, high: 0 }));
+    const bodyRadius = 2.4, fromBody = new THREE.Vector3();
+    function placeBodies() {
+        for (const body of bodies) {
+            body.start.copy(body.group.position); body.axis.set(0, 1, 0).applyQuaternion(body.group.quaternion);
+            body.low = typeof body.from === 'function' ? body.from() : body.from; body.high = body.to();
+        }
+    }
+    const insideBody = point => bodies.some(body => {
+        const along = fromBody.subVectors(point, body.start).dot(body.axis);
+        return along > body.low && along < body.high && fromBody.lengthSq() - along * along < bodyRadius * bodyRadius;
+    });
     function layDots(points, eye) {
         const data = points.userData, { path, times, colour, straight } = data, position = points.geometry.attributes.position, colours = points.geometry.attributes.color;
         if (data.laidAt === mission && data.laidFor.equals(eye)) return;
         data.laidAt = mission; data.laidFor.copy(eye);
+        placeBodies();
         points.position.copy(eye); points.updateMatrixWorld();
         const last = path.length - 1;
         if (last < 1) { points.geometry.setDrawRange(0, 0); return; }
@@ -184,7 +202,7 @@ export async function createLaunchView(sky) {
             const time = times[k] + (times[k + 1] - times[k]) * u;
             // Bright where it has flown, faint ahead; orbits flown more than two hours ago fade further.
             const fade = Math.round(s / spacing) % 2 ? steps - level : 1, alpha = (time > mission ? .42 : time > groundTrackEnd && mission - time > 7200 ? .14 : 1) * fade;
-            if (write && alpha > .05 && count < maxDots) {
+            if (write && alpha > .05 && count < maxDots && !insideBody(dot)) {
                 position.setXYZ(count, dot.x - eye.x, dot.y - eye.y, dot.z - eye.z);
                 colours.setXYZW(count, colour.r, colour.g, colour.b, alpha);
                 count++;
@@ -221,6 +239,8 @@ export async function createLaunchView(sky) {
     const vehicleLabel = document.createElement('div'); vehicleLabel.className = 'orbit-label launch-vehicle-label'; vehicleLabel.hidden = true; viewport.appendChild(vehicleLabel);
     // The parts' names in the inside views.
     const partLabels = createPartLabels(viewport);
+    // The countdown's last seconds over the scene.
+    const countElement = document.createElement('div'); countElement.className = 'launch-count'; countElement.hidden = true; viewport.appendChild(countElement);
     const occluder = new THREE.Mesh(new THREE.SphereGeometry(6371000 - 3000, 128, 64), new THREE.MeshBasicMaterial({ colorWrite: false }));
     occluder.position.y = -6371000; occluder.renderOrder = -60; scene.add(occluder);
 
@@ -594,9 +614,30 @@ export async function createLaunchView(sky) {
         selectDracos(commanded, true, strength, firing);
         return true;
     }
+    // T−3, −2, −1 and LIFTOFF in large type over the free part of the view: each second's number swells in from 135%,
+    // holds and fades in its last 0.3 s; LIFTOFF stays 1.4 s. Run on the mission clock, so paused, warped or jumped
+    // to, it shows what that moment shows.
+    let countShown = '';
+    function countdownOverlay() {
+        const show = active && mission > -3 && mission < 1.4;
+        countElement.hidden = !show;
+        if (!show) { countShown = ''; return; }
+        const word = mission >= 0, text = word ? 'LIFTOFF' : String(Math.ceil(-mission - 1e-9));
+        const s = word ? mission / 1.4 : Number(text) + mission;   // 0-1 through this one
+        const swell = word ? 1.15 - .15 * smooth(s, 0, .2) : 1.35 - .35 * smooth(s, 0, .25);
+        const opacity = word ? smooth(s, 0, .08) * (1 - smooth(s, .6, 1)) : smooth(s, 0, .12) * (1 - smooth(s, .7, 1));
+        if (countShown !== text) {
+            countShown = text; countElement.textContent = text; countElement.classList.toggle('word', word);
+            const box = viewport.getBoundingClientRect(), side = panel.hidden ? 0 : Math.max(0, panel.getBoundingClientRect().right - box.left);
+            countElement.style.left = ((side + viewport.clientWidth) / 2).toFixed(0) + 'px';
+        }
+        countElement.style.opacity = opacity.toFixed(3);
+        countElement.style.transform = 'translate(-50%, -50%) scale(' + swell.toFixed(3) + ')';
+    }
     function update(delta) {
         if (playing) { time = Math.min(animationDuration(focus), time + delta); if (time >= animationDuration(focus)) setPlaying(false); }
         mission = missionAt(time, focus);
+        countdownOverlay();
         sky.update(0, new Date(launchEpoch + mission * 1000));
         placeFrame(); placeStation(mission); pose(); light(); follow(delta); updateTrails();
         if (insetShown()) followInset(delta); else inset.snap = true;
@@ -749,7 +790,7 @@ export async function createLaunchView(sky) {
             if (time >= animationDuration(focus)) jump(0);
             setPlaying(true);
         },
-        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = true; partLabels.hide(); setPlaying(false); shadowSun.set(9, 9, 9); markShadowsDirty(); },
+        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = countElement.hidden = true; partLabels.hide(); setPlaying(false); shadowSun.set(9, 9, 9); markShadowsDirty(); },
         get active() { return active; },
         zoomBy(multiplier) {
             offset.subVectors(camera.position, controls.target);

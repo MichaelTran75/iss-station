@@ -108,7 +108,7 @@ Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó s
 
 ## Góc nhìn Launch
 
-Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−4:30 (giàn dựng còn ôm tên lửa) và chạy liền tới khi Dragon ghép vào ISS: Waypoint 0 (400 m dưới trạm) sau 18 giờ 08 phút, chạm cổng ở T+18:53:15, móc khóa xong ở T+19:06:15. Không phải chuyển sang trang trạm. Hai nút **Rocket & Dragon** / **Booster** chọn bám theo tên lửa lên quỹ đạo hay tầng 1 bay về sà lan; mỗi bên có nhịp tua riêng (chậm lại quanh các lần đốt và lúc đáp). Mỗi lần đốt nâng quỹ đạo của Dragon chạy ở ×90 thay vì ×1.500: Dragon xoay tấm chắn nhiệt theo hướng đốt (4 Draco phía trước đẩy nó lùi về sau), phun Draco suốt thời gian đốt (435 và 466 s cho hai lần lên 410 km, khoảng 22 s cho hai lần hạ xuống 400 km, 43 s cho TPI; 1,6 kN trên 12,5 t), rồi xoay lại. Lần đốt hạ độ cao không cần xoay: mũi đi trước, Draco phía trước đẩy lùi. Lần đốt ở Waypoint 0 để Dragon quay mũi về trạm luôn cho chặng tiếp cận.
+Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−4:30 (giàn dựng còn ôm tên lửa; ba giây cuối đếm 3, 2, 1 rồi LIFTOFF bằng chữ lớn giữa cảnh) và chạy liền tới khi Dragon ghép vào ISS: Waypoint 0 (400 m dưới trạm) sau 18 giờ 08 phút, chạm cổng ở T+18:53:15, móc khóa xong ở T+19:06:15. Không phải chuyển sang trang trạm. Hai nút **Rocket & Dragon** / **Booster** chọn bám theo tên lửa lên quỹ đạo hay tầng 1 bay về sà lan; mỗi bên có nhịp tua riêng (chậm lại quanh các lần đốt và lúc đáp). Mỗi lần đốt nâng quỹ đạo của Dragon chạy ở ×90 thay vì ×1.500: Dragon xoay tấm chắn nhiệt theo hướng đốt (4 Draco phía trước đẩy nó lùi về sau), phun Draco suốt thời gian đốt (435 và 466 s cho hai lần lên 410 km, khoảng 22 s cho hai lần hạ xuống 400 km, 43 s cho TPI; 1,6 kN trên 12,5 t), rồi xoay lại. Lần đốt hạ độ cao không cần xoay: mũi đi trước, Draco phía trước đẩy lùi. Lần đốt ở Waypoint 0 để Dragon quay mũi về trạm luôn cho chặng tiếp cận.
 
 ### Mô phỏng bay (`js/sim/ascent.js`)
 
@@ -208,6 +208,7 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
 ### Cảnh
 
 - Đường bay chấm: xanh cho tên lửa và Dragon, cam cho tầng 1 quay về; sáng ở đoạn đã bay, mờ ở đoạn sắp bay. Một quả cầu vô hình thấp hơn mặt đất 3 km che đoạn đường bay khuất sau đường chân trời.
+  - Mỗi phương tiện chiếm đoạn đường nó đang nằm trên: không vẽ chấm nào trong thân tầng 1, tầng 2 hay Dragon (hình trụ bán kính 2,4 m quanh trục, theo vị trí của khung đang vẽ). Đường bay phía trước một tên lửa đang bay chạy dọc thân nó, nên trước đây các chấm cố định trôi ngược qua thân, nhất là khi nhìn xuyên. Bản thân đường bay vẫn cố định trong không gian.
   - Chấm nằm cố định trên một "lưới" độ dài cung tính từ đầu đường bay. Khoảng cách giữa các chấm là luỹ thừa của 2 (mét), chọn theo khoảng cách tới camera (khoảng 1° trên màn hình). Nhờ vậy chấm đứng yên khi camera di chuyển, không trượt dọc đường. Khi khoảng cách chuyển sang mức kế tiếp, các chấm xen giữa mờ dần vào hoặc ra.
   - Chấm được rải từ vị trí con tàu hiện tại ra hai phía, giới hạn 24.000 chấm. Đường bay 18 giờ có thể dùng hết giới hạn, nhưng phần bị thiếu luôn ở xa con tàu. Trước đây chấm rải từ bệ phóng nên về sau không còn chấm nào quanh Dragon.
   - Toạ độ chấm được ghi tương đối với camera. Toạ độ tuyệt đối hàng triệu mét ở dạng số thực 32-bit sẽ làm chấm rung khoảng nửa mét khi nhìn gần, như lúc ghép nối.
@@ -257,7 +258,7 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
   - Tỉ lệ theo chiều dài 300 ft (91,4 m) của sà lan Marmac 300; khi đó bề ngang cả hai cánh là 52,2 m, đúng 170 ft của "Of Course I Still Love You".
   - Mặt sàn đen có vòng tròn đáp và chữ X, hai cánh có lối đi lưới, container và thiết bị ở hai đầu, lan can, thân và chân vịt. Tầng 1 đáp vào tâm chữ X.
   - Sà lan nổi với mạn khô 3 m, phần thân dưới và chân vịt chìm dưới nước. Mặt nước quanh sà lan mờ dần vào màu biển của quả địa cầu trong vài km.
-- Nút **Inside: tanks & engines** cắt dọc hai tầng theo một mặt phẳng qua trục, luôn quay về phía camera (`js/launch/internals.js`). Mặt trong vỏ là nhôm trơn. Theo những gì đã công bố:
+- Nút **Cutaway** cắt dọc hai tầng theo một mặt phẳng qua trục, luôn quay về phía camera (`js/launch/internals.js`). Mặt trong vỏ là nhôm trơn. Theo những gì đã công bố:
   - Mỗi tầng là một bồn hợp kim nhôm-liti, oxy lỏng ở trên, dầu RP-1 ở dưới, ngăn bằng vách chung (vách tầng 2 có lớp cách nhiệt). Bồn tầng 2 là bản ngắn của bồn tầng 1, làm trên cùng bộ khuôn. Bồn oxy tầng 1 là vỏ liền (monocoque); bồn dầu có thanh dọc và vành khung. Ống oxy đi xuyên tâm bồn dầu xuống khoang động cơ.
   - Heli nén để giữ áp suất bồn nằm trong các bình COPV (lõi nhôm quấn sợi carbon) ngâm trong oxy: ba bình ở tầng 2 (theo cuộc điều tra Amos-6). Bình ở tầng 1 vẽ theo cùng cách vì số lượng và chỗ gắn chưa công bố.
   - Kích thước bồn: 405 t nhiên liệu tầng 1, 107,5 t tầng 2, tỉ lệ oxy/dầu 2,36 theo khối lượng, oxy làm lạnh sâu 1,22 t/m³, dầu làm lạnh 0,82 t/m³, bồn rộng 3,6 m bên trong với vòm elip 2:1. Bồn tầng 1 cần 380 m³ và vừa khít từ khoang động cơ tới đoạn nối; bồn tầng 2 xếp giữa MVac và chân thân Dragon theo cùng tỉ lệ thể tích.
@@ -268,7 +269,7 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
   - Chỉ vẽ mặt gần của vỏ, và vẽ sau nhiên liệu bên trong, nên lớp vỏ phủ lên chất lỏng đúng thứ tự.
   - Nét viền hiện đủ 100%: cạnh gãy trên 40° và cạnh biên, tìm một lần bằng worker nét viền của trang trạm (như các khối mờ ở trang trạm). Nét sẫm trên nền trời, sáng trên nền vũ trụ.
   - Click lần nữa để tắt. Click (không kéo) giữ nguyên camera bám. Tên lửa nhỏ ở xa thì click trong vòng 24 px quanh trục cũng tính.
-  - Bật cùng nút **Inside** thì nửa phía camera bị cắt, nửa còn lại mờ.
+  - Bật cùng nút **Cutaway** thì nửa phía camera bị cắt, nửa còn lại mờ.
 - Nhãn tên các bộ phận (khi nhìn xuyên hoặc cắt dọc, `js/launch/part-labels.js`):
   - Bồn LOX và RP-1 hai tầng kèm số tấn còn lại, vách chung, ống LOX, COPV, thanh dọc và vành khung, khung octaweb, bơm tua-bin, 9 Merlin, đoạn nối, cơ cấu cánh lưới, bình nitơ, MVac.
   - Nhãn đứng hai bên thân, vuông góc với trục tên lửa trên màn hình, xen kẽ hai bên theo độ cao, có đường dẫn tới bộ phận. Nhãn cùng một bên giãn cách theo kích thước chữ chiếu lên trục. Hai tầng còn nối thì dùng chung cột nhãn.
