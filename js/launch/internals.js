@@ -204,8 +204,10 @@ export function createInternals(data) {
     const origin = new THREE.Vector3(), axis = new THREE.Vector3(), toCamera = new THREE.Vector3(), point = new THREE.Vector3();
     function update(stages, camera, left, cutting = true) {
         for (const stage of ['first', 'second']) {
+            // This frame's pose: the stage's parents (the vehicle's groups) were just moved, and only the render
+            // brings their matrices up to date; going by last frame's would leave the levels 30 m behind near MECO.
             const object = stages[stage];
-            object.updateMatrixWorld();
+            object.updateWorldMatrix(true, false);
             if (!cutting) { cut[stage].set(axis.set(0, 1, 0), 1e9); continue; }
             origin.setFromMatrixPosition(object.matrixWorld); axis.set(0, 1, 0).transformDirection(object.matrixWorld);
             toCamera.subVectors(camera.position, origin); toCamera.addScaledVector(axis, -toCamera.dot(axis));

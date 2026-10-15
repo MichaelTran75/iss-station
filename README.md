@@ -271,7 +271,9 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
   - Bật cùng nút **Inside** thì nửa phía camera bị cắt, nửa còn lại mờ.
 - Nhãn tên các bộ phận (khi nhìn xuyên hoặc cắt dọc, `js/launch/part-labels.js`):
   - Bồn LOX và RP-1 hai tầng kèm số tấn còn lại, vách chung, ống LOX, COPV, thanh dọc và vành khung, khung octaweb, bơm tua-bin, 9 Merlin, đoạn nối, cơ cấu cánh lưới, bình nitơ, MVac.
-  - Nhãn đứng hai bên thân, vuông góc với trục tên lửa trên màn hình, xen kẽ hai bên theo độ cao, có đường dẫn tới bộ phận. Nhãn cùng một bên giãn cách theo kích thước chữ; tên lửa nằm ngang thì nhãn ở trên và dưới. Hai tầng còn nối thì dùng chung cột nhãn.
+  - Nhãn đứng hai bên thân, vuông góc với trục tên lửa trên màn hình, xen kẽ hai bên theo độ cao, có đường dẫn tới bộ phận. Nhãn cùng một bên giãn cách theo kích thước chữ chiếu lên trục. Hai tầng còn nối thì dùng chung cột nhãn.
+  - Nhãn tính theo vị trí của chính khung hình đang vẽ (cập nhật ma trận cả nhóm cha), nên bám theo tên lửa ở mọi tốc độ: gần MECO, chấm của nhãn lệch tối đa 0,07 px so với bộ phận. Trước đó nhãn tụt lại một khung (khoảng 30 m ở 2 km/s) và rung theo thời gian khung; mực nhiên liệu cũng vậy.
+  - Mỗi nhãn giữ cố định bên và thứ tự trong cột; chỗ nhãn gặp đường dẫn trượt quanh khung chữ khi tên lửa xoay trên màn hình, nên xoay camera không làm nhãn nhảy.
   - Chi tiết nhỏ chỉ hiện khi tên lửa đủ lớn trên màn hình; quá nhỏ thì không hiện nhãn nào. Điểm neo tính cùng hằng số với hình dựng (`landmarks` trong `internals.js`).
 - Nhiên liệu tô màu, trong suốt 50%: LOX xanh dương, RP-1 vàng cam.
 - Các công trình trên mặt đất là mô hình giản lược. Xi lanh của chân đáp ẩn khi chân bung (chúng không co giãn).
