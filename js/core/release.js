@@ -20,6 +20,24 @@ export function releaseLines(lines) {
     lines.raycast = () => {};
     release(geometry.attributes.position); release(geometry.index);
 }
+// On phones and other modest devices (js/core/quality.js) the station's large maps, over 512 px on a side (17 of its
+// 70 images: the solar arrays, the PMA hulls, Beam, Soyuz, Nauka...; 68 of its 95 MB on the GPU), are drawn down to
+// half before anything is uploaded: a quarter of the memory. Textures sharing an image (clones with their own repeat)
+// share its smaller copy, and the full-size one is let go.
+export function halveLargeMaps(root, limit = 512) {
+    const sources = new Set();
+    root.traverse(object => {
+        for (const surface of [].concat(object.material || [])) for (const value of Object.values(surface)) if (value?.isTexture) sources.add(value.source);
+    });
+    for (const source of sources) {
+        const image = source.data;
+        if (!image || !(image.width > limit || image.height > limit) || !(image instanceof HTMLCanvasElement || image instanceof HTMLImageElement) || (image instanceof HTMLImageElement && !image.complete)) continue;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width / 2)); canvas.height = Math.max(1, Math.round(image.height / 2));
+        const g = canvas.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(image, 0, 0, canvas.width, canvas.height);
+        source.data = canvas; source.needsUpdate = true;
+    }
+}
 export function releaseAfterUpload(root) {
     root.traverse(object => {
         if (!object.geometry || object.isInstancedMesh) return;

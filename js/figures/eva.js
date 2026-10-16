@@ -4,7 +4,8 @@
 // its 4 MB of mesh data load after the station's first frame, so they never delay the page.
 import * as THREE from 'three';
 import { renderer } from '../core/stage.js';
-import { query } from '../core/quality.js';
+import { quality, query } from '../core/quality.js';
+import { halveLargeMaps } from '../core/release.js';
 import { pmaArray } from '../core/pma.js';
 import { z1Group, z1Scale } from '../parts/assembly.js';
 
@@ -165,6 +166,7 @@ async function createZ1Maintenance(evaAsset, simulation) {
         shown = { time: pose[0], phase: evaPhases[pose[1]], drilling: pose[2] > .5 };
         frame.visible = true; frame.updateWorldMatrix(true, true);
     }
+    if (quality.ceiling !== 'high') halveLargeMaps(frame);   // as the station's (js/core/release.js), before it is drawn
     z1Group.add(frame);
     // Motion source: the animation worker when it starts, otherwise the same model on this thread.
     const assetForWorker = { parents: evaAsset.parents, rest: evaAsset.rest, animation: evaAsset.animation, duration: evaAsset.duration, modelScale: evaAsset.modelScale, rootPivot: evaAsset.rootPivot, rightGrip: evaAsset.rightGrip };
