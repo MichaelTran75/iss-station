@@ -232,29 +232,44 @@ const globeTexts = {
 };
 const globeLoaders = {
     orbit: () => Promise.all([import('../orbit/view.js'), loadSky()]).then(([module, loaded]) => (orbitView = module.createOrbitView(loaded))),
-    launch: () => Promise.all([import('../launch/view.js'), loadSky()]).then(([module, loaded]) => module.createLaunchView(loaded)).then(view => {
-        view.onStation = toStation; return (launchView = view);
-    })
+    launch: () => {
+        const loading = Promise.all([import('../launch/view.js'), loadSky()]).then(([module, loaded]) => module.createLaunchView(loaded, launchResume)).then(view => {
+            view.onStation = toStation; if (globeLoading.launch === loading) launchView = view; return view;
+        });
+        return loading;
+    }
 };
+// The Launch view is let go when left: its meshes, maps and sound go (js/launch/view.js, dispose()), and the next
+// visit builds it again at the moment in the flight where this one left off.
+let launchResume = null;
+function dropLaunch() {
+    const loading = globeLoading.launch;
+    if (!loading) return;
+    globeLoading.launch = null;
+    loading.then(view => { launchResume = view.progress; view.dispose(); if (launchView === view) launchView = null; }, () => {});
+}
 function enterGlobe(name) {
     const configurationName = document.getElementById('configuration-name'), orientation = document.getElementById('orientation-text');
     if (!globeViews.has(currentView)) stationTexts = [configurationName.textContent, orientation.textContent];
-    else if (currentView !== name) globeView()?.leave();
+    else if (currentView !== name) { globeView()?.leave(); if (currentView === 'launch') dropLaunch(); }
     currentView = name; app.dataset.sceneView = name; inspectionLight.visible = false; dragonFollow = false;
     // The Launch view draws the station itself for the docking: whole, not ghosted round a selected part.
     if (name === 'launch' && selected) selectPart(null);
     controls.enabled = false; controls.autoRotate = false; setPressed('rotate-toggle', false);
     document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === name)));
     [document.getElementById('view-name').textContent, configurationName.textContent, orientation.textContent] = globeTexts[name];
-    globeLoading[name] ||= globeLoaders[name]();
-    globeLoading[name].then(view => { if (currentView === name) { view.enter(); resize(); } }, error => {
+    const loading = (globeLoading[name] ||= globeLoaders[name]());
+    loading.then(view => { if (currentView === name && globeLoading[name] === loading) { view.enter(); resize(); } }, error => {
         globeLoading[name] = null; console.warn(name + ' view unavailable:', error); notify('The ' + name + ' view could not load.'); setView('reverse');
     });
 }
 function leaveGlobe() {
     if (!globeViews.has(currentView)) return;
     globeView()?.leave(); controls.enabled = true;
+    if (currentView === 'launch') dropLaunch();
     currentView = 'reverse'; app.dataset.sceneView = 'reverse';
+    // Without its Earth backdrop the station shows no sky: the GPU lets go of its maps until something draws it again.
+    if (!orbital) sky?.release();
     if (stationTexts) [document.getElementById('configuration-name').textContent, document.getElementById('orientation-text').textContent] = stationTexts;
 }
 // From the launch, once docked there, to the station view: Dragon at the port, over Earth.
@@ -534,7 +549,7 @@ function toggleBackdrop() {
     controls.minZoom = orbital ? 1e-7 : .45;
     if (camera.zoom < controls.minZoom) { camera.zoom = controls.minZoom; camera.updateProjectionMatrix(); }
     if (orbital) loadSky().then(loaded => { loaded.update(0); render(); }, error => { console.warn('Earth backdrop unavailable:', error); notify('The Earth backdrop could not load.'); });
-    else sky?.hideLabels();
+    else { sky?.hideLabels(); if (!globeViews.has(currentView)) sky?.release(); }
     render();
 }
 document.getElementById('backdrop-toggle').addEventListener('click', toggleBackdrop);

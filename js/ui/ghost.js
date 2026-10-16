@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { camera } from '../core/stage.js';
 import { query } from '../core/quality.js';
 import { ghostOpacity, parts } from '../core/station.js';
+import { releaseLines } from '../core/release.js';
 
 const lineArtDegrees = 50, lineArtLayer = 1;
 const lineArtMaterial = new THREE.LineBasicMaterial({ color: 0x43544e, transparent: true, opacity: .42, depthWrite: false });
@@ -81,6 +82,7 @@ export function scheduleLineArt() {
     const attach = (job, geometry) => {
         const lines = new THREE.LineSegments(geometry, lineArtMaterial);
         lines.userData.lineArt = true; lines.layers.set(lineArtLayer); lines.visible = !!job.entry.ghost; job.parent.add(lines);
+        releaseLines(lines);   // dropped here once on the GPU (js/core/release.js)
     };
     // The edges are found in a worker (js/workers/line-art.js), one parent group at a time; this thread only
     // copies each group's vertex arrays across and adds the finished lines.

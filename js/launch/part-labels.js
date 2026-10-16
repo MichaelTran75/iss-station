@@ -91,5 +91,5 @@ export function createPartLabels(viewport) {
         for (const item of items) { item.label.hidden = !item.shown; item.line.style.display = item.dot.style.display = item.shown ? '' : 'none'; }
     }
     function hide() { layer.hidden = true; }
-    return { update, hide };
+    return { update, hide, remove: () => layer.remove() };
 }

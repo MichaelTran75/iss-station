@@ -9,6 +9,7 @@ import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { renderer, viewport } from '../core/stage.js';
+import { quality } from '../core/quality.js';
 import { earthPath, earthRadius, groundTrack, moonLit, moonPath, moonPosition, moonRadius, orbitPath, orbiter, siderealAngle, stateAt,
     sunPosition, sunRadius } from '../sim/orbit.js';
 
@@ -18,6 +19,16 @@ export const toScene = ({ x, y, z }, target = new THREE.Vector3()) => target.set
 // Earth day, night and detail maps from Solar System Scope (CC BY 4.0), resized for the three.js examples; the Moon map
 // is the three.js examples' own.
 const textures = 'https://threejs.org/examples/textures/planets/';
+// On phones and other modest devices (the quality tier starts below high: js/core/quality.js) the 4K Earth maps are
+// drawn down to 2K once loaded: a quarter of the memory on the GPU (about 100 MB less for the three), and seen from
+// orbit height hardly different.
+const halveLarge = quality.ceiling !== 'high';
+function halved(texture) {
+    const image = texture.image, canvas = document.createElement('canvas');
+    canvas.width = image.width / 2; canvas.height = image.height / 2;
+    const g = canvas.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return new THREE.CanvasTexture(canvas);
+}
 const celestrak = norad => 'https://celestrak.org/NORAD/elements/gp.php?CATNR=' + norad + '&FORMAT=TLE';
 const cacheHours = 2;   // CelesTrak asks clients not to fetch the same elements more often than every two hours
 
@@ -62,6 +73,7 @@ const roundDot = canvasTexture(32, g => {
 export function createSky() {
     const scene = new THREE.Scene(), loader = new THREE.TextureLoader(), anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
     const load = (file, apply, colour = true) => loader.load(textures + file, texture => {
+        if (halveLarge && texture.image.width > 2048) texture = halved(texture);
         if (colour) texture.colorSpace = THREE.SRGBColorSpace;
         texture.anisotropy = anisotropy; apply(texture);
     });
@@ -351,5 +363,16 @@ export function createSky() {
         renderer.render(scene, backdropCamera);
         return true;
     }
-    return { scene, earth, moon, sun, iss, orbiters, addOrbiter, time, update, prepare, placeLabels, hideLabels, resize, renderBehind, moonLit: () => Math.round(lit * 100), ready: iss.ready };
+    // Nothing shows the sky (the station without its Earth backdrop): the GPU's copies of its maps and meshes are let
+    // go, about 130 MB with the 4K maps. Each is uploaded again from the copy kept here the next time it is drawn.
+    function release() {
+        scene.traverse(object => {
+            if (object.geometry && !object.isSprite) object.geometry.dispose();
+            for (const surface of [].concat(object.material || [])) {
+                for (const value of Object.values(surface)) if (value?.isTexture) value.dispose();
+                for (const uniform of Object.values(surface.uniforms || {})) if (uniform.value?.isTexture) uniform.value.dispose();
+            }
+        });
+    }
+    return { scene, earth, moon, sun, iss, orbiters, addOrbiter, time, update, prepare, placeLabels, hideLabels, resize, renderBehind, release, moonLit: () => Math.round(lit * 100), ready: iss.ready };
 }

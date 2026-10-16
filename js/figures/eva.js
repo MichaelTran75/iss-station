@@ -136,6 +136,7 @@ async function createZ1Maintenance(evaAsset, simulation) {
         const curve = new THREE.CubicBezierCurve3(...Array.from({length: 4}, (_, i) => new THREE.Vector3(0, i * .1, 0)));
         const line = mesh(frame, new THREE.TubeGeometry(curve, count, radius, 6, false), surfacesByTube[name][0]);
         line.name = surfacesByTube[name][1]; line.frustumCulled = false; line.castShadow = false;
+        for (const attribute of [line.geometry.attributes.position, line.geometry.attributes.normal]) attribute.setUsage(THREE.DynamicDrawUsage);   // rewritten each frame
         return [name, line];
     }));
     const rightGripLocal = new THREE.Vector3(14.1289751, .3173805, -.0742860), leftGripLocal = new THREE.Vector3(...evaAsset.rightGrip);

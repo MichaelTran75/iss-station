@@ -27,11 +27,16 @@ import { createVehicle } from './vehicle.js';
 
 const smooth = (value, from, to) => THREE.MathUtils.smoothstep(value, from, to);
 
-export async function createLaunchView(sky) {
+// `resume`: where in the flight a previous visit left off ({ mission, focus }); the view is let go when left (see
+// dispose()) and built again on the next visit.
+export async function createLaunchView(sky, resume = null) {
     const [vehicle, bargeModel] = await Promise.all([createVehicle('data/falcon-9.json?v=fa4c1d9cea'), droneship ? createDroneship('data/droneship.json?v=023f40087f') : null]);
+    // Every listener this view adds goes with it on dispose().
+    const listening = new AbortController(), signal = listening.signal;
     const scene = new THREE.Scene();
-    const environment = new THREE.PMREMGenerator(renderer);
-    scene.environment = environment.fromScene(new RoomEnvironment(), .04).texture; scene.environmentIntensity = .45;
+    const environment = new THREE.PMREMGenerator(renderer), room = new RoomEnvironment(), environmentTarget = environment.fromScene(room, .04);
+    environment.dispose(); room.dispose();
+    scene.environment = environmentTarget.texture; scene.environmentIntensity = .45;
     const sunlight = new THREE.DirectionalLight(0xfff4e6, 3.1), skylight = new THREE.HemisphereLight(0xc4d8f5, 0x5f5646, .7);
     scene.add(sunlight, sunlight.target, skylight);
     // The atmosphere is drawn on its own before the rest (it blends over the sky behind; drawn with the scene's
@@ -263,11 +268,11 @@ export async function createLaunchView(sky) {
     const overviewButton = field('launch-overview');
     function setFollow(value) { auto = value; if (value) setOverview(false); followButton.setAttribute('aria-pressed', String(value && !overview)); }
     function setOverview(value) { overview = value; overviewButton.setAttribute('aria-pressed', String(value)); followButton.setAttribute('aria-pressed', String(auto && !value)); }
-    overviewButton.addEventListener('click', () => { auto = true; setOverview(!overview); });
+    overviewButton.addEventListener('click', () => { auto = true; setOverview(!overview); }, { signal });
     // Inside: the stages cut open (tanks, propellant, lines, engines).
     let inside = false;
     const insideButton = field('launch-inside');
-    insideButton.addEventListener('click', () => { inside = !inside; vehicle.setCutaway(inside); insideButton.setAttribute('aria-pressed', String(inside)); });
+    insideButton.addEventListener('click', () => { inside = !inside; vehicle.setCutaway(inside); insideButton.setAttribute('aria-pressed', String(inside)); }, { signal });
     // Engine sound (js/launch/engine-audio.js): made on entering the view or on the first touch of it (the browser
     // plays sound only after the visitor has interacted), on or off as the visitor last left it.
     let audio = null, soundOn = true;
@@ -286,9 +291,9 @@ export async function createLaunchView(sky) {
         soundOn = !soundOn; syncSound();
         try { localStorage.setItem('iss.launch.sound', soundOn ? 'on' : 'off'); } catch (error) { /* not kept */ }
         startAudio(); audio?.setMuted(!soundOn);
-    });
-    viewport.addEventListener('pointerdown', () => { if (active) startAudio(); });
-    document.addEventListener('visibilitychange', () => { if (!audio) return; if (document.hidden) audio.context.suspend(); else if (active) audio.context.resume(); });
+    }, { signal });
+    viewport.addEventListener('pointerdown', () => { if (active) startAudio(); }, { signal });
+    document.addEventListener('visibilitychange', () => { if (!audio) return; if (document.hidden) audio.context.suspend(); else if (active) audio.context.resume(); }, { signal });
     // Light-offs heard: the nine at T−3 s, the booster's three for its entry burn and its one to land (each 0.2 s after
     // its command).
     const lightOffs = [eventAt('ignition') + merlinSpool.delay, flightData.entry + merlinSpool.delay, flightData.landingStart + merlinSpool.delay];
@@ -353,10 +358,10 @@ export async function createLaunchView(sky) {
     let xray = false;
     const xrayButton = field('launch-xray');
     function setXray(on) { xray = on; vehicle.setXray(on); xrayButton.setAttribute('aria-pressed', String(on)); }
-    xrayButton.addEventListener('click', () => setXray(!xray));
+    xrayButton.addEventListener('click', () => setXray(!xray), { signal });
     const pointer = new THREE.Vector2(), raycaster = new THREE.Raycaster(), ends = [new THREE.Vector3(), new THREE.Vector3()];
     let pressed = null;
-    renderer.domElement.addEventListener('pointerdown', event => { pressed = active && event.button === 0 ? { x: event.clientX, y: event.clientY, at: performance.now() } : null; });
+    renderer.domElement.addEventListener('pointerdown', event => { pressed = active && event.button === 0 ? { x: event.clientX, y: event.clientY, at: performance.now() } : null; }, { signal });
     renderer.domElement.addEventListener('pointerup', event => {
         const press = pressed; pressed = null;
         if (!active || !press || event.button !== 0 || Math.hypot(event.clientX - press.x, event.clientY - press.y) > 5 || performance.now() - press.at > 500) return;
@@ -376,17 +381,17 @@ export async function createLaunchView(sky) {
         if (!hit) return;
         setXray(!xray);
         if (followBeforeDrag) setFollow(true);
-    });
+    }, { signal });
     function setPlaying(value) { playing = value; playButton.textContent = value ? 'Pause' : 'Play'; playButton.setAttribute('aria-pressed', String(!value)); }
-    playButton.addEventListener('click', () => { if (time >= animationDuration(focus)) time = 0; setPlaying(!playing); });
+    playButton.addEventListener('click', () => { if (time >= animationDuration(focus)) time = 0; setPlaying(!playing); }, { signal });
     const focusButtons = [...panel.querySelectorAll('[data-focus]')];
     function setFocus(name) {
         focus = name; time = animationAt(mission, focus);
         for (const button of focusButtons) button.setAttribute('aria-pressed', String(button.dataset.focus === name));
     }
-    focusButtons.forEach(button => button.addEventListener('click', () => { setFocus(button.dataset.focus); setFollow(true); }));
-    field('launch-restart').addEventListener('click', () => { jump(0); setPlaying(true); });
-    followButton.addEventListener('click', () => { setFollow(true); snapCamera = true; });
+    focusButtons.forEach(button => button.addEventListener('click', () => { setFocus(button.dataset.focus); setFollow(true); }, { signal }));
+    field('launch-restart').addEventListener('click', () => { jump(0); setPlaying(true); }, { signal });
+    followButton.addEventListener('click', () => { setFollow(true); snapCamera = true; }, { signal });
     const list = field('launch-events');
     const items = events.map(event => {
         const item = document.createElement('li'), button = document.createElement('button');
@@ -671,7 +676,7 @@ export async function createLaunchView(sky) {
     const insetElement = field('launch-inset'), insetText = insetElement.querySelector('span'), insetName = insetElement.querySelector('b');
     const insetKind = () => focus === 'rocket' ? 'booster' : 'rocket';
     const insetShown = () => active && mission > separation + 2 && (focus === 'booster' || mission < landing + 45);
-    insetElement.addEventListener('click', () => { setFocus(insetKind()); setFollow(true); snapCamera = inset.snap = true; });
+    insetElement.addEventListener('click', () => { setFocus(insetKind()); setFollow(true); snapCamera = inset.snap = true; }, { signal });
     function followInset(delta) {
         goal(insetKind(), inset.goal, inset.goalOffset);
         ride(inset, insetKind(), inset.goal, inset.goalOffset, inset.target, inset.offset, inset.snap ? 1 : 1 - Math.exp(-2.2 * delta), true);
@@ -963,9 +968,15 @@ export async function createLaunchView(sky) {
         sky.resize(width, height);
     }
 
+    // Built again on a later visit, the view finds the panel as the last one left it: its toggles start from this one's
+    // state, and the flight from where that visit left off.
+    for (const button of [insideButton, xrayButton, overviewButton]) button.setAttribute('aria-pressed', 'false');
+    if (resume) { setFocus(resume.focus); jump(animationAt(resume.mission, resume.focus)); }
+
     return {
         camera, controls, scene, update, render, resize,
         get mission() { return mission; },
+        get progress() { return { mission, focus }; },
         set onStation(callback) { stationButton.onclick = callback; },
         enter() {
             active = true; controls.enabled = true; panel.hidden = false; sky.hideLabels(); startAudio();
@@ -975,6 +986,27 @@ export async function createLaunchView(sky) {
         },
         leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = countElement.hidden = true; partLabels.hide(); setPlaying(false); audio?.update({ thrust: 0, distance: 1e3, air: 0, angle: 0, pan: 0, impinge: 0, lights: 0, jumped: true, warp: 1, quiet: true }); shadowSun.set(9, 9, 9); markShadowsDirty(); },
         get active() { return active; },
+        // Let go of everything the view made (on leaving it): its listeners, labels and entries in the event list, the
+        // sound, and on the GPU its scenes' meshes, materials and textures. Textures the station's own scene uses stay:
+        // this Dragon's trunk shares the station's Dragon's solar cells.
+        dispose() {
+            this.leave(); listening.abort(); controls.dispose(); stationButton.onclick = null;
+            for (const element of [issLabel, vehicleLabel, countElement, ...items]) element.remove();
+            partLabels.remove();
+            audio?.context.close(); audio = null;
+            const texturesOf = surface => [...Object.values(surface), ...Object.values(surface.uniforms || {}).map(uniform => uniform.value)].filter(value => value?.isTexture);
+            const kept = new Set();
+            stationScene.traverse(object => { for (const surface of [].concat(object.material || [])) for (const texture of texturesOf(surface)) kept.add(texture); });
+            for (const root of [scene, atmosphere]) root.traverse(object => {
+                if (object.geometry && !object.isSprite) object.geometry.dispose();   // sprites share one quad
+                if (object.isInstancedMesh) object.dispose();
+                for (const surface of [].concat(object.material || [])) {
+                    for (const texture of texturesOf(surface)) if (!kept.has(texture)) texture.dispose();
+                    surface.dispose();
+                }
+            });
+            environmentTarget.dispose();
+        },
         zoomBy(multiplier) {
             offset.subVectors(camera.position, controls.target);
             offset.setLength(THREE.MathUtils.clamp(offset.length() / multiplier, controls.minDistance, controls.maxDistance));

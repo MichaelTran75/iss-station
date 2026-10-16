@@ -13,13 +13,13 @@ Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 | `css/app.css` | kiểu giao diện |
 | `js/boot.js` | khởi động: nạp dữ liệu, rồi `main.js`; hiện bảng lỗi nếu trang không chạy được |
 | `js/main.js` | import mọi module theo thứ tự dựng cảnh, rồi khởi chạy trang |
-| `js/core/` | nền: `data` (dữ liệu mô hình), `stage` (renderer, camera, đèn), `quality` (mức chất lượng, lịch vẽ bóng đổ), `kit` (vật liệu, gộp lưới), `station` (sổ bộ phận `part()`, hằng số bố trí), cùng các chi tiết dùng chung: `cbm`, `surfaces`, `hull`, `pma`, `payloads` |
+| `js/core/` | nền: `data` (dữ liệu mô hình), `stage` (renderer, camera, đèn), `quality` (mức chất lượng, lịch vẽ bóng đổ), `kit` (vật liệu, gộp lưới), `station` (sổ bộ phận `part()`, hằng số bố trí), `release` (bỏ bản dữ liệu đỉnh trên CPU khi GPU đã giữ), cùng các chi tiết dùng chung: `cbm`, `surfaces`, `hull`, `pma`, `payloads` |
 | `js/parts/` | mỗi tệp một bộ phận (truss, power, … z1). `assembly.js` chạy sau cùng: dời cụm Nga, hạ giàn, thu nhỏ Z1 |
 | `js/figures/eva.js` | lưới phi hành gia EVA; mỗi khung chép tư thế nhận từ worker |
 | `js/ui/` | `ghost` (khối mờ, nét viền), `rendezvous-guide` (đường tiếp cận, điểm chờ, vùng cấm 200 m), `controller` (chọn bộ phận, góc nhìn, nhãn, nút bấm, vòng lặp khung hình) |
-| `js/orbit/sky.js` | bầu trời thật dùng chung: Trái Đất (ngày, đêm, mây), ISS, Mặt Trăng, Mặt Trời, sao, theo giờ hiện tại; vẽ cả nền Trái Đất sau trạm. Tải khi mở lần đầu |
+| `js/orbit/sky.js` | bầu trời thật dùng chung: Trái Đất (ngày, đêm, mây), ISS, Mặt Trăng, Mặt Trời, sao, theo giờ hiện tại; vẽ cả nền Trái Đất sau trạm. Tải khi mở lần đầu; khi không góc nhìn nào vẽ nó, GPU bỏ bản của nó tới lần vẽ sau |
 | `js/orbit/view.js` | góc nhìn quỹ đạo: khung ISS / Earth & Moon / Sun, zoom ra tới 600 triệu km, tua nhanh thời gian |
-| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, 39B, VAB, LCC, HIF, bồn chứa), `exhaust` (khói ở bệ, trên sà lan và vệt khói trôi theo gió), `internals` (cấu trúc bên trong hai tầng cho chế độ cắt dọc và nhìn xuyên), `part-labels` (nhãn tên bộ phận bên trong), `engine-audio` (âm thanh động cơ), `droneship` (sà lan đáp), `view` (camera, hai lượt vẽ, bảng điều khiển). Tải khi mở lần đầu |
+| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, 39B, VAB, LCC, HIF, bồn chứa), `exhaust` (khói ở bệ, trên sà lan và vệt khói trôi theo gió), `internals` (cấu trúc bên trong hai tầng cho chế độ cắt dọc và nhìn xuyên), `part-labels` (nhãn tên bộ phận bên trong), `engine-audio` (âm thanh động cơ), `droneship` (sà lan đáp), `view` (camera, hai lượt vẽ, bảng điều khiển). Dựng khi mở, dọn khi rời |
 | `js/sim/ascent.js` | mô phỏng bay Falcon 9 (lực đẩy, lực cản, khí quyển, Trái Đất quay) và tầng 1 quay về sà lan, tua thời gian; chỉ có toán |
 | `js/sim/plume.js` | luồng xả Merlin theo điều kiện bay (giãn nở đẳng entropy, chu kỳ sóng sốc, trộn khí, cháy tiếp); chỉ có toán |
 | `js/sim/wind.js` | gió ở Cape Canaveral lúc phóng Demo-2 theo độ cao (bóng thám không KXMR, trạm mặt đất); chỉ có dữ liệu |
@@ -318,6 +318,21 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
 
   Khi khung hình chậm hơn 40 khung/giây, trang hạ một mức. Khi dư sức, trang nâng lại, nhưng không vượt mức ban đầu.
 - Phi hành gia EVA (4 MB dữ liệu) tải sau khung hình đầu tiên.
+- Bộ nhớ:
+  - Ảnh Trái Đất 2K trên điện thoại và máy yếu (mức chất lượng bắt đầu dưới high): ba bản đồ 4K (ngày, đêm, mây) thu xuống 2K ngay khi tải (`sky.js`). Ảnh vẫn tải bản 4K từ threejs.org.
+  - Bỏ bản trên CPU của dữ liệu đỉnh mà GPU đã giữ (`js/core/release.js`): pháp tuyến và toạ độ texture của lưới trạm, đường viền và nét vẽ ghost (không bao giờ được chọn bằng chuột). Vị trí và chỉ mục giữ lại vì chọn bộ phận bằng chuột cần chúng. Dữ liệu đỉnh trên CPU từ 95 MB còn 38 MB. Không xoá mảng mà thay bằng mảng rỗng cùng kiểu: khi chọn bằng chuột, three.js đọc pháp tuyến và toạ độ texture của điểm trúng, nên nhận NaN thay vì báo lỗi. Ống dây EVA được đánh dấu dữ liệu động vì ghi lại mỗi khung.
+  - Rời góc nhìn Launch thì cảnh đó được dọn (`dispose()`): lưới, vật liệu, texture (trừ những thứ cảnh trạm dùng chung), âm thanh, nhãn, mục trong danh sách sự kiện, mọi trình nghe sự kiện (một `AbortController`). Lần mở sau dựng lại và chạy tiếp từ đúng mốc đang xem. Khi trạm không bật nền Trái Đất, GPU cũng bỏ bản đồ và lưới của bầu trời, tới lần cần vẽ lại thì nạp lên từ bản còn giữ.
+  - Mất ngữ cảnh WebGL thì dữ liệu đã bỏ không nạp lại được; trang vốn đã báo người xem tải lại trong trường hợp này.
+  - Đo trên Chrome chạy ngầm, GPU Apple M4, cửa sổ 1600 × 1000, so với bản trước:
+
+    | Lúc | Trước | Sau |
+    |---|---|---|
+    | Mở trang trạm (JS heap) | 130 MB | 94 MB |
+    | Trở về trạm sau khi xem Launch (tổng mọi tiến trình) | 1.926 MB | 1.704 MB |
+    | Sau lần xem Launch thứ hai | 1.988 MB | 1.612 MB |
+    | Bật nền Trái Đất, phần tăng thêm (4K → 2K) | 88–115 MB | 56–64 MB |
+
+    Rời Launch thì số đối tượng trên GPU về đúng mức trước khi mở. Tổng RAM không về hẳn mức lúc mới vào trang (1.335 MB) vì tiến trình GPU của Chrome giữ lại một phần bộ nhớ đã giải phóng để dùng lại.
 - Trình duyệt chỉ tải lại module nào đổi nội dung: import map trỏ mỗi module tới bản có dấu băm của chính nó.
 
 ## Thêm hoạt cảnh phức tạp
