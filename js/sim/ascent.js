@@ -363,9 +363,10 @@ function sampleAt(list, time) {
     const engines = a.engines >= 0 && b.engines >= 0 ? a.engines + (b.engines - a.engines) * u : near.engines;
     return { ...near, t: time, r, v: vel, engines, ...(a.lit !== undefined || b.lit !== undefined ? { lit: Math.max(a.lit || 0, b.lit || 0) } : {}) };
 }
+// `flight`: the direction of its velocity through space (in the pad's frame), which its orbit's frame is built on.
 function describe(entry, time, direction) {
     return {
-        position: toPad(entry.r, time, true), direction: unit(toPad(direction, time, false)), altitude: Math.max(0, length(entry.r) - R),
+        position: toPad(entry.r, time, true), direction: unit(toPad(direction, time, false)), flight: unit(toPad(entry.v, time, false)), altitude: Math.max(0, length(entry.r) - R),
         downrange: Math.acos(Math.min(1, cosineAt(entry.r, time))) * R, speed: length(airVelocity(entry)), inertial: length(entry.v),
         q: entry.q || 0, load: entry.load || 0, mass: entry.m, engines: entry.engines || 0, lit: entry.lit || 0
     };

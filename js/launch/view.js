@@ -456,7 +456,7 @@ export async function createLaunchView(sky) {
     const boosterLift = time => standing - (standing - 2.8) * smooth(time, landing - 60, landing - 20);
     // Dragon's phasing burns: how far turned to burn attitude (0-1; heat shield along a burn that speeds it up) and
     // whether the Dracos are firing.
-    const flip = new THREE.Quaternion(), sideways = new THREE.Vector3(1, 0, 0), firing = new Float32Array(dracoNozzles.length), turnPivot = new THREE.Vector3(), turnArm = new THREE.Vector3();
+    const flip = new THREE.Quaternion(), flipAxis = new THREE.Vector3(), firing = new Float32Array(dracoNozzles.length), turnPivot = new THREE.Vector3(), turnArm = new THREE.Vector3();
     const lastBurn = dracoBurns[dracoBurns.length - 1];
     function burnNow(mission) {
         for (const burn of dracoBurns) {
@@ -471,20 +471,62 @@ export async function createLaunchView(sky) {
     }
     const axis = new THREE.Vector3();
     let state = vehicleState(countdown), boosterNow = state;
+    // Dragon's orbital frame (at its frame's origin): across its orbit (the orbit's normal), up from Earth's centre,
+    // along its flight. Dragon holds its attitude in it once on its own, so it does not swing round against the camera
+    // that rides in it (see ride()) however it faces on the turning Earth; set each frame in pose().
+    const radial = new THREE.Vector3(), alongTrack = new THREE.Vector3(), crossTrack = new THREE.Vector3(), orbit = new THREE.Quaternion(), orbitBasis = new THREE.Matrix4();
+    function orbitFrame(origin, flight, target = orbit) {
+        radial.subVectors(origin, earthCentre).normalize();
+        alongTrack.copy(flight).addScaledVector(radial, -flight.dot(radial)).normalize();
+        crossTrack.crossVectors(radial, alongTrack);
+        return target.setFromRotationMatrix(orbitBasis.makeBasis(crossTrack, radial, alongTrack));
+    }
+    // Dragon's attitude in that frame: as the stack stood at the separation (nose where the second stage pointed at
+    // its cutoff, 25° off its flight by then), turning over the next minute nose onto its flight, its roll kept. The
+    // second stage turns onto its flight alongside (from the end of the ascent's simulation each points along it;
+    // until now both swung there at once at T+800, 30°).
+    const dragonAt = eventAt('dragon'), settling = [dragonAt + 15, dragonAt + 70];
+    const holdFrom = new THREE.Quaternion(), holdTo = new THREE.Quaternion(), hold = new THREE.Quaternion(), holdInverse = new THREE.Quaternion();
+    {
+        const s = vehicleState(dragonAt), nose = new THREE.Vector3();
+        place(capsule, s);
+        orbitFrame(capsule.position, direction.set(...s.flight), holdFrom).invert().multiply(capsule.quaternion);
+        holdTo.setFromUnitVectors(nose.set(0, 1, 0).applyQuaternion(holdFrom), direction.set(0, 0, 1)).multiply(holdFrom);
+    }
+    // The second stage's guidance at its ignition points the stack 48° lower than it held from the first stage's
+    // cutoff, at once in the simulation; shown turning there over 12 s (about 4°/s).
+    const pitchDown = 12, heldAtCutoff = vehicleState(ignition - .01).direction;
+    const turnWhole = new THREE.Quaternion(), turnShare = new THREE.Quaternion(), turnFrom = new THREE.Vector3(), turnTo = new THREE.Vector3();
+    // State `s` with its axis a share `f` of the way from direction `from` to direction `to`.
+    function pointing(s, from, to, f) {
+        turnWhole.setFromUnitVectors(turnFrom.set(...from), turnTo.set(...to));
+        return { ...s, direction: turnFrom.applyQuaternion(turnShare.identity().slerp(turnWhole, f)).toArray() };
+    }
     function pose() {
         state = vehicleState(mission);
-        place(upper, state.dragon ? stageState(mission) : state);
+        const since = mission - dragonAt, settle = smooth(mission, ...settling);
+        const shown = state.dragon ? stageState(mission) : since > 0 ? pointing(state, state.direction, state.flight, settle)
+            : mission > ignition && mission < ignition + pitchDown ? pointing(state, heldAtCutoff, state.direction, smooth(mission, ignition, ignition + pitchDown)) : state;
+        place(upper, shown);
         upper.visible = mission < 5800;
-        axis.set(0, 1, 0).applyQuaternion(upper.quaternion);
-        if (state.dragon) {
-            place(capsule, state);
+        axis.set(...state.direction);
+        if (since > 0) {
+            // Springs push Dragon off the second stage along the stack's axis; it draws away at about 0.4 m/s, then
+            // flies its own orbit from the end of the ascent's simulation.
+            if (state.dragon) place(capsule, state);
+            else capsule.position.copy(upper.position).addScaledVector(axis, .4 * since + .004 * since * since);
+            orbitFrame(capsule.position, direction.set(...state.flight));
+            hold.slerpQuaternions(holdFrom, holdTo, settle);
+            capsule.quaternion.multiplyQuaternions(orbit, hold);
             // Burn attitude: for each phasing burn Dragon turns its heat shield along the burn (the forward Dracos push
             // it backward) and turns back after.
             const burn = burnNow(mission);
             if (burn.turned > 0) {
-                // Turned about the capsule's own middle (the group's origin is the stack's base, 60 m back).
-                const middle = (vehicle.secondStageTop + vehicle.dragonTop) / 2, pivot = stackPoint(capsule, middle, turnPivot);
-                capsule.quaternion.multiply(flip.setFromAxisAngle(sideways, Math.PI * burn.turned));
+                // Turned end over end about the capsule's own middle (the group's origin is the stack's base, 60 m
+                // back) and its orbit's normal: in the orbit's plane, so from across the orbit it stays side-on.
+                const pivot = stackPoint(capsule, middle, turnPivot);
+                flipAxis.set(1, 0, 0).applyQuaternion(holdInverse.copy(hold).invert());
+                capsule.quaternion.multiply(flip.setFromAxisAngle(flipAxis, Math.PI * burn.turned));
                 capsule.position.copy(pivot).sub(turnArm.set(0, middle, 0).applyQuaternion(capsule.quaternion));
             }
             if (mission >= rendezvousTime) {
@@ -498,16 +540,16 @@ export async function createLaunchView(sky) {
                 capsule.position.copy(dock.ring).sub(turnArm.set(0, vehicle.dragonRingY, 0).applyQuaternion(capsule.quaternion));
             }
         }
-        else { capsule.position.copy(upper.position); capsule.quaternion.copy(upper.quaternion); }
+        else {
+            capsule.position.copy(upper.position); capsule.quaternion.copy(upper.quaternion);
+            if (state.flight) orbitFrame(capsule.position, direction.set(...state.flight));
+        }
         boosterNow = mission < separation ? state : boosterState(mission);
         if (mission < separation) { booster.position.copy(upper.position); booster.quaternion.copy(upper.quaternion); }
         else place(booster, boosterNow, boosterLift(mission));
         ground.updatePad(mission);
         vehicle.setFins(smooth(mission - separation, 10, 16));
         vehicle.setLegs(smooth(mission, landing - 9, landing - 4));
-        // Springs push Dragon off the second stage; it draws away at about 0.4 m/s.
-        const dragonSince = mission - eventAt('dragon');
-        if (dragonSince > 0 && !state.dragon) capsule.position.addScaledVector(axis, .4 * dragonSince + .004 * dragonSince * dragonSince);
         issMarker.position.copy(dock.port);
         vehicle.setNose(smooth(mission, eventAt('nosecone'), eventAt('nosecone') + 6));
         // Engines: the Merlins as the simulation fires them (nine, throttled through Max-Q and for the crew's 3.1 g;
@@ -520,72 +562,121 @@ export async function createLaunchView(sky) {
         vehicle.setSecondPlume(state.engines < 0 ? spoolUp(mission - ignition - merlinSpool.delay) : afterSeco >= 0 && afterSeco < 1.5 ? tailOff(afterSeco) : 0, now, mission - ignition);
     }
 
-    // Camera: a spot by the pad for liftoff, then alongside the stack, close in on each separation, and on Dragon at
-    // the end. It follows until someone drags it; it keeps following the vehicle with their angle after that.
-    const target = new THREE.Vector3(), goalTarget = new THREE.Vector3(), goalOffset = new THREE.Vector3(), offset = new THREE.Vector3();
-    const side = new THREE.Vector3(), back = new THREE.Vector3(), point = new THREE.Vector3(), lookout = new THREE.Vector3(150, 32, 175);
+    // Camera: by the pad through the count and liftoff, then alongside the stack, close in on each separation, and
+    // side-on to Dragon from its separation to docking. It follows until someone drags it; it keeps following the
+    // vehicle with their angle after that.
+    const goalTarget = new THREE.Vector3(), goalOffset = new THREE.Vector3(), offset = new THREE.Vector3();
+    const side = new THREE.Vector3(), back = new THREE.Vector3(), point = new THREE.Vector3(), vertical = new THREE.Vector3();
+    // The opening view: from the north-east, 210 m out and 90 m up over the flame trench, the stack between the
+    // strongback and the tower, the hangar behind (fitted to a view picked on the page).
+    const lookout = new THREE.Vector3(56, 90, -202), padAim = new THREE.Vector3(0, 53, 0);
     function stackPoint(group, height, target) { return target.set(0, height, 0).applyQuaternion(group.quaternion).add(group.position); }
+    // Framings by stretch of the flight, square to the local vertical where the vehicle is (2,700 km downrange by
+    // Dragon's separation, it leans 25° from the pad's).
     function goal(kind, goalTarget, goalOffset) {
         if (kind === 'booster' && mission > separation + 1) {
             // The booster: alongside as it falls tail-first, then low by the barge for the landing.
             stackPoint(booster, 24, goalTarget);
+            vertical.subVectors(goalTarget, earthCentre).normalize();
             back.set(...boosterNow.direction).negate();   // its tail leads
-            side.crossVectors(back, up); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
+            side.crossVectors(back, vertical); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
             const near = smooth(mission, landing - 45, landing - 15);
-            goalOffset.copy(side).multiplyScalar(130 - 40 * near).addScaledVector(back, -30 + 20 * near).addScaledVector(up, 25 - 30 * near + 40 * smooth(mission, landing, landing + 8));
+            goalOffset.copy(side).multiplyScalar(130 - 40 * near).addScaledVector(back, -30 + 20 * near).addScaledVector(vertical, 25 - 30 * near + 40 * smooth(mission, landing, landing + 8));
+            return;
+        }
+        if (mission >= 700) {
+            // Dragon, from its last minute on the second stage to docking: side-on from across its orbit (the side the
+            // approach is watched from), a little above and behind, Earth below. Set in its orbital frame, where the
+            // camera rides (ride()), so Dragon holds still on screen however fast the clock runs; for the first seconds
+            // after the separation, between it and the second stage.
+            stackPoint(capsule, middle, goalTarget);
+            goalOffset.copy(crossTrack).multiplyScalar(30).addScaledVector(radial, 5).addScaledVector(alongTrack, -6);
+            if (mission >= rendezvousTime) {
+                // The approach, still side-on, Dragon the subject: as it closes in from 70 m the camera turns square
+                // to its side and rises to 27° over the docking axis (the station's arrays reach 23 m ahead of the
+                // port, 5 m over the axis: from lower it would look through them), drawing back to take the port in
+                // too (Dragon 12° left of the middle, the port 22° right) and closing in again with Dragon.
+                const range = state.proximity ? state.proximity.range : 400, join = 1 - smooth(range, 25, 70);
+                goalTarget.lerp(dock.port, .345 * join);
+                goalOffset.copy(crossTrack).multiplyScalar(30).addScaledVector(radial, 5 + 10 * join).addScaledVector(alongTrack, -6 * (1 - join));
+                const near = goalOffset.length();
+                goalOffset.setLength(Math.max(near, THREE.MathUtils.lerp(near, range / (Math.tan(12 * Math.PI / 180) + Math.tan(22 * Math.PI / 180)), join)));
+                return;
+            }
+            goalTarget.lerp(stackPoint(upper, vehicle.secondStageTop, point), .35 * (1 - smooth(mission, dragonAt + 4, dragonAt + 24)));
             return;
         }
         back.set(0, -1, 0).applyQuaternion(upper.quaternion);
-        side.crossVectors(back, up); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
+        vertical.subVectors(stackPoint(upper, 36, point), earthCentre).normalize();
+        side.crossVectors(back, vertical); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
         if (mission < 26) {
+            // The opening view through the count; it turns to follow the rocket up, the pad in frame for the first
+            // seconds, then eases out toward the chase position from 18 s.
             stackPoint(upper, 36, goalTarget);
-            goalTarget.lerp(point.set(0, padDeck + 30, 0), 1 - smooth(mission, 0, 12));   // the pad stays in frame for the first seconds
+            goalTarget.lerp(padAim, 1 - smooth(mission, 0, 12));
             goalOffset.copy(lookout).sub(goalTarget);
-            // Through the terminal count, close in from the south-west (the sunlit side, clear of the tower) as the
-            // strongback's cradles let go and it leans back.
-            goalOffset.lerp(point.set(-55, -2, 45), 1 - smooth(mission, -40, -12));
-            // Ease out toward the chase position from 18 s.
-            const blend = smooth(mission, 18, 26);
-            point.copy(side).multiplyScalar(170).addScaledVector(back, 60).addScaledVector(up, -20);
-            goalOffset.lerp(point, blend);
+            point.copy(side).multiplyScalar(170).addScaledVector(back, 60).addScaledVector(vertical, -20);
+            goalOffset.lerp(point, smooth(mission, 18, 26));
             return;
         }
-        if (mission < 145) { stackPoint(upper, 36, goalTarget); goalOffset.copy(side).multiplyScalar(150).addScaledVector(back, 50).addScaledVector(up, 15); return; }
+        if (mission < 145) { stackPoint(upper, 36, goalTarget); goalOffset.copy(side).multiplyScalar(150).addScaledVector(back, 50).addScaledVector(vertical, 15); return; }
         if (mission < 215) {
             // Between the stages while they part, then on the second stage as the booster drops behind.
             stackPoint(upper, 46, goalTarget);
             if (mission > separation) goalTarget.lerp(stackPoint(booster, 47, point), .5 * (1 - smooth(mission, ignition, ignition + 6)));
-            goalOffset.copy(side).multiplyScalar(62).addScaledVector(back, 10 + 40 * smooth(mission, ignition, ignition + 10)).addScaledVector(up, 6);
+            goalOffset.copy(side).multiplyScalar(62).addScaledVector(back, 10 + 40 * smooth(mission, ignition, ignition + 10)).addScaledVector(vertical, 6);
             return;
         }
-        if (mission < 700) { stackPoint(upper, 54, goalTarget); goalOffset.copy(side).multiplyScalar(75).addScaledVector(back, 35).addScaledVector(up, 10); return; }
-        if (mission >= rendezvousTime) {
-            // The approach: between Dragon and the port, from the station's port side, above and aft (the station
-            // view's framing for Dragon), far enough to hold both, closing in as Dragon nears.
-            const range = state.proximity ? state.proximity.range : 400, blend = smooth(mission, rendezvousTime, rendezvousTime + 90);
-            stackPoint(capsule, middle, goalTarget).lerp(dock.port, .45 * blend);
-            const reach = 30 + 1.3 * range;
-            point.copy(dock.cross).multiplyScalar(165).addScaledVector(dock.radial, 70).addScaledVector(dock.along, -75).setLength(reach);
-            back.set(0, -1, 0).applyQuaternion(capsule.quaternion);
-            side.crossVectors(back, up); if (side.lengthSq() < 1e-6) side.set(1, 0, 0); side.normalize();
-            goalOffset.copy(side).multiplyScalar(30).addScaledVector(back, 6).addScaledVector(up, 5).lerp(point, blend);
-            return;
-        }
-        stackPoint(capsule, vehicle.secondStageTop + 4, goalTarget);
-        goalTarget.lerp(stackPoint(upper, vehicle.secondStageTop, point), .35 * (1 - smooth(mission, eventAt('dragon') + 4, eventAt('dragon') + 24)));
-        goalOffset.copy(side).multiplyScalar(30).addScaledVector(back, 6).addScaledVector(up, 5);
+        stackPoint(upper, 54, goalTarget); goalOffset.copy(side).multiplyScalar(75).addScaledVector(back, 35).addScaledVector(vertical, 10);
     }
+    // The cameras ride in the frame of what they follow: the pad's own axes, or from Dragon's last minute on the second
+    // stage, Dragon's orbital frame (which at ×1500 turns once round Earth in under four seconds). Each frame a camera's
+    // place against its target, its target's against what it follows and its up are read in the frame as it stood the
+    // frame before (with whatever a drag did since), eased there toward their goals and set back out in the frame as it
+    // stands now: the camera turns with the frame instead of trailing it, and changes of framing (the stack's height
+    // the camera looks at, from one stretch to the next) ease instead of jumping. Its up is the local vertical, so the
+    // horizon stays level on the far side of Earth too. A cut to the other vehicle, or back from the overview, starts
+    // from where things stand.
+    const rig = { camera, frame: new THREE.Quaternion(), anchor: new THREE.Vector3(), kind: null, body: null };
+    const frameNow = new THREE.Quaternion(), anchorNow = new THREE.Vector3(), unturn = new THREE.Quaternion();
+    const aim = new THREE.Vector3(), aimGoal = new THREE.Vector3(), offsetGoal = new THREE.Vector3(), upGoal = new THREE.Vector3();
+    const toward = new THREE.Quaternion(), turnPart = new THREE.Quaternion();
+    // Turns unit vector `v` a share `f` of the way onto unit vector `to`.
+    function turnToward(v, to, f) { return v.applyQuaternion(turnPart.identity().slerp(toward.setFromUnitVectors(v, to), f)).normalize(); }
+    // `rig` a camera with its frame, anchor and body as last time; `target` and `offset` (from it to the camera) in and
+    // out; `follows` false keeps the camera's place in the frame (after a drag).
+    function ride(rig, kind, goalTarget, goalOffset, target, offset, ease, follows) {
+        const frameKind = kind === 'rocket' && mission >= 700 ? 'orbit' : 'pad';
+        if (frameKind === 'orbit') frameNow.copy(orbit); else frameNow.identity();
+        if (kind === 'booster') stackPoint(booster, 24, anchorNow); else stackPoint(capsule, middle, anchorNow);   // Dragon's middle, on the stack until it leaves
+        // Across a change of frame what stood last frame is read in this frame; across a cut, from here.
+        if (rig.kind !== frameKind || rig.body !== kind) rig.frame.copy(frameNow);
+        if (rig.body !== kind) rig.anchor.copy(anchorNow);
+        unturn.copy(rig.frame).invert();
+        aim.subVectors(target, rig.anchor).applyQuaternion(unturn); offset.applyQuaternion(unturn); rig.camera.up.applyQuaternion(unturn);
+        unturn.copy(frameNow).invert();
+        aimGoal.subVectors(goalTarget, anchorNow).applyQuaternion(unturn); offsetGoal.copy(goalOffset).applyQuaternion(unturn);
+        upGoal.subVectors(goalTarget, earthCentre).normalize().applyQuaternion(unturn);
+        if (rig.body === kind) aim.lerp(aimGoal, ease); else aim.copy(aimGoal);
+        if (follows) offset.lerp(offsetGoal, ease);
+        turnToward(rig.camera.up, upGoal, ease);
+        target.copy(aim.applyQuaternion(frameNow)).add(anchorNow); offset.applyQuaternion(frameNow); rig.camera.up.applyQuaternion(frameNow);
+        rig.frame.copy(frameNow); rig.anchor.copy(anchorNow); rig.kind = frameKind; rig.body = kind;
+    }
+    // OrbitControls turns the camera about the up it had when made: kept on the camera's up as that changes.
+    function alignControls() { if (!controls._quat) return; controls._quat.setFromUnitVectors(camera.up, up); controls._quatInverse.copy(controls._quat).invert(); }
     // Corner screen: the other vehicle from separation on (the booster flying home while the main view stays with
     // Dragon, or the reverse), on its own camera that eases like the main one. A click on it swaps the two.
-    const inset = { camera: new THREE.PerspectiveCamera(40, 1.6, .3, 5e6), target: new THREE.Vector3(), offset: new THREE.Vector3(), goalOffset: new THREE.Vector3(), snap: true };
+    const inset = { camera: new THREE.PerspectiveCamera(40, 1.6, .3, 5e6), target: new THREE.Vector3(), goal: new THREE.Vector3(), offset: new THREE.Vector3(), goalOffset: new THREE.Vector3(), snap: true, frame: new THREE.Quaternion(), anchor: new THREE.Vector3(), kind: null, body: null };
     const insetElement = field('launch-inset'), insetText = insetElement.querySelector('span'), insetName = insetElement.querySelector('b');
     const insetKind = () => focus === 'rocket' ? 'booster' : 'rocket';
     const insetShown = () => active && mission > separation + 2 && (focus === 'booster' || mission < landing + 45);
     insetElement.addEventListener('click', () => { setFocus(insetKind()); setFollow(true); snapCamera = inset.snap = true; });
     function followInset(delta) {
-        goal(insetKind(), inset.target, inset.goalOffset);
-        if (inset.snap) { inset.offset.copy(inset.goalOffset); inset.snap = false; } else inset.offset.lerp(inset.goalOffset, 1 - Math.exp(-2.2 * delta));
-        inset.camera.position.copy(inset.target).add(inset.offset); inset.camera.up.set(0, 1, 0); inset.camera.lookAt(inset.target);
+        goal(insetKind(), inset.goal, inset.goalOffset);
+        ride(inset, insetKind(), inset.goal, inset.goalOffset, inset.target, inset.offset, inset.snap ? 1 : 1 - Math.exp(-2.2 * delta), true);
+        inset.snap = false;
+        inset.camera.position.copy(inset.target).add(inset.offset); inset.camera.lookAt(inset.target);
     }
     const centre = new THREE.Vector3(0, -6371000, 0), normal = new THREE.Vector3(), toVehicle = new THREE.Vector3(), issA = new THREE.Vector3(), issB = new THREE.Vector3();
     function overviewGoal(goalTarget, goalOffset) {
@@ -602,17 +693,21 @@ export async function createLaunchView(sky) {
     const overviewEye = new THREE.Vector3();
     function follow(delta) {
         if (overview) {
-            // Fly out (and stay) in a straight line: both ends lie on the vehicle's side of Earth.
+            // Fly out (and stay) in a straight line: both ends lie on the vehicle's side of Earth. Up is the orbit's
+            // normal, 60° off the line of sight wherever the vehicle is.
             overviewGoal(goalTarget, goalOffset);
             const ease = snapCamera ? 1 : 1 - Math.exp(-1.8 * delta); snapCamera = false;
             controls.target.lerp(goalTarget, ease); camera.position.lerp(overviewEye.copy(goalTarget).add(goalOffset), ease);
+            turnToward(camera.up, normal, ease); alignControls();
+            rig.kind = rig.body = null;
             return;
         }
         goal(focus, goalTarget, goalOffset);
         offset.subVectors(camera.position, controls.target);
-        if (snapCamera) { offset.copy(goalOffset); snapCamera = false; }
-        else if (auto) offset.lerp(goalOffset, 1 - Math.exp(-2.2 * delta));
-        controls.target.copy(goalTarget); camera.position.copy(goalTarget).add(offset);
+        ride(rig, focus, goalTarget, goalOffset, controls.target, offset, snapCamera ? 1 : 1 - Math.exp(-2.2 * delta), snapCamera || auto);
+        snapCamera = false;
+        camera.position.copy(controls.target).add(offset);
+        alignControls();
     }
 
     // Light: the Sun where it was at liftoff time; the ground's imagery dims when it is low.

@@ -122,7 +122,7 @@ Không còn nội suy telemetry: đường bay được tích phân (Runge–Kut
   - Tầng 1 quay về tính độ trễ ngay trong phương trình lực. Lần đốt vào khí quyển mất một ít xung lượng lúc khởi động, nên lần đốt hạ cánh châm sớm hơn 1,5 s và chạm sà lan ở 2,3 m/s. Chặng lên quỹ đạo giữ nguyên quỹ đạo đã khớp; độ trễ ở đó chỉ hiện trên luồng lửa và khói (đánh lửa trên bệ, MECO, MVac khởi động và tắt).
   - Lực đẩy không bao giờ âm: lúc khởi động ở mặt đất, số hạng áp suất miệng phun không được kéo ngược.
 - **Khối lượng:** tầng 1 khô 25,6 t + 405 t nhiên liệu, tầng 2 khô 4 t + 107,5 t, Crew Dragon 12,5 t (549 t lúc cất cánh, đúng số công bố).
-- **Dẫn đường:** bay thẳng 10 s, nghiêng 1,9° về hướng 31,6° (so với mặt đất), rồi gravity turn (lực đẩy theo vận tốc so với không khí). Giảm còn 72% qua Max-Q, giữ ≤ 3,1 g cho phi hành đoàn. Tầng 2 lái theo luật tiếp tuyến tuyến tính, tắt khi đạt quỹ đạo.
+- **Dẫn đường:** bay thẳng 10 s, nghiêng 1,9° về hướng 31,6° (so với mặt đất), rồi gravity turn (lực đẩy theo vận tốc so với không khí). Giảm còn 72% qua Max-Q, giữ ≤ 3,1 g cho phi hành đoàn. Tầng 2 lái theo luật tiếp tuyến tuyến tính, tắt khi đạt quỹ đạo. Lúc tầng 2 đánh lửa, hướng lái thấp hơn hướng cả khối giữ từ lúc tắt máy tầng 1 tới 48°: mô phỏng lái theo ngay, còn hình hiển thị xoay dần trong 12 s (khoảng 4°/s), để thân tên lửa và camera không giật.
 - **Khớp với thực tế:** tắt máy tầng 1 ở 84,5 km, 1.899 m/s (telemetry DM-1: 88 km, 1.871 m/s). Tầng 2 tắt ở T+8:51 (NASA: 8:47), quỹ đạo 202 × 216 km, nghiêng 51,64°. Bảng điều khiển hiện độ cao, vận tốc so với mặt đất và quán tính, quãng đường, gia tốc (g), áp suất động.
 - **Tầng 1 quay về:** piston đẩy rời 1 m/s, bay quán tính lên tới khoảng 210 km, lật đuôi, mở cánh lưới. Rơi qua 70 km thì đốt 3 động cơ 20 s, rơi đuôi trước qua lớp khí dày. Đốt 1 động cơ để đáp, châm đúng lúc lực đẩy 85% vừa đủ dừng ở mặt sà lan (một Merlin không giảm được dưới mức lơ lửng). Bung chân 4–9 s trước khi chạm, chạm ở 1,7 m/s, còn khoảng 6,5 t nhiên liệu. Sà lan (91 × 52 m) đặt đúng chỗ tầng 1 rơi xuống, cách bệ 460 km.
 
@@ -205,6 +205,9 @@ Không còn nội suy telemetry: đường bay được tích phân (Runge–Kut
 ### Chặng bám đuổi tới ISS
 
 - Từ cuối mô phỏng phóng, Dragon bay tiếp hai vật thể (không lực cản, không J2), bước 10 s, đốt Draco tức thời theo cặp Hohmann như cách Dragon bám đuổi: 216 → 410 km, 410 → 400 km (20 km dưới trạm, quỹ đạo coelliptic), rồi nửa vòng cuối tới 419,6 km. Tổng khoảng 132 m/s.
+- Khi bay riêng, Dragon giữ tư thế trong hệ quỹ đạo của nó (dọc hướng bay, hướng lên từ tâm Trái Đất, pháp tuyến quỹ đạo). Trước đây góc xoay quanh thân Dragon tính từ trục "lên" của bệ phóng, nên khi Dragon bay vòng quanh Trái Đất nó cứ xoay dần, có lúc lật hẳn.
+  - Trong khoảng một phút sau khi tách, Dragon và tầng 2 xoay dần từ hướng tầng 2 chĩa lúc tắt máy sang hướng bay. Lúc tách, hai hướng này lệch nhau 25°. Trước đây cả hai bật sang cùng lúc ở T+800, lệch 30°, và Dragon nhảy 32 m trên màn hình.
+  - Mỗi lần xoay để đốt động cơ quay quanh pháp tuyến quỹ đạo, tức là lật trong mặt phẳng quỹ đạo, nên nhìn từ bên hông vẫn thấy ngang thân.
 - Thời điểm kết thúc theo Demo-2: chạm cổng lúc 14:16 UTC ngày 31/5/2020, tức 18 giờ 53 phút sau khi phóng. Chặng tiếp cận của trang trạm mất 45 phút từ Waypoint 0 tới lúc chạm, nên Dragon tới Waypoint 0 ở T+18:08:15.
 - ISS bay quỹ đạo tròn 420 km cùng mặt phẳng, đặt đúng chỗ gặp Dragon ở Waypoint 0. Thời điểm và độ cao của lần đốt đầu được chọn để chạm cổng đúng nơi NASA công bố: trên biên giới phía bắc Trung Quốc – Mông Cổ (ở đây 41,8° B, 105,1° Đ). Ở đó mặt trời thấp hơn chân trời mặt đất 18°, nên ở độ cao 421 km trạm vẫn còn nắng lúc chạng vạng (giới hạn là 20°); vài phút sau khi ghép, trạm đi vào bóng Trái Đất.
 - Chặng tiếp cận (`proximity` trong `js/sim/ascent.js`) dùng đúng mô hình của trang trạm (`js/sim/rendezvous.js`, Clohessy–Wiltshire), với tốc độ góc của quỹ đạo 420 km này.
@@ -214,10 +217,10 @@ Không còn nội suy telemetry: đường bay được tích phân (Runge–Kut
   - Vòng ghép của Dragon đi đúng quỹ đạo của mô hình quanh cổng PMA-2/IDA-2 của Harmony; Dragon xoay về tư thế ghép trong 2 phút đầu, bản lề nắp mũi hướng lên đỉnh.
   - Draco phun theo mô hình: các lần đốt của chặng chuyển, các xung giữ đường thẳng dọc trục ghép, và xung giữ tư thế.
   - Đường chấm vẽ đường tiếp cận dự kiến quanh trạm, nối từ chỗ đường bay lên quỹ đạo kết thúc.
-  - Camera nhìn từ phía cảng của trạm (port side), cao và lùi về sau (cùng hướng khung Dragon của trang trạm), đủ xa để thấy cả Dragon và cổng, lại gần dần khi Dragon tới gần.
+  - Camera vẫn nhìn ngang Dragon, từ phía cảng của trạm (port side). Khi Dragon còn cách cổng 70 m, camera quay vuông góc với thân nó và nâng lên 27° trên trục ghép: dàn pin mặt trời của trạm chìa ra trước cổng 23 m, cao hơn trục 5 m, nên nhìn thấp hơn sẽ xuyên qua dàn pin. Camera lùi ra cho cổng cùng vào khung (Dragon lệch trái 12°, cổng lệch phải 22°), rồi lại gần cùng Dragon tới lúc chạm.
 - Đường chấm nối liền từ bệ phóng tới ISS. Trong lúc phóng, đoạn phóng vẽ theo mặt đất mà tên lửa bay qua, còn các vòng quỹ đạo phía trước vẽ như chúng sẽ đứng trong không gian lúc kết thúc chặng phóng. Sau đó các vòng quỹ đạo vẽ như chúng đang đứng trong không gian (hệ quán tính), đoạn phóng xoay theo để đường không đứt. Nếu vẽ bám mặt đất, sau vài giờ các vòng sẽ quấn quanh địa cầu như cái lồng. Vòng đã bay quá 2 giờ mờ đi.
 - Vòng quỹ đạo của ISS (chấm xanh lá), chấm ISS cùng nhãn độ cao, và ô *Range to ISS* trong bảng sau khi Dragon tách.
-- Nút **Overview**: camera lùi ra nhìn cả Trái Đất, nghiêng 30° so với mặt phẳng quỹ đạo từ phía con tàu. Ở xa, chấm và nhãn đánh dấu con tàu đang bám.
+- Nút **Overview**: camera lùi ra nhìn cả Trái Đất, nghiêng 30° so với mặt phẳng quỹ đạo từ phía con tàu. Trục "lên" của camera là pháp tuyến quỹ đạo, luôn lệch 60° so với hướng nhìn nên khung hình không lật. Ở xa, chấm và nhãn đánh dấu con tàu đang bám.
 - Độ sâu chia hai lớp (xa từ 20 km, rồi gần): quỹ đạo cách hàng nghìn km vẫn bị Trái Đất che đúng, trong khi bệ phóng cách vài mét vẫn không bị nhấp nháy.
 
 Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc và góc bay lúc tắt máy của telemetry, nó lên tới khoảng 210 km nên rơi về lâu hơn; hướng đi, khối lượng và lực cản thật của tầng 1 không được công bố đủ để khớp hơn.
@@ -232,7 +235,12 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
   - Mỗi điểm chỉ quay theo Trái Đất một lần lúc khởi tạo; mỗi khung chỉ còn một phép biến đổi chung, không tạo mảng mới. Đường bay chỉ tính lại khi thời gian đổi, chấm chỉ rải lại khi thời gian hoặc camera đổi.
 - Màn hình phụ ở góc trên bên phải: từ lúc tách tầng, hiện chiếc còn lại (tầng 1 bay về khi màn chính theo Dragon, hoặc ngược lại), có camera tự bám riêng; bấm vào để đổi chỗ hai màn. Vẽ bằng cùng renderer, trong một vùng cắt (scissor) của canvas.
 - Thời gian chạy nhanh dần: ×1 quanh lúc cất cánh và các lần tách, tới ×17 ở giữa. Bấm một mốc trong danh sách để nhảy tới trước mốc đó 4 giây (mốc của tầng 1 tự chuyển sang bám Booster; mốc đốt nâng quỹ đạo nhảy tới lúc Dragon bắt đầu xoay).
-- Camera tự bám: bên bệ lúc cất cánh, rồi bên hông tên lửa, sát chỗ tách tầng, trên Dragon; hoặc theo tầng 1 rơi xuống và hạ thấp cạnh sà lan. Kéo chuột để xoay, lăn chuột để ra xa tới 3.000 km. Nút *Follow* trả lại camera tự động.
+- Camera tự bám: bên bệ lúc cất cánh, rồi bên hông tên lửa, sát chỗ tách tầng; hoặc theo tầng 1 rơi xuống và hạ thấp cạnh sà lan. Kéo chuột để xoay, lăn chuột để ra xa tới 3.000 km. Nút *Follow* trả lại camera tự động.
+  - Mở đầu: từ phía đông bắc, cách 210 m, cao 90 m, nhìn qua rãnh lửa. Khung hình thấy tên lửa giữa giàn dựng và tháp, nhà HIF phía sau. Góc này lấy theo một khung hình được chọn trên trang (lệch dưới 1% ở 8 điểm mốc). Camera đứng yên qua lúc đếm ngược, quay theo tên lửa lúc cất cánh, rồi từ giây 18 chuyển sang bám đuổi.
+  - Từ lúc Dragon tách (T+12:00, từ T+11:40 khi còn trên tầng 2) tới lúc ghép: nhìn ngang Dragon từ phía bên kia mặt phẳng quỹ đạo, hơi cao và lùi sau, Trái Đất bên dưới.
+  - Trục "lên" của camera là phương thẳng đứng tại chỗ con tàu, nên chân trời luôn nằm ngang. Lúc tách tầng 2, con tàu đã cách bệ 2.700 km, phương thẳng đứng ở đó lệch 25° so với ở bệ. Ở phía bên kia Trái Đất, trước đây khung hình bị lộn ngược.
+  - Camera "cưỡi" theo hệ toạ độ của vật nó bám: hệ của bệ phóng, hoặc từ T+11:40 là hệ quỹ đạo của Dragon (ở tốc độ tua ×1.500, hệ này quay một vòng quanh Trái Đất trong chưa tới 4 s). Mỗi khung, vị trí camera so với điểm ngắm, điểm ngắm so với con tàu và trục "lên" được đọc trong hệ của khung trước, đưa dần về đích ở đó, rồi đặt lại theo hệ hiện tại. Nhờ vậy camera quay cùng hệ thay vì trễ sau nó: đo được Dragon đứng yên trên màn hình (lệch dưới 0,1 px) suốt các vòng quỹ đạo, cả khi người xem đã kéo camera sang góc khác. Các lần đổi khung (độ cao điểm ngắm trên thân ở T+145, T+215, T+700) cũng chuyển dần thay vì nhảy 8–22 m.
+  - OrbitControls chỉ đọc trục "lên" một lần lúc tạo, nên trục xoay của nó được cập nhật theo camera mỗi khung.
 - Hai lượt vẽ: bầu trời thật (`sky.js`, đúng ngày giờ Demo-2, đơn vị km) nhìn từ vị trí thật của camera trên quả địa cầu, rồi bệ phóng, mặt đất, tên lửa trong hệ toạ độ của bệ (đơn vị m: x đông, y lên, z nam).
 - Mặt đất: bốn vòng ô ảnh quanh bệ, mỗi vòng 4 × 4 ô, tải từ máy chủ khi mở lần đầu (64 ô, vài MB). Gần nhất là ảnh USGS National Map (public domain) khoảng 2 m, 17 m, 130 m mỗi điểm ảnh. Ngoài cùng là NASA Blue Marble (GIBS, public domain) khoảng 1 km mỗi điểm ảnh ra tới 1.100 km, mép mờ dần vào bản đồ Trái Đất. Ngoài lãnh thổ Mỹ, ô USGS trong suốt nên vòng thô hơn hiện ra.
 - Bầu trời: lớp khí quyển xanh mỏng dần khi lên cao và mất hẳn ở khoảng 60 km. Lớp sáng ở mép Trái Đất (vỏ khí quyển của `sky.js`) hạ dần từ 178 km xuống khoảng 50 km khi camera xuống thấp, để khỏi thành một dải dày trên đường chân trời.
@@ -246,7 +254,7 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
   - Dây trượt thoát hiểm: giỏ trượt thời Shuttle, năm 2018 được nâng lên tầng đón phi hành đoàn. Dây chạy về phía tây xuống bãi đáp ngoài vành đai bệ.
   - Giàn dựng (TE) ở phía nam tên lửa, phía nó đi lên dốc từ nhà lắp ráp HIF.
     - Hai chân dàn lưới nối bằng khung ngang. Ở bốn độ cao có một cặp tay kẹp bản lề trên mặt giàn, mỗi tay là khung hộp hai thanh cong ôm nửa sau thân, đệm tựa đúng vào vỏ (không xuyên vào thân).
-    - Đếm ngược từ T−4:30: các tay kẹp mở ra ở T−4:22, giàn ngả ra sau 2° từ T−4:15 tới T−4:00. Camera đứng phía tây nam, phía có nắng và không bị tháp che.
+    - Đếm ngược từ T−4:30: các tay kẹp mở ra ở T−4:22, giàn ngả ra sau 2° từ T−4:15 tới T−4:00. Camera đứng phía đông bắc, nhìn qua rãnh lửa về phía nhà HIF.
     - Đường ống nạp nhiên liệu và cáp lên tới đầu nối của tầng 2 và của Dragon.
     - Bản lề ở giá phóng với hai xi lanh thuỷ lực đã dựng nó lên.
     - Khung vận chuyển trên các cụm bánh chạy xuống dốc theo ray.
@@ -265,7 +273,7 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
     - Đầu bắc là cửa 36 × 17 m gồm bốn cánh trượt dưới một dầm đầu, ray cửa dưới chân; hai ray của giàn dựng chạy từ cửa lên dốc tới giá phóng.
     - Nhà phụ dọc mặt đông cho xưởng và văn phòng, máy xử lý không khí dọc nóc mái.
   - Nhà hỗ trợ Falcon, Operations Building No. 1, kho nhiên liệu hypergol và N₂O₄, các cụm bồn nằm ngang (nitơ, heli, nhiên liệu) trên bệ đỡ.
-  - Bệ 39B cách 2,7 km về phía tây bắc, đúng như ngày Demo-2: bệ trống (đã tháo tháp phục vụ), gò và rãnh lửa, sáu trụ đỡ bệ phóng di động. Ba tháp thu sét cao 183 m (600 ft), thân lưới tới 152 m và cột sợi thủy tinh ở trên, nối nhau bằng dây thu lôi và neo xuống đất. Thêm tháp nước giảm âm, bồn cầu hydro và oxy. Từ chỗ đặt camera lúc cất cánh, 39B hiện ngay sau tên lửa.
+  - Bệ 39B cách 2,7 km về phía tây bắc, đúng như ngày Demo-2: bệ trống (đã tháo tháp phục vụ), gò và rãnh lửa, sáu trụ đỡ bệ phóng di động. Ba tháp thu sét cao 183 m (600 ft), thân lưới tới 152 m và cột sợi thủy tinh ở trên, nối nhau bằng dây thu lôi và neo xuống đất. Thêm tháp nước giảm âm, bồn cầu hydro và oxy.
   - Tòa nhà lắp ráp VAB cách 5,3 km về phía tây nam, lệch 13,4° theo lưới khu công nghiệp KSC.
     - Khối high bay 137 × 157 m, cao 160 m, ở đầu bắc; mỗi mặt đông và tây có hai cửa cao 139 m (cửa dưới rộng 46 m, cửa trên 23 m).
     - Khối low bay 84 × 134 m, cao 64 m, ở đầu nam.
