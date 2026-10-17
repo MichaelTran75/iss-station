@@ -19,7 +19,7 @@ Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 | `js/ui/` | `ghost` (khối mờ, nét viền), `rendezvous-guide` (đường tiếp cận, điểm chờ, vùng cấm 200 m), `controller` (chọn bộ phận, góc nhìn, nhãn, nút bấm, vòng lặp khung hình) |
 | `js/orbit/sky.js` | bầu trời thật dùng chung: Trái Đất (ngày, đêm, mây), ISS, Mặt Trăng, Mặt Trời, sao, theo giờ hiện tại; vẽ cả nền Trái Đất sau trạm. Tải khi mở lần đầu; khi không góc nhìn nào vẽ nó, GPU bỏ bản của nó tới lần vẽ sau |
 | `js/orbit/view.js` | góc nhìn quỹ đạo: khung ISS / Earth & Moon / Sun, zoom ra tới 600 triệu km, tua nhanh thời gian |
-| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, 39B, VAB, LCC, HIF, bồn chứa), `exhaust` (khói ở bệ, trên sà lan và vệt khói trôi theo gió), `internals` (cấu trúc bên trong hai tầng cho chế độ cắt dọc và nhìn xuyên), `part-labels` (nhãn tên bộ phận bên trong), `engine-audio` (âm thanh động cơ), `droneship` (sà lan đáp), `view` (camera, hai lượt vẽ, bảng điều khiển). Dựng khi mở, dọn khi rời |
+| `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, tháp thu sét 39B, VAB, LCC, HIF), `site` (các công trình khác trong vùng 17 km quanh bệ, từ `data/launch-site.json`: nhà, tháp, bồn cầu, tháp nước), `exhaust` (khói ở bệ, trên sà lan và vệt khói trôi theo gió), `internals` (cấu trúc bên trong hai tầng cho chế độ cắt dọc và nhìn xuyên), `part-labels` (nhãn tên bộ phận bên trong), `engine-audio` (âm thanh động cơ), `droneship` (sà lan đáp), `view` (camera, hai lượt vẽ, bảng điều khiển). Dựng khi mở, dọn khi rời |
 | `js/sim/ascent.js` | mô phỏng bay Falcon 9 (lực đẩy, lực cản, khí quyển, Trái Đất quay) và tầng 1 quay về sà lan, tua thời gian; chỉ có toán |
 | `js/sim/plume.js` | luồng xả Merlin theo điều kiện bay (giãn nở đẳng entropy, chu kỳ sóng sốc, trộn khí, cháy tiếp); chỉ có toán |
 | `js/sim/wind.js` | gió ở Cape Canaveral lúc phóng Demo-2 theo độ cao (bóng thám không KXMR, trạm mặt đất); chỉ có dữ liệu |
@@ -267,19 +267,28 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
     - Ở T−0, khi chín động cơ đã đủ lực, bốn kẹp bật ra và tấm nối của hai cột cấp nhiên liệu rơi khỏi khung động cơ.
   - Lan can an toàn màu vàng dọc hai mép rãnh lửa, nơi rãnh cắt qua mặt bệ.
   - Rãnh lửa rộng 18 m, đáy ở mặt đất, tường cao bằng gò hai bên. Rãnh chạy 110 m về phía bắc; dưới giá phóng là bộ làm lệch hướng bẻ luồng xả về bắc.
-  - Tháp nước giảm âm cao 89 m, cách 129 m về phía bắc và 77 m về phía đông. Bồn cầu oxy lỏng ở góc tây bắc, bồn cầu hydro cũ ở góc đông bắc.
-- Khu phóng 39 quanh bệ (`js/launch/complex.js`). Đường viền và vị trí lấy từ OpenStreetMap, đối chiếu với ảnh USGS; kích thước theo NASA. Các công trình xây sau Demo-2 (tháp Starship ở 39A, bồn hydro mới ở 39B) không đưa vào.
+  - Tháp nước giảm âm (bồn cầu đường kính 14,5 m, đỉnh cao 81 m) cách 127 m về phía bắc và 100 m về phía đông. Bồn cầu oxy lỏng ở góc tây bắc, bồn cầu hydro cũ ở góc đông bắc. Vị trí và kích thước khớp với lidar (`js/launch/site.js`, xem bên dưới).
+- Khu phóng 39 quanh bệ (`js/launch/complex.js`). Đường viền và vị trí lấy từ OpenStreetMap, đối chiếu với ảnh USGS và lidar; kích thước theo NASA. Các công trình xây sau Demo-2 (tháp Starship và khu bồn nằm ngang ở 39A, bồn hydro mới ở 39B) không đưa vào.
   - Nhà lắp ráp ngang HIF của SpaceX dưới chân dốc, nơi tên lửa được ráp nằm ngang rồi lăn ra trên giàn dựng.
     - Khoang cao trên nền OpenStreetMap 94,6 × 47,9 m (khoảng 300 ft dài như số công bố), tường 20 m, mái dốc thấp chạy dọc chiều dài (nóc cao hơn 3 m). Ốp tôn có gân, mái tôn đứng mép.
     - Đầu bắc là cửa 36 × 17 m gồm bốn cánh trượt dưới một dầm đầu, ray cửa dưới chân; hai ray của giàn dựng chạy từ cửa lên dốc tới giá phóng.
     - Nhà phụ dọc mặt đông cho xưởng và văn phòng, máy xử lý không khí dọc nóc mái.
-  - Nhà hỗ trợ Falcon, Operations Building No. 1, kho nhiên liệu hypergol và N₂O₄, các cụm bồn nằm ngang (nitơ, heli, nhiên liệu) trên bệ đỡ.
-  - Bệ 39B cách 2,7 km về phía tây bắc, đúng như ngày Demo-2: bệ trống (đã tháo tháp phục vụ), gò và rãnh lửa, sáu trụ đỡ bệ phóng di động. Ba tháp thu sét cao 183 m (600 ft), thân lưới tới 152 m và cột sợi thủy tinh ở trên, nối nhau bằng dây thu lôi và neo xuống đất. Thêm tháp nước giảm âm, bồn cầu hydro và oxy.
+  - Bồn nằm ngang trên bệ đỡ cạnh bồn cầu oxy. Các nhà quanh bệ (nhà hỗ trợ Falcon, Operations Building No. 1, kho hypergol...) lấy từ dữ liệu bên dưới.
+  - Bệ 39B cách 2,7 km về phía tây bắc, đúng như ngày Demo-2: bệ trống (đã tháo tháp phục vụ), gò và rãnh lửa, sáu trụ đỡ bệ phóng di động. Ba tháp thu sét cao 183 m (600 ft), thân lưới tới 152 m và cột sợi thủy tinh ở trên, nối nhau bằng dây thu lôi và neo xuống đất. Tháp nước giảm âm, bồn cầu hydro và oxy lấy từ dữ liệu bên dưới.
   - Tòa nhà lắp ráp VAB cách 5,3 km về phía tây nam, lệch 13,4° theo lưới khu công nghiệp KSC.
     - Khối high bay 137 × 157 m, cao 160 m, ở đầu bắc; mỗi mặt đông và tây có hai cửa cao 139 m (cửa dưới rộng 46 m, cửa trên 23 m).
     - Khối low bay 84 × 134 m, cao 64 m, ở đầu nam.
     - Lá cờ Mỹ treo dọc 63,7 × 33,5 m và biểu tượng NASA trên mặt nam.
   - Trung tâm điều khiển phóng LCC ở góc đông nam của VAB, cửa kính các phòng điều khiển nhìn về phía hai bệ, nối với VAB bằng cầu.
+- Các công trình khác trong vùng ảnh 17 km quanh bệ (`js/launch/site.js`; dữ liệu `data/launch-site.json`, 66 KB, dựng bằng `launchsite.py`): 583 khối nhà ở khu phóng 39, khu công nghiệp quanh VAB và các bệ phía nam ở Cape Canaveral (SLC-41 với nhà lắp ráp đứng VIF, SLC-40), 29 tháp và cột, 5 bồn cầu nhiên liệu, 2 tháp nước.
+  - Khung nhà lấy từ OpenStreetMap; chỗ OSM không có thì lấy từ USA Structures (FEMA/ORNL), 99 khối.
+  - Chiều cao đo bằng lidar USGS 3DEP (bay từ 6/1 tới 7/2/2019, 16 tháng trước Demo-2), không đoán theo số tầng. Mái lấy mức của các điểm lidar trong khung, so với mặt đất quanh khung. Mái có hai mức tách bạch (khoang cao trên dãy thấp, như nhà lắp ráp động cơ rắn SMAB, nhà HIF ở SLC-40) thì tách thành hai khối. Đối chiếu: lidar cho VAB 160,5 m (NASA: 160 m), LCC 24 m (OSM ghi 30 m; nhà 4 tầng, 77 ft).
+  - Lidar cũng cho biết công trình nào chưa có năm 2019: 301 khung trong OSM và USA Structures bị bỏ, gồm tháp Starship và khu bồn nằm ngang ở 39A, bồn cầu hydro mới ở 39B, Hangar X, Gigabay. Nhà lớn phải có điểm lidar xếp lớp "nhà", vì bãi đất trống mọc bụi cũng cao 2–5 m.
+  - Màu mái lấy từ ảnh USGS 2 m/px. Tường ốp tôn sáng, pha một chút màu mái.
+  - Tháp: 4 tháp thu sét quanh SLC-40 (cao 105–106 m) và 4 quanh SLC-41 (85–105 m), thân lưới thép, nối nhau bằng dây thu lôi quanh bệ và chéo qua bệ (dây quá mảnh nên lidar không thấy, vẽ theo đỉnh tháp đo được). Tháp khí tượng 153 m của KSC ở phía tây bắc 39B, 3 cột viễn thông 64–82 m, cột đèn quanh mặt bệ 39A và 39B, ống đuốc đốt khí.
+  - Bồn cầu nhiên liệu và bồn tháp nước: khớp mặt cầu vào điểm lidar, sai số 0,1–0,3 m.
+  - Lidar sửa lại bệ 39A dựng trước đó: tháp nước dời 23 m về phía đông (khớp OSM) và thấp hơn 7,6 m; bồn oxy lỏng và bồn hydro cũ dời 15–17 m về phía nam; bỏ 23 trong 24 bồn nằm ngang, hai nhà và kho N₂O₄ mà lidar không thấy; nhà hỗ trợ Falcon thật cao 5,3 m (trước dựng 14 m), Operations Building No. 1 cao 4,1 m (trước 9 m).
+  - Cảnh Launch thêm khoảng 20 nghìn tam giác và 34 lượt vẽ.
 - Sà lan đáp (`js/launch/droneship.js`): mô hình "Space X Drone Barge" của TAIGA-ZOE, giữ nguyên lưới (`droneship.py`).
   - Tỉ lệ theo chiều dài 300 ft (91,4 m) của sà lan Marmac 300; khi đó bề ngang cả hai cánh là 52,2 m, đúng 170 ft của "Of Course I Still Love You".
   - Mặt sàn đen có vòng tròn đáp và chữ X, hai cánh có lối đi lưới, container và thiết bị ở hai đầu, lan can, thân và chân vịt. Tầng 1 đáp vào tâm chữ X.
@@ -359,7 +368,7 @@ Phần lớn trạm dựng bằng code three.js theo số đo từ tệp mẫu `
 
 Ảnh mặt đất quanh bệ phóng: [USGS National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map) và NASA [GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) (Blue Marble), đều là public domain.
 
-Đường viền và vị trí các công trình quanh khu phóng 39: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL). Gió lúc phóng: bóng thám không KXMR và trạm KTTS, KXMR từ [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/).
+Đường viền và vị trí các công trình quanh khu phóng 39: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL); chỗ OSM không có: [USA Structures](https://gis-fema.hub.arcgis.com/pages/usa-structures) (FEMA/ORNL, public domain). Chiều cao công trình: lidar [USGS 3DEP](https://www.usgs.gov/3d-elevation-program) FL_Peninsular_FDEM_Brevard_2018 (public domain). `data/launch-site.json` dẫn xuất từ dữ liệu OpenStreetMap nên theo giấy phép [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Gió lúc phóng: bóng thám không KXMR và trạm KTTS, KXMR từ [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/).
 
 Model *Falcon 9 & Launching Pad* của Aashish_3D (CC BY 4.0) chỉ dùng để tham khảo, không lấy lưới: bệ trong đó là bệ hư cấu (tháp khối đặc), không phải LC-39A. Theo gợi ý của nó, bệ 39A thêm lan can dọc rãnh lửa và dãy cửa sổ của tay đón.
 

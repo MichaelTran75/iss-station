@@ -30,7 +30,9 @@ const smooth = (value, from, to) => THREE.MathUtils.smoothstep(value, from, to);
 // `resume`: where in the flight a previous visit left off ({ mission, focus }); the view is let go when left (see
 // dispose()) and built again on the next visit.
 export async function createLaunchView(sky, resume = null) {
-    const [vehicle, bargeModel] = await Promise.all([createVehicle('data/falcon-9.json?v=fa4c1d9cea'), droneship ? createDroneship('data/droneship.json?v=023f40087f') : null]);
+    // The Cape's buildings and towers (js/launch/site.js): without them, if they fail to load, the pads stand alone.
+    const site = fetch('data/launch-site.json?v=25d8980bfd').then(response => response.ok ? response.json() : null).catch(() => null);
+    const [vehicle, bargeModel, siteData] = await Promise.all([createVehicle('data/falcon-9.json?v=fa4c1d9cea'), droneship ? createDroneship('data/droneship.json?v=023f40087f') : null, site]);
     // Every listener this view adds goes with it on dispose().
     const listening = new AbortController(), signal = listening.signal;
     const scene = new THREE.Scene();
@@ -41,7 +43,7 @@ export async function createLaunchView(sky, resume = null) {
     scene.add(sunlight, sunlight.target, skylight);
     // The atmosphere is drawn on its own before the rest (it blends over the sky behind; drawn with the scene's
     // transparent objects it would veil the ground).
-    const ground = createGround(), atmosphere = new THREE.Scene(); scene.add(ground.group); atmosphere.add(ground.sky);
+    const ground = createGround(siteData), atmosphere = new THREE.Scene(); scene.add(ground.group); atmosphere.add(ground.sky);
     // The exhaust cloud at the pad and the trail up through the air, drifting on the day's wind.
     const exhaust = createExhaust(); scene.add(exhaust.group);
     // Booster, second stage and Dragon fly together until each separation.

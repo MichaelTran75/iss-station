@@ -1,13 +1,15 @@
-// Launch Complex 39 round LC-39A for the Launch view: the pads' raised hardstands with their ramps and flame trenches
-// (the ground's imagery is draped over them, see js/launch/ground.js), Pad 39B with its three lightning towers, the
-// Vehicle Assembly Building and Launch Control Center 5 km south-west, SpaceX's hangar at the foot of 39A's ramp and
-// the buildings and tank farms round the pad. Metres in the pad's local frame (x east, y up, z south).
+// Launch Complex 39 round LC-39A for the Launch view, the pieces built by hand: the pads' raised hardstands with their
+// ramps and flame trenches (the ground's imagery is draped over them, see js/launch/ground.js), Pad 39B's three
+// lightning towers, the Vehicle Assembly Building and Launch Control Center 5 km south-west, SpaceX's hangar at the foot
+// of 39A's ramp and the tank beside 39A's oxygen sphere. Every other building, tower, sphere and water tower round the
+// pads comes from data/launch-site.json (js/launch/site.js). Metres in the pad's local frame (x east, y up, z south).
 // - Sizes: NASA (VAB 218 × 158 m and 160 m tall, its low bay 135 × 84 m and 64 m tall at the south end, high-bay
 //   doors 139 m tall on the east and west faces; the hardstands 119 × 99 m and 12 m above the ground, 48 ft above sea
 //   level at 39A; ramps of 5%; flame trenches 18 m wide; 39B's lightning towers 600 ft, 183 m).
 // - Footprints and places: OpenStreetMap (© OpenStreetMap contributors, ODbL), checked against the USGS image the
-//   ground shows. The KSC industrial area's grid, and the VAB and LCC with it, runs 13.4° west of north. Structures
-//   built after Demo-2 (the Starship tower at 39A, 39B's new hydrogen sphere) are left out.
+//   ground shows and the USGS lidar of early 2019. The KSC industrial area's grid, and the VAB and LCC with it, runs
+//   13.4° west of north. Structures built after Demo-2 (the Starship tower and tank farm at 39A, 39B's new hydrogen
+//   sphere) are left out.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -97,6 +99,22 @@ function vabInsignia(g, cx, cy) {
     for (const [sx, sy] of [[-.5, -.55], [.35, -.62], [-.62, .2], [.55, .5], [.1, .72]]) g.fillRect(cx + sx * r, cy + sy * r, 2, 2);
 }
 
+// The see-through steel lattice of the lightning towers and the Cape's masts (js/launch/site.js): a square tower's four
+// faces, braced across every bay. A tower's texture coordinates run up it in bays (see latticeBay), round it in faces.
+export function latticeMaterial() {
+    const lattice = canvasTexture(64, 128, (g, w, h) => {
+        g.clearRect(0, 0, w, h); g.strokeStyle = '#d7dadb'; g.lineWidth = 6; g.strokeRect(3, -4, w - 6, h + 8);
+        g.lineWidth = 3; g.beginPath(); g.moveTo(3, 0); g.lineTo(w - 3, h / 2); g.lineTo(3, h); g.moveTo(w - 3, 0); g.lineTo(3, h / 2); g.lineTo(w - 3, h); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
+    }, [4, 1]);
+    return new THREE.MeshStandardMaterial({ map: lattice, transparent: true, side: THREE.DoubleSide, depthWrite: false, roughness: .7, metalness: .3 });
+}
+// A lattice tower's open square body, `height` tall, its texture repeating every 9 m up it.
+export function latticeBody(bottomHalf, topHalf, height) {
+    const body = new THREE.CylinderGeometry(topHalf * Math.SQRT2, bottomHalf * Math.SQRT2, height, 4, 1, true).rotateY(Math.PI / 4), uv = body.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * height / 9);
+    return body;
+}
+
 // Boxes standing on the ground, turned `angle` (degrees, the direction of their length `along` in the x-z plane
 // measured from +x toward +z, i.e. from east toward south).
 function placeBox(mesh, [x, z], angle, height) {
@@ -109,7 +127,7 @@ export function createComplex() {
     const group = new THREE.Group();
     const pieces = new Map();
     const add = (colour, geometry) => { if (!pieces.has(colour)) pieces.set(colour, []); pieces.get(colour).push(geometry); };
-    const steel = 0x8e9396, white = 0xe8e9e6, tank = 0xdfe2e3, concrete = 0xb9b6ad;
+    const tank = 0xdfe2e3, concrete = 0xb9b6ad;
     const rod = (colour, a, b, radius, sides = 6) => {
         const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b), length = start.distanceTo(end);
         add(colour, new THREE.CylinderGeometry(radius, radius, length, sides).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize())).translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2));
@@ -207,19 +225,9 @@ export function createComplex() {
             const x = s * 4.5, y0 = Math.max(terrainHeight(x, z), 0), y1 = Math.max(terrainHeight(x, z + 6), 0);
             add(0x55595d, new THREE.BoxGeometry(.5, .3, 6.05).rotateX(Math.atan2(y0 - y1, 6)).translate(x, (y0 + y1) / 2 + .15, z + 3));
         }
-        const building = (centre, length, width, angle, height, colour) => group.add(placeBox(new THREE.Mesh(new THREE.BoxGeometry(length, height, width), lit({ color: colour })), centre, angle, height));
-        building([10.5, 635], 92.1, 41.1, 125.1, 14, 0xe1e2de);    // Falcon support building
-        building([68.1, 423.1], 38, 17, 0, 9, 0xd6d4cc);          // Operations Building No. 1
-        building([-212, 78.5], 36.9, 20.2, -30.2, 9, 0xe4e4e0);
-        building([-201, 278.2], 21.1, 11.6, 120.7, 6, 0xd9d6cc);  // Hypergol Fuel Facility
-        building([262.9, 157.3], 42.1, 21, 29.2, 11, 0xd7d8d4);
-        building([240, 191.6], 10.6, 6.5, -60.1, 5, 0xd9d6cc);    // Nitrogen tetroxide facility
-        // Horizontal tanks (nitrogen, helium, propellants) on saddles: [x, z, length, diameter, angle].
-        const tanks = [[-371.5, -186.7, 35, 5.3, -152.4], [-368.7, -192.7, 35, 5.3, -152.4], [-366.1, -199.2, 35, 5.3, -152.4], [-365.1, -250.1, 39.7, 4, -62.5], [-345.3, -252, 39.7, 4, -62.5],
-            [-123, 137.7, 27, 4.6, 125.6], [-117.7, 140.7, 26.9, 4.5, 125.6], [167, -22.1, 44.6, 3.6, -144.1],
-            ...[[175.4, -31.5], [177.8, -35.2], [179.9, -38.5], [182.4, -41.5], [185.1, -44.5], [187.5, -47.4]].map(([x, z]) => [x, z, 29, 3, 36.4]),
-            ...[[191.5, -139.9], [198.7, -134.6], [206, -129], [213.8, -123.3]].map(([x, z]) => [x, z, 45.2, 7.5, -53.7]), [222.1, -114.8, 48.7, 5, -54], [228.2, -110.4, 48.7, 5, -54],
-            [275, -275.9, 45.1, 7.5, 126.3], [285, -269.7, 45.3, 7.5, 126.3], [317.3, -249.5, 48.8, 5, -54], [322.5, -245.9, 48.7, 5, -54]];
+        // The horizontal tank on saddles beside the liquid oxygen sphere: [x, z, length, diameter, angle]. (The rows of
+        // tanks OpenStreetMap shows east and west of the pad are the Starship tank farm, not there in the 2019 lidar.)
+        const tanks = [[-365.1, -250.1, 39.7, 4, -62.5]];
         for (const [x, z, length, diameter, angle] of tanks) {
             const r = diameter / 2, turn = -angle * rad, y = r + 1.2 + groundDrop(x, z);
             add(tank, new THREE.CapsuleGeometry(r, Math.max(.1, length - diameter), 6, 16).rotateZ(Math.PI / 2).rotateY(turn).translate(x, y, z));
@@ -228,23 +236,17 @@ export function createComplex() {
     }
 
     // Pad 39B as on Demo-2's day: a clean pad (its service structures gone) under three 600 ft lightning towers joined
-    // by catenary wires, the sound suppression water tower, and the hydrogen and oxygen spheres.
+    // by catenary wires. (Its water tower and its hydrogen and oxygen spheres are in the site's data.)
     {
         const pad = pads[1], deck = pad.deck;
         // The mobile launcher's mount posts, six round the trench.
         for (const [x, z] of [[-1615, -2090], [-1615, -2108], [-1616, -2139], [-1655, -2090], [-1654, -2108], [-1655, -2138]]) add(concrete, new THREE.BoxGeometry(4, 6.5, 4).translate(x, deck + 3.25, z));
         const towers = [[-1510, -2151], [-1738, -1993], [-1779, -2179]];
-        const lattice = canvasTexture(64, 128, (g, w, h) => {
-            g.clearRect(0, 0, w, h); g.strokeStyle = '#d7dadb'; g.lineWidth = 6; g.strokeRect(3, -4, w - 6, h + 8);
-            g.lineWidth = 3; g.beginPath(); g.moveTo(3, 0); g.lineTo(w - 3, h / 2); g.lineTo(3, h); g.moveTo(w - 3, 0); g.lineTo(3, h / 2); g.lineTo(w - 3, h); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
-        }, [4, 1]);
-        const latticeHeight = 152, mastTop = 183;
-        const latticeMaterial = new THREE.MeshStandardMaterial({ map: lattice, transparent: true, side: THREE.DoubleSide, depthWrite: false, roughness: .7, metalness: .3 });
-        lattice.repeat.set(4, latticeHeight / 9);
+        const latticeHeight = 152, mastTop = 183, lattice = latticeMaterial();
         const tops = [];
         for (const [x, z] of towers) {
             const base = groundDrop(x, z);
-            const body = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 7, latticeHeight, 4, 1, true).rotateY(Math.PI / 4), latticeMaterial);
+            const body = new THREE.Mesh(latticeBody(7 / Math.SQRT2, 2.4 / Math.SQRT2, latticeHeight), lattice);
             body.position.set(x, base + latticeHeight / 2, z); body.renderOrder = 1; group.add(body);
             add(0x6d7276, new THREE.BoxGeometry(5.6, 1.4, 5.6).translate(x, base + latticeHeight, z));
             rod(0xd8d8d2, [x, base + latticeHeight, z], [x, base + mastTop, z], .9, 8);   // the fibreglass mast
@@ -257,9 +259,6 @@ export function createComplex() {
         const middle = new THREE.Vector3(pad.x, 0, pad.z);
         for (const top of tops) { const out = top.clone().sub(middle).setY(0).setLength(330).add(top); out.y = groundDrop(out.x, out.z); hang(top, out, 14); }
         group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wire), new THREE.LineBasicMaterial({ color: 0x2b2e31 })));
-        waterTower(add, rod, [-1533, -2227]);
-        add(tank, new THREE.SphereGeometry(11, 32, 20).translate(-1263, 11 + groundDrop(-1263, -2341), -2341));   // liquid hydrogen
-        add(tank, new THREE.SphereGeometry(11, 32, 20).translate(-2033, 11 + groundDrop(-2033, -2357), -2357));   // liquid oxygen
     }
 
     // Trench walls and floors at both pads: concrete, the walls as tall as the mound beside them (and a low wall where
@@ -284,15 +283,4 @@ export function createComplex() {
 
     for (const [colour, geometries] of pieces) group.add(new THREE.Mesh(mergeGeometries(geometries, false), lit({ color: colour, roughness: .75, metalness: .2 })));
     return group;
-}
-
-// A sound suppression water tower: the tank 89 m up on four splayed legs with bracing.
-export function waterTower(add, rod, [x, z]) {
-    const steel = 0x8e9396, base = groundDrop(x, z);
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) rod(steel, [x + sx * 6, base, z + sz * 6], [x + sx * 3, base + 77, z + sz * 3], .45);
-    for (let y = 12; y < 77; y += 13) {
-        const w = 6 - 3 * y / 77;
-        for (const s of [-1, 1]) { add(steel, new THREE.BoxGeometry(2 * w, .4, .4).translate(x, base + y, z + s * w)); add(steel, new THREE.BoxGeometry(.4, .4, 2 * w).translate(x + s * w, base + y, z)); }
-    }
-    add(0xdfe2e3, new THREE.SphereGeometry(6.5, 24, 16).scale(1, .9, 1).translate(x, base + 83, z));
 }

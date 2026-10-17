@@ -1,6 +1,7 @@
 // The ground round LC-39A for the Launch view: aerial imagery in four nested rings of map tiles, draped over the pads'
-// raised hardstands, the pad's towers, Launch Complex 39 round it (js/launch/complex.js) and the sky seen from inside the
-// atmosphere. Metres in the pad's local frame (x east, y up, z south), the ground curved with the Earth.
+// raised hardstands, the pad's towers, Launch Complex 39 round it (js/launch/complex.js), every other structure in the
+// imagery's 17 km round the pad (js/launch/site.js) and the sky seen from inside the atmosphere. Metres in the pad's
+// local frame (x east, y up, z south), the ground curved with the Earth.
 // - Imagery: USGS National Map orthoimagery (public domain) at about 2 m, 17 m and 130 m a pixel round the pad, and
 //   NASA's Blue Marble (GIBS, public domain) at about 1 km out to 1,100 km, its edge fading into the globe's own map; outside the US the USGS tiles are
 //   transparent and the coarser ring shows through. Tiles load from those servers when the view first opens.
@@ -9,12 +10,13 @@
 //   hold-down clamps and tail service masts; the fixed service structure (steel lattice, hammerhead crane, lightning mast
 //   and its catenary), the annex SpaceX built up to the crew access level, the crew access arm swung clear (as at
 //   liftoff) and the slide-wire escape baskets; the transporter-erector leaning back with its clamps open, its
-//   umbilicals and hydraulic cylinders, and its frame down the ramp; the sound suppression water tower and the two
-//   propellant spheres.
+//   umbilicals and hydraulic cylinders, and its frame down the ramp. (The pad's water tower, its two propellant spheres
+//   and its light poles are in the site's data, js/launch/site.js.)
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { launchSite, padFrame } from '../sim/ascent.js';
-import { createComplex, inTrench, padDeck, pads, terrainHeight, terrainLines, waterTower } from './complex.js';
+import { createComplex, inTrench, padDeck, pads, terrainHeight, terrainLines } from './complex.js';
+import { createSite } from './site.js';
 
 const earthRadius = 6371000, rad = Math.PI / 180;
 const usgs = (z, x, y) => 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/' + z + '/' + y + '/' + x;
@@ -24,7 +26,8 @@ const rings = [{ zoom: 7, url: gibs, segments: 16, fade: true }, { zoom: 10, url
 export { padDeck };
 export const mountHeight = 4;   // the rocket stands on the launch mount, its engines 4 m above the pad deck (Dragon's hatch then meets the crew access arm, 217 ft up)
 
-export function createGround() {
+// `site`: data/launch-site.json (see js/launch/site.js), or null.
+export function createGround(site) {
     const group = new THREE.Group(), pad = padFrame();
     const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     // Latitude and longitude (degrees) on the sphere to the pad's frame.
@@ -118,8 +121,9 @@ export function createGround() {
             }, undefined, () => { pending--; failed++; });
         }
     });
-    // Launch Complex 39 round the pad.
+    // Launch Complex 39 round the pad, and the rest of the Cape round it.
     group.add(createComplex());
+    if (site) group.add(createSite(site));
 
     // Structures. Steel lattice as merged boxes and rods.
     const pieces = new Map();
@@ -137,7 +141,7 @@ export function createGround() {
         for (const [colour, geometries] of own) pivot.add(new THREE.Mesh(mergeGeometries(geometries, false), surface(colour)));
         return pivot;
     }
-    const steel = 0x8e9396, white = 0xe8e9e6, dark = 0x3b3f44, tank = 0xdfe2e3, grating = 0x6f7478;
+    const steel = 0x8e9396, white = 0xe8e9e6, dark = 0x3b3f44, grating = 0x6f7478;
     // Positions measured on the USGS image of the pad (x east, z south, metres from the launch mount). The tower's
     // and the water tower's lengths are cross-checked against their shadows in the same image. Everything on the
     // hardstand stands on its deck, 12 m up.
@@ -284,12 +288,6 @@ export function createGround() {
         if (z % 6 === 0) box(dark, [0, h + 1.6, z + 1], [7.9, .6, .5]);
         if (z % 12 === 4) for (const s of [-1, 1]) box(0x4c5156, [s * 4.5, h + .7, z + 1], [1.3, 1.1, 3.2]);
     }
-    // Sound suppression water tower, 129 m north and 77 m east: tank 89 m up on four splayed legs.
-    waterTower(add, rod, [77, -129]);
-    // Propellant spheres at the pad's north corners (liquid oxygen west, the old hydrogen sphere east).
-    add(tank, new THREE.SphereGeometry(9.4, 32, 20).translate(-402, 11, -273));
-    add(tank, new THREE.SphereGeometry(10.6, 32, 20).translate(370, 12, -259));
-    for (const [x, z, r] of [[-402, -273, 7], [370, -259, 8]]) for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; rod(steel, [x + Math.cos(a) * r, 0, z + Math.sin(a) * r], [x + Math.cos(a) * r * .9, 9, z + Math.sin(a) * r * .9], .35); }
     const structures = new THREE.Group();
     for (const [colour, geometries] of pieces) structures.add(new THREE.Mesh(mergeGeometries(geometries, false), new THREE.MeshStandardMaterial({ color: colour, roughness: .75, metalness: .2 })));
     group.add(structures);
