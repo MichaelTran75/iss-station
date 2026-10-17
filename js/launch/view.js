@@ -898,10 +898,17 @@ export async function createLaunchView(sky, resume = null) {
         renderer.autoClear = true;
     }
     // The station: the station view's own scene, seen from this camera carried into the station's frame, lit by the real
-    // Sun (or left in Earth's shadow). Its own Dragon and the approach guide stand down (this view flies Dragon), and
-    // its shadows are redrawn when the Sun has turned a degree against it.
+    // Sun (or left in Earth's shadow). Its own Dragon and the approach guide stand down (this view flies Dragon).
+    // Its shadow map takes the whole station again (1,100-1,600 draw calls, 1.8 M triangles), so here it is redrawn
+    // only when the station is in view and the Sun has turned a degree against it: not on the station view's own
+    // schedule (8-15 times a second, for its moving parts), which here cost that in one frame in two to eight, the
+    // station off screen or not.
     const stationCamera = new THREE.PerspectiveCamera(); stationCamera.matrixAutoUpdate = false; stationCamera.matrixWorldAutoUpdate = false;
     const stationLight = new THREE.Vector3(), shadowSun = new THREE.Vector3(9, 9, 9);
+    // The station's bounds without its own Dragon (which stands down here, and flies its approach 400 m out).
+    const stationBox = new THREE.Box3();
+    for (const [id, entry] of parts) if (id !== 'dragon') stationBox.expandByObject(entry.group);
+    const stationSphere = stationBox.getBoundingSphere(new THREE.Sphere()), seen = new THREE.Frustum(), seenMatrix = new THREE.Matrix4();
     function drawStation(view) {
         dock.near = view.position.distanceTo(dock.port) < 30000;
         if (!dock.near) return;
@@ -912,7 +919,9 @@ export async function createLaunchView(sky, resume = null) {
         stationLight.copy(sunLocal).transformDirection(dock.inverse);
         stationSun.position.copy(stationLight).multiplyScalar(150); stationSun.intensity = 3.2 * sunlit; stationSky.intensity = .3 + .85 * sunlit;
         dragonPart.visible = false; rendezvousGuide.visible = false;
-        if (stationLight.angleTo(shadowSun) > .017) { renderer.shadowMap.needsUpdate = true; shadowSun.copy(stationLight); }
+        seen.setFromProjectionMatrix(seenMatrix.multiplyMatrices(stationCamera.projectionMatrix, stationCamera.matrixWorldInverse));
+        renderer.shadowMap.needsUpdate = seen.intersectsSphere(stationSphere) && stationLight.angleTo(shadowSun) > .017;
+        if (renderer.shadowMap.needsUpdate) shadowSun.copy(stationLight);
         renderer.render(stationScene, stationCamera);
         stationSun.position.copy(kept[0]); [stationSun.intensity, stationSky.intensity, dragonPart.visible, rendezvousGuide.visible] = kept.slice(1);
     }
