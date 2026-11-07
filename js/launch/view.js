@@ -15,7 +15,7 @@ import { markShadowsDirty } from '../core/quality.js';
 import { parts } from '../core/station.js';
 import { approach } from '../parts/dragon.js';
 import { rendezvousGuide } from '../ui/rendezvous-guide.js';
-import { air, animationAt, animationDuration, boosterState, contactTime, countdown, dockingTime, dracoBurns, droneship, eventAt, events, flightData, groundTrackEnd, issAltitude, issFrame, issPosition, launchEpoch, launchSite, merlinSpool, missionAt, padFrame, padTransform, paths, proximity, rendezvousTime, spoolUp, stageState, tailOff, turnBack, vehicle as vehicleModel, vehicleState, warpAt } from '../sim/ascent.js';
+import { air, animationAt, animationDuration, boosterState, contactTime, countdown, dockingTime, dracoBurns, droneship, eventAt, events, farFlight, flightData, groundTrackEnd, issAltitude, issFrame, issPosition, launchEpoch, launchSite, merlinSpool, missionAt, padFrame, padTransform, paths, proximity, rendezvousTime, spoolUp, stageState, tailOff, turnBack, vehicle as vehicleModel, vehicleState, warpAt, warpStretches } from '../sim/ascent.js';
 import { toScene } from '../orbit/sky.js';
 import { createGround, mountHeight, padDeck } from './ground.js';
 import { createExhaust } from './exhaust.js';
@@ -570,8 +570,8 @@ export async function createLaunchView(sky, resume = null) {
     }
 
     // Camera: by the pad through the count and liftoff, then alongside the stack, close in on each separation, and
-    // side-on to Dragon from its separation to docking. It follows until someone drags it; it keeps following the
-    // vehicle with their angle after that.
+    // side-on to Dragon from its separation to docking, but for the far shots of the stretches at ×1500 (see
+    // farShot()). It follows until someone drags it; it keeps following the vehicle with their angle after that.
     const goalTarget = new THREE.Vector3(), goalOffset = new THREE.Vector3(), offset = new THREE.Vector3();
     const side = new THREE.Vector3(), back = new THREE.Vector3(), point = new THREE.Vector3(), vertical = new THREE.Vector3();
     // The opening view: from the north-east, 210 m out and 90 m up over the flame trench, the stack between the
@@ -644,14 +644,18 @@ export async function createLaunchView(sky, resume = null) {
     // the camera looks at, from one stretch to the next) ease instead of jumping. Its up is the local vertical, so the
     // horizon stays level on the far side of Earth too. A cut to the other vehicle, or back from the overview, starts
     // from where things stand.
-    const rig = { camera, frame: new THREE.Quaternion(), anchor: new THREE.Vector3(), kind: null, body: null };
+    // The main camera's place by its vehicle (its target, its offset from that, its up) is held apart from where the
+    // camera is drawn: through a far shot it rides on by Dragon, for the camera to come back to.
+    const held = { target: new THREE.Vector3(), offset: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0) }, lightAt = new THREE.Vector3();
+    let blended = false;   // the camera was drawn away from `held` (a far shot) last frame
+    const rig = { up: held.up, frame: new THREE.Quaternion(), anchor: new THREE.Vector3(), kind: null, body: null };
     const frameNow = new THREE.Quaternion(), anchorNow = new THREE.Vector3(), unturn = new THREE.Quaternion();
     const aim = new THREE.Vector3(), aimGoal = new THREE.Vector3(), offsetGoal = new THREE.Vector3(), upGoal = new THREE.Vector3();
     const toward = new THREE.Quaternion(), turnPart = new THREE.Quaternion();
     // Turns unit vector `v` a share `f` of the way onto unit vector `to`.
     function turnToward(v, to, f) { return v.applyQuaternion(turnPart.identity().slerp(toward.setFromUnitVectors(v, to), f)).normalize(); }
-    // `rig` a camera with its frame, anchor and body as last time; `target` and `offset` (from it to the camera) in and
-    // out; `follows` false keeps the camera's place in the frame (after a drag).
+    // `rig` a camera's up with its frame, anchor and body as last time; `target` and `offset` (from it to the camera) in
+    // and out; `follows` false keeps the camera's place in the frame (after a drag).
     function ride(rig, kind, goalTarget, goalOffset, target, offset, ease, follows) {
         const frameKind = kind === 'rocket' && mission >= 700 ? 'orbit' : 'pad';
         if (frameKind === 'orbit') frameNow.copy(orbit); else frameNow.identity();
@@ -660,21 +664,82 @@ export async function createLaunchView(sky, resume = null) {
         if (rig.kind !== frameKind || rig.body !== kind) rig.frame.copy(frameNow);
         if (rig.body !== kind) rig.anchor.copy(anchorNow);
         unturn.copy(rig.frame).invert();
-        aim.subVectors(target, rig.anchor).applyQuaternion(unturn); offset.applyQuaternion(unturn); rig.camera.up.applyQuaternion(unturn);
+        aim.subVectors(target, rig.anchor).applyQuaternion(unturn); offset.applyQuaternion(unturn); rig.up.applyQuaternion(unturn);
         unturn.copy(frameNow).invert();
         aimGoal.subVectors(goalTarget, anchorNow).applyQuaternion(unturn); offsetGoal.copy(goalOffset).applyQuaternion(unturn);
         upGoal.subVectors(goalTarget, earthCentre).normalize().applyQuaternion(unturn);
         if (rig.body === kind) aim.lerp(aimGoal, ease); else aim.copy(aimGoal);
         if (follows) offset.lerp(offsetGoal, ease);
-        turnToward(rig.camera.up, upGoal, ease);
-        target.copy(aim.applyQuaternion(frameNow)).add(anchorNow); offset.applyQuaternion(frameNow); rig.camera.up.applyQuaternion(frameNow);
+        turnToward(rig.up, upGoal, ease);
+        target.copy(aim.applyQuaternion(frameNow)).add(anchorNow); offset.applyQuaternion(frameNow); rig.up.applyQuaternion(frameNow);
         rig.frame.copy(frameNow); rig.anchor.copy(anchorNow); rig.kind = frameKind; rig.body = kind;
     }
     // OrbitControls turns the camera about the up it had when made: kept on the camera's up as that changes.
     function alignControls() { if (!controls._quat) return; controls._quat.setFromUnitVectors(camera.up, up); controls._quatInverse.copy(controls._quat).invert(); }
+    // Far shots: through each stretch at ×1500 (js/sim/ascent.js) a camera following Dragon draws back to Earth seen
+    // whole, 4.4 radii out and 30° up from Dragon's orbit's plane (as the overview), and holds still among the stars
+    // while Dragon laps the globe (once in 4 s), then comes back to it. Beside Dragon at that warp the ground would
+    // sweep past at 95°/s; from out there Earth turns at its own rate (once a minute at ×1500) under a sunrise line
+    // that stands still. The camera flies out over the 3 s before the stretch and back over the 3 s after (farFlight;
+    // the clock at ×60 to ×150 then). Out there it goes round the orbit's normal at most 3°/s (on top of Earth's own
+    // 6°/s); the rest of the way Dragon went round between leaving and coming back is the angle between Dragon and the
+    // shot's eye, the same as it leaves and as it comes back (within 70°: the flights keep clear of Earth), so the
+    // flights do not turn through it as well. Each focus has its clock and so its shots: the booster's are for the
+    // corner screen's Dragon.
+    const farDrift = 3 * Math.PI / 180;
+    // Dragon in space (inertial, metres from Earth's centre) at a time, from the rocket's path.
+    function inertialAt(time) {
+        const list = paths.rocket; let lo = 0, hi = list.length - 1;
+        time = THREE.MathUtils.clamp(time, list[0].t, list[hi].t);
+        while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (list[mid].t <= time) lo = mid; else hi = mid; }
+        const a = list[lo], b = list[hi], u = (time - a.t) / (b.t - a.t);
+        return new THREE.Vector3(...a.r.map((value, k) => value + (b.r[k] - value) * u));
+    }
+    const farShots = Object.fromEntries(['rocket', 'booster'].map(name => [name, warpStretches(name).filter(stretch => stretch.warp >= 1000 && stretch.to > 700).map(stretch => {
+        const start = stretch.start - farFlight, end = stretch.end + farFlight, leftAt = missionAt(start, name), backAt = missionAt(end, name);
+        const first = inertialAt(leftAt).normalize(), last = inertialAt(backAt).normalize(), normal = inertialAt(backAt - 600).cross(inertialAt(backAt)).normalize();
+        const sweep = Math.atan2(first.clone().cross(last).dot(normal), first.dot(last)), drift = Math.sign(sweep) * Math.min(Math.abs(sweep), farDrift * (stretch.end - stretch.start));
+        return { start, out: stretch.start, back: stretch.end, end, first, normal, drift, apart: (sweep - drift) / 2 };
+    })]));
+    const shotWay = new THREE.Vector3(), shotNormal = new THREE.Vector3(), across = new THREE.Vector3(), padTurn = new THREE.Matrix3();
+    // The far shot under way for a camera following `kind`, if any: how far out it is (0-1), and the way out from
+    // Earth's centre it stands over and the orbit's normal, in the pad's frame now.
+    function farShot(kind) {
+        if (kind !== 'rocket') return null;
+        const shot = farShots[focus].find(entry => time > entry.start && time < entry.end);
+        if (!shot) return null;
+        const angle = shot.apart + shot.drift * smooth(time, shot.out, shot.back);
+        const c = Math.cos(angle), s = Math.sin(angle), { first, normal } = shot;
+        shotWay.copy(first).multiplyScalar(c).add(across.crossVectors(normal, first).multiplyScalar(s)).addScaledVector(normal, normal.dot(first) * (1 - c));
+        padTurn.set(...padTransform(mission).m);
+        shotWay.applyMatrix3(padTurn).normalize(); shotNormal.copy(normal).applyMatrix3(padTurn).normalize();
+        return { share: Math.min(smooth(time, shot.start, shot.out), 1 - smooth(time, shot.back, shot.end)), way: shotWay, normal: shotNormal };
+    }
+    // A camera a share of the way out on a far shot from its place by Dragon (`by`, `offset`, `up`): its distance from
+    // Dragon grows in proportion (as quickly at 30 m as at 3,000 km) as its direction from Dragon turns toward the
+    // shot's eye, and its up turns onto the shot's. It aims off Dragon toward Earth's centre by the same share of the
+    // angle between the two seen from the shot's eye (9°), so Dragon stays by the middle all the way: aimed at a point
+    // that ran from Dragon to Earth's centre, the camera would swing 90° in a fifth of a second as it drew away.
+    const farEye = new THREE.Vector3(), awayNow = new THREE.Vector3(), awayFar = new THREE.Vector3(), toCentre = new THREE.Vector3(), aimNow = new THREE.Vector3();
+    function farPose(shot, aspect, by, offset, up, target, position, cameraUp) {
+        const share = shot.share;
+        farEye.copy(shot.way).multiplyScalar(.87).addScaledVector(shot.normal, .5).normalize().multiplyScalar(6371000 * 4.4 * Math.max(1, 1.3 / aspect)).add(earthCentre);
+        awayFar.subVectors(farEye, by);
+        const far = awayFar.length(), near = Math.max(1, offset.length()), length = near * (far / near) ** share;
+        const eyeAngle = awayFar.angleTo(toCentre.subVectors(farEye, earthCentre));
+        turnToward(awayNow.copy(offset).divideScalar(near), awayFar.divideScalar(far), share);
+        position.copy(by).addScaledVector(awayNow, length);
+        toCentre.subVectors(earthCentre, position);
+        const centre = toCentre.length(), between = aimNow.copy(awayNow).negate().angleTo(toCentre.divideScalar(centre));
+        if (between > 1e-6) turnToward(aimNow, toCentre, Math.min(1, share * eyeAngle / between));
+        // At a distance between Dragon's and Earth's centre's, in proportion, for the depth range drawn from it.
+        target.copy(position).addScaledVector(aimNow, length ** (1 - share) * centre ** share);
+        turnToward(cameraUp.copy(up), shot.way, share);
+    }
     // Corner screen: the other vehicle from separation on (the booster flying home while the main view stays with
-    // Dragon, or the reverse), on its own camera that eases like the main one. A click on it swaps the two.
-    const inset = { camera: new THREE.PerspectiveCamera(40, 1.6, .3, 5e6), target: new THREE.Vector3(), goal: new THREE.Vector3(), offset: new THREE.Vector3(), goalOffset: new THREE.Vector3(), snap: true, frame: new THREE.Quaternion(), anchor: new THREE.Vector3(), kind: null, body: null };
+    // Dragon, or the reverse), on its own camera that eases like the main one. A click on it swaps the two. Its place by
+    // the vehicle (target, offset, up) is held apart from the camera too, and `look` is where the camera looks.
+    const inset = { camera: new THREE.PerspectiveCamera(40, 1.6, .3, 5e6), target: new THREE.Vector3(), goal: new THREE.Vector3(), offset: new THREE.Vector3(), goalOffset: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0), look: new THREE.Vector3(), snap: true, frame: new THREE.Quaternion(), anchor: new THREE.Vector3(), kind: null, body: null };
     const insetElement = field('launch-inset'), insetText = insetElement.querySelector('span'), insetName = insetElement.querySelector('b');
     const insetKind = () => focus === 'rocket' ? 'booster' : 'rocket';
     const insetShown = () => active && mission > separation + 2 && (focus === 'booster' || mission < landing + 45);
@@ -683,7 +748,10 @@ export async function createLaunchView(sky, resume = null) {
         goal(insetKind(), inset.goal, inset.goalOffset);
         ride(inset, insetKind(), inset.goal, inset.goalOffset, inset.target, inset.offset, inset.snap ? 1 : 1 - Math.exp(-2.2 * delta), true);
         inset.snap = false;
-        inset.camera.position.copy(inset.target).add(inset.offset); inset.camera.lookAt(inset.target);
+        const shot = farShot(insetKind());
+        if (shot) farPose(shot, inset.camera.aspect, inset.target, inset.offset, inset.up, inset.look, inset.camera.position, inset.camera.up);
+        else { inset.look.copy(inset.target); inset.camera.position.copy(inset.target).add(inset.offset); inset.camera.up.copy(inset.up); }
+        inset.camera.lookAt(inset.look);
     }
     const centre = new THREE.Vector3(0, -6371000, 0), normal = new THREE.Vector3(), toVehicle = new THREE.Vector3(), issA = new THREE.Vector3(), issB = new THREE.Vector3();
     function overviewGoal(goalTarget, goalOffset) {
@@ -693,7 +761,11 @@ export async function createLaunchView(sky, resume = null) {
         const anchor = Math.max(mission, groundTrackEnd);
         issA.set(...issPosition(mission, anchor)).sub(centre); issB.set(...issPosition(mission + 1390, anchor)).sub(centre);
         normal.crossVectors(issA, issB).normalize();
+        // Through a far shot, turned toward over where the shot stands as far as it is out (Dragon itself laps Earth
+        // every 4 s then).
         toVehicle.copy(focus === 'booster' ? booster.position : capsule.position).sub(centre).normalize();
+        const shot = farShot(focus);
+        if (shot) turnToward(toVehicle, shot.way, shot.share);
         goalTarget.copy(centre);
         goalOffset.copy(normal).multiplyScalar(.5).addScaledVector(toVehicle, .87).normalize().multiplyScalar(6371000 * 4.4 * Math.max(1, 1.3 / camera.aspect));   // further back on a tall screen
     }
@@ -707,13 +779,20 @@ export async function createLaunchView(sky, resume = null) {
             controls.target.lerp(goalTarget, ease); camera.position.lerp(overviewEye.copy(goalTarget).add(goalOffset), ease);
             turnToward(camera.up, normal, ease); alignControls();
             rig.kind = rig.body = null;
+            blended = false; controls.enableRotate = controls.enableZoom = true; lightAt.copy(controls.target);
             return;
         }
+        // The held place is the drawn camera's (with whatever a drag did) unless a far shot drew it away.
+        if (!blended) { held.target.copy(controls.target); held.offset.subVectors(camera.position, controls.target); held.up.copy(camera.up); }
         goal(focus, goalTarget, goalOffset);
-        offset.subVectors(camera.position, controls.target);
-        ride(rig, focus, goalTarget, goalOffset, controls.target, offset, snapCamera ? 1 : 1 - Math.exp(-2.2 * delta), snapCamera || auto);
+        ride(rig, focus, goalTarget, goalOffset, held.target, held.offset, snapCamera ? 1 : 1 - Math.exp(-2.2 * delta), snapCamera || auto);
         snapCamera = false;
-        camera.position.copy(controls.target).add(offset);
+        // Through a far shot the camera is the shot's, not to be dragged or zoomed (it would only spring back).
+        const shot = farShot(focus);
+        if (shot) farPose(shot, camera.aspect, held.target, held.offset, held.up, controls.target, camera.position, camera.up);
+        else { controls.target.copy(held.target); camera.position.copy(held.target).add(held.offset); camera.up.copy(held.up); }
+        blended = !!shot; controls.enableRotate = controls.enableZoom = !shot;
+        lightAt.copy(held.target);
         alignControls();
     }
 
@@ -731,9 +810,9 @@ export async function createLaunchView(sky, resume = null) {
     function light() {
         sunLocal.copy(sky.sun.position).normalize().applyQuaternion(frameInverse);
         daylight = THREE.MathUtils.clamp(.25 + sunLocal.y * 1.6, .15, 1);
-        const high = smooth(controls.target.distanceTo(earthCentreLocal) - 6371000, 20000, 60000), lit = sunlitAt(controls.target);
+        const high = smooth(lightAt.distanceTo(earthCentreLocal) - 6371000, 20000, 60000), lit = sunlitAt(lightAt);
         sunlight.intensity = 3.1 * THREE.MathUtils.lerp(smooth(sunLocal.y, -.08, .05), lit, high);
-        sunlight.position.copy(controls.target).addScaledVector(sunLocal, 2000); sunlight.target.position.copy(controls.target);
+        sunlight.position.copy(lightAt).addScaledVector(sunLocal, 2000); sunlight.target.position.copy(lightAt);
         skylight.intensity = THREE.MathUtils.lerp(.2 + .55 * daylight, .3, high);
         // The reflections' environment dims in Earth's shadow too, as the station's own fill does there.
         scene.environmentIntensity = .45 * THREE.MathUtils.lerp(1, .2 + .8 * lit, high);
@@ -953,7 +1032,7 @@ export async function createLaunchView(sky, resume = null) {
         issLabel.textContent = 'ISS · ' + (issAltitude / 1000).toFixed(0) + ' km' + (range !== null && mission > eventAt('dragon') ? ' · ' + (range < 1e4 ? range.toFixed(0) + ' m' : (range / 1000).toFixed(0) + ' km') + ' from Dragon' : '');
         issLabel.style.transform = 'translate(' + ((projected.x * .5 + .5) * viewport.clientWidth + 12).toFixed(1) + 'px,' + ((-projected.y * .5 + .5) * viewport.clientHeight - 8).toFixed(1) + 'px)';
     }
-    const canvasBox = { left: 0, top: 0, height: 0 };
+    const canvasBox = { left: 0, top: 0, height: 0 }, markedAt = new THREE.Vector3();
     function render() {
         draw(camera, controls.target); placeIssLabel(); placeVehicleLabel();
         if (insetElement.hidden) return;
@@ -962,7 +1041,13 @@ export async function createLaunchView(sky, resume = null) {
         inset.camera.aspect = box.width / box.height;
         renderer.setScissorTest(true); renderer.setScissor(x, y, box.width, box.height); renderer.setViewport(x, y, box.width, box.height);
         renderer.setClearColor(0x000000, 1); renderer.clear();
-        draw(inset.camera, inset.target);
+        // The marker stands for the corner screen's own vehicle while it draws (from far out, on a far shot), then
+        // goes back to the main one's.
+        const marked = vehicleMarker.visible, other = insetKind() === 'booster' ? booster : capsule;
+        markedAt.copy(vehicleMarker.position); vehicleMarker.position.copy(other.position);
+        vehicleMarker.visible = inset.camera.position.distanceTo(other.position) > 6e4 && !behindEarth(inset.camera.position, other.position);
+        draw(inset.camera, inset.look);
+        vehicleMarker.visible = marked; vehicleMarker.position.copy(markedAt);
         renderer.setClearColor(0x000000, 0); renderer.setScissorTest(false); renderer.setViewport(0, 0, page.width, page.height);
         ground.updateSky(camera, 0, sunLocal, sunLocal.y);
     }
@@ -1019,6 +1104,7 @@ export async function createLaunchView(sky, resume = null) {
             environmentTarget.dispose();
         },
         zoomBy(multiplier) {
+            if (blended) return;   // a far shot's camera is the shot's
             offset.subVectors(camera.position, controls.target);
             offset.setLength(THREE.MathUtils.clamp(offset.length() / multiplier, controls.minDistance, controls.maxDistance));
             camera.position.copy(controls.target).add(offset); setFollow(false);

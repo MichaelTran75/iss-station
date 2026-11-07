@@ -18,7 +18,7 @@ export const pmaReferenceLength = 2.6519663333892822, pmaReferenceOffset = 0.734
 export const pma1BaseZ = 15.45, pma2BaseZ = -8.72;
 // Keep the Russian docking face seated on the rebuilt PMA-1's outward interface.
 export const russianSegmentOffset = new THREE.Vector3(0, pmaReferenceOffset, pma1BaseZ + pmaReferenceLength - 17.04);
-// User-specified centerlines for the radiator banks and the solar rotary joints.
+// User-specified centerline for the radiator banks.
 export const radiatorBankX = 14;
 // The integrated truss and everything it carries sit this much lower over Destiny than first drawn, which shortens
 // the S0 support struts by about 45%.
@@ -39,22 +39,40 @@ export const trussSections = {
 // The bank's .785-deep root stays .08 beyond that surface, clear of covers.
 export const radiatorTrussSurfaceZ = 4 + trussSections.S1.aft[0] / 2; // S1/P1's narrow aft chords
 export const radiatorBankZ = radiatorTrussSurfaceZ + .785 + .08;
-export const solarRotaryJointX = 23.5; // Align with the truss post marked in the reference.
-export const solarStations = [-48, -32, 32, 48];
+// Where S1/P1 meet S3/P3, metres from the centreline. S1 and P1 are 13.7 m long as built and run from 6.84 to 21.02 m
+// on NASA's model (ISS_stationary); first drawn here to 16, which left the radiator wings 2 m from S3/P3 and AMS-02
+// and no room to turn to their real angles (7 November 2026).
+export const trussS1End = 21;
+// The SARJ sits at the centre of its ring on NASA's model (first drawn at 23.5, by a truss post marked in the
+// reference).
+export const solarRotaryJointX = 26.6;
+// Beta-gimbal stations, after NASA's model: the wing centres there are 34.53 and 49.96 m out. The inner module's two
+// masts turn just outboard of its IEA, inside S5/P5 (js/parts/truss.js); the outer wings stand beyond the S6/P6 IEA
+// end face, 1.6 m out from their nominal station (solarRootX). Until 7 November 2026 the inner BGA sat in a pocket
+// inside S4/P4 with S5/P5 outboard of it, which put the stations at 35.1 and 52.7 and the station 5.5 m wider.
+export const innerSolarStation = 34.53, outerSolarStation = 48.355;
+// Centre of the inner module's IEA (batteries, electronics, radiator); NASA's model has it at 28.3 to 33.2 m.
+export const innerEquipmentCenter = 30.65;
+export const solarStations = [-outerSolarStation, -innerSolarStation, innerSolarStation, outerSolarStation];
 // Image-directed outboard offset: move each terminal wing as one
 // connected assembly, including its canister and iROSA modification kit.
-export const solarRootX = across => across + (Math.abs(across) === 48 ? Math.sign(across) * 1.60 : 0);
+export const solarRootX = across => across + (Math.abs(across) === outerSolarStation ? Math.sign(across) * 1.60 : 0);
 // The two wings of a module sit one above the other in its beta-gimbal frame, on the same station along the truss:
 // the aft wing's mast canister runs in through the upper half and the forward wing's through the lower half, so
 // the two pass without meeting. Port and starboard are mirror images.
 export const solarWingStagger = .72, solarPocketHalf = 1.1;
 export const solarWingY = direction => 6.8 + direction * solarWingStagger;
-export const inSolarPocket = x => solarStations.some(root => Math.abs(root) === 32 && Math.abs(root - x) < solarPocketHalf);
+export const inSolarPocket = x => solarStations.some(root => Math.abs(root) === innerSolarStation && Math.abs(root - x) < solarPocketHalf);
 // Channel groupings follow NASA's ISS electrical power system overview.
 // Forward/aft is a schematic pose; beta-gimbal rotation varies in orbit.
-export const powerChannels = { '-48': ['2B', '4B'], '-32': ['4A', '2A'], '32': ['1A', '3A'], '48': ['1B', '3B'] };
-export const augmentedChannels = new Set(['2B', '4B', '4A', '1A', '3A', '1B']);
-export const modernParts = new Set(['irosa', 'nauka', 'prichal', 'tranquility', 'leonardo', 'beam', 'bishop', 'poisk', 'rassvet', 's3payloads', 'p3payloads']);
+export const powerChannels = { [-outerSolarStation]: ['2B', '4B'], [-innerSolarStation]: ['4A', '2A'], [innerSolarStation]: ['1A', '3A'], [outerSolarStation]: ['1B', '3B'] };
+// Every channel carries an iROSA since 5 November 2026: 2B and 4B (2021), 3A and 4A (December 2022), 1A and 1B (June
+// 2023), 2A (29 October 2026) and 3B (5 November 2026).
+export const augmentedChannels = new Set(['2B', '4B', '4A', '1A', '3A', '1B', '2A', '3B']);
+export const modernParts = new Set(['irosa', 'nauka', 'prichal', 'tranquility', 'leonardo', 'beam', 'bishop', 'poisk', 'rassvet', 's3payloads', 'p3payloads', 'soyuz-ms29', 'progress-aft', 'progress-poisk', 'pma3', 'cargo-dragon', 'dextre', 'aces']);
+// Shown only in the simplified comparison: in the 2026 configuration other vehicles hold those ports.
+export const referenceParts = new Set(['soyuz']);
+export const shownIn = (id, configuration) => configuration === 'modern' ? !referenceParts.has(id) : !modernParts.has(id);
 export function part(id, name, category, description, facts, anchor, builder) {
     const group = new THREE.Group(); group.name = name; group.userData.part = id;
     const kit = new Kit(); builder(kit, group); kit.finish(group); station.add(group);

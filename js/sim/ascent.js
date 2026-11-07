@@ -310,9 +310,25 @@ function slowForBurns(plan, warp) {
     }
     return out;
 }
+// A coast between those windows too short for a far shot of the whole Earth (js/launch/view.js; under 50 minutes,
+// 2 s at ×1500) plays at ×150 instead, the camera staying by Dragon: beside it at ×1500 the ground would sweep past
+// at 95°/s.
+function slowShortCoasts(plan, longest = 3000, warp = 150) {
+    return plan.map(([from, value], k) => [from, value >= 1000 && (k + 1 < plan.length ? plan[k + 1][0] : ascentDuration) - from < longest ? warp : value]);
+}
+// The camera flies out to a far shot over the 3 s before its stretch at ×1500 and back over the 3 s after, on the
+// clock of the stretch beside it: a burn window there opens that much earlier, or closes that much later, for Dragon
+// to be seen from close by as it turns to burn.
+export const farFlight = 3;
+function roomForFarFlights(plan, warp) {
+    return plan.map(([from, value], k) => {
+        const before = k > 0 ? plan[k - 1][1] : 0, side = value >= 1000 && before === warp ? 1 : value === warp && before >= 1000 ? -1 : 0;
+        return [from + side * farFlight * warp, value];
+    });
+}
 const proximityWarps = proximity.phases.map(phase => [rendezvousTime + phase.start, phase.warp]);
 const warpPlans = {
-    rocket: slowForBurns([[countdown, 3], [-236, 30], [-12, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5], [790, 60], [1000, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15], ...proximityWarps], 90),
+    rocket: roomForFarFlights(slowShortCoasts(slowForBurns([[countdown, 3], [-236, 30], [-12, 1], [20, 6], [140, 1.5], [180, 16], [eventAt('seco') - 25, 3], [eventAt('seco') + 13, 17], [708, 2.5], [790, 60], [1000, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15], ...proximityWarps], 90)), 90),
     booster: [[countdown, 3], [-236, 30], [-12, 1], [20, 6], [140, 1.5], [185, 12], [eventAt('entry') - 6, 1.5], [eventAt('entry') + 26, 8], [eventAt('landingburn') - 12, 1], [eventAt('landing') + 6, 12], [eventAt('landing') + 60, 1500], [rendezvousTime - 1500, 150], [rendezvousTime - 150, 15], ...proximityWarps]
 };
 function plan(name) {
@@ -322,6 +338,8 @@ function plan(name) {
 }
 const plans = { rocket: plan('rocket'), booster: plan('booster') };
 export const animationDuration = focus => plans[focus].marks[plans[focus].marks.length - 1][0];
+// Each stretch of a plan: its warp, its mission times and where it starts and ends on the animation clock.
+export const warpStretches = focus => plans[focus].warps.map(([from, warp], k) => ({ warp, from, to: plans[focus].marks[k + 1][1], start: plans[focus].marks[k][0], end: plans[focus].marks[k + 1][0] }));
 export function warpAt(mission, focus) { let warp = 1; for (const [from, value] of plans[focus].warps) if (mission >= from) warp = value; return warp; }
 export function missionAt(animation, focus) {
     const marks = plans[focus].marks;

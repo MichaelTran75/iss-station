@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=853debabfe">
+    <link rel="stylesheet" href="css/app.css?v=e38709b54a">
     <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
          trước mọi module theo thứ tự dựng. -->
     <script type="importmap">
@@ -19,25 +19,27 @@
       "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
         "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
-        "./js/core/data.js": "./js/core/data.js?v=125ebf635a",
-        "./js/core/stage.js": "./js/core/stage.js?v=7f48886c0b",
+        "./js/core/data.js": "./js/core/data.js?v=54614f5a93",
+        "./js/core/stage.js": "./js/core/stage.js?v=80debd9f24",
         "./js/core/quality.js": "./js/core/quality.js?v=6bd2dc8886",
-        "./js/core/kit.js": "./js/core/kit.js?v=b41e843ce9",
-        "./js/core/station.js": "./js/core/station.js?v=9b89e755af",
+        "./js/core/kit.js": "./js/core/kit.js?v=bf09b197f8",
+        "./js/core/station.js": "./js/core/station.js?v=bc027187fa",
         "./js/core/cbm.js": "./js/core/cbm.js?v=ed68327318",
         "./js/core/surfaces.js": "./js/core/surfaces.js?v=d171d10d21",
-        "./js/core/hull.js": "./js/core/hull.js?v=a8069295a6",
+        "./js/core/hull.js": "./js/core/hull.js?v=06040ff9d8",
         "./js/core/pma.js": "./js/core/pma.js?v=b53a6784a2",
-        "./js/core/payloads.js": "./js/core/payloads.js?v=54e08c33e0",
-        "./js/parts/truss.js": "./js/parts/truss.js?v=b142bb4419",
-        "./js/parts/power.js": "./js/parts/power.js?v=8fac7d6a70",
-        "./js/parts/irosa.js": "./js/parts/irosa.js?v=7de1fc2eea",
-        "./js/parts/thermal.js": "./js/parts/thermal.js?v=00b6998a38",
+        "./js/core/payloads.js": "./js/core/payloads.js?v=23d8a78760",
+        "./js/core/sarj.js": "./js/core/sarj.js?v=c54a09fcf8",
+        "./js/parts/truss.js": "./js/parts/truss.js?v=2810155c0b",
+        "./js/parts/power.js": "./js/parts/power.js?v=853c252574",
+        "./js/parts/irosa.js": "./js/parts/irosa.js?v=55eb019bb3",
+        "./js/parts/thermal.js": "./js/parts/thermal.js?v=e1a6b732b0",
         "./js/parts/destiny.js": "./js/parts/destiny.js?v=499ec5830a",
         "./js/parts/unity.js": "./js/parts/unity.js?v=47b49c53de",
         "./js/parts/harmony.js": "./js/parts/harmony.js?v=982e8e2e32",
-        "./js/parts/kibo.js": "./js/parts/kibo.js?v=dd94bdc5e2",
-        "./js/parts/columbus.js": "./js/parts/columbus.js?v=7d3f1f83b6",
+        "./js/parts/kibo.js": "./js/parts/kibo.js?v=a9423988d2",
+        "./js/parts/columbus.js": "./js/parts/columbus.js?v=d4f4a23b2e",
+        "./js/parts/aces.js": "./js/parts/aces.js?v=fa2f210d54",
         "./js/parts/tranquility.js": "./js/parts/tranquility.js?v=8ed0d68c0a",
         "./js/parts/quest.js": "./js/parts/quest.js?v=bc896ddbe3",
         "./js/parts/leonardo.js": "./js/parts/leonardo.js?v=0ee41cebf1",
@@ -45,24 +47,31 @@
         "./js/parts/zvezda.js": "./js/parts/zvezda.js?v=7272398135",
         "./js/parts/nauka.js": "./js/parts/nauka.js?v=22abe4a613",
         "./js/parts/prichal.js": "./js/parts/prichal.js?v=e8df7d74de",
-        "./js/sim/rendezvous.js": "./js/sim/rendezvous.js?v=83f290ad04",
+        "./js/sim/rendezvous.js": "./js/sim/rendezvous.js?v=a54d50c51b",
         "./js/parts/draco.js": "./js/parts/draco.js?v=600c72af92",
-        "./js/parts/dragon.js": "./js/parts/dragon.js?v=b669931ecf",
-        "./js/parts/soyuz.js": "./js/parts/soyuz.js?v=c2f348f5a2",
-        "./js/parts/robotics.js": "./js/parts/robotics.js?v=a1e546c82a",
+        "./js/parts/dragon.js": "./js/parts/dragon.js?v=6bbf2ba2ef",
+        "./js/parts/cargo-dragon.js": "./js/parts/cargo-dragon.js?v=64d8bad2d8",
+        "./js/parts/soyuz.js": "./js/parts/soyuz.js?v=eb08b87749",
+        "./js/parts/robotics.js": "./js/parts/robotics.js?v=485d7e028e",
+        "./js/parts/dextre.js": "./js/parts/dextre.js?v=0eb293c173",
         "./js/parts/beam.js": "./js/parts/beam.js?v=c2c04d76ab",
         "./js/parts/bishop.js": "./js/parts/bishop.js?v=afad66eaf0",
         "./js/parts/poisk.js": "./js/parts/poisk.js?v=4a665d5ce5",
-        "./js/parts/rassvet.js": "./js/parts/rassvet.js?v=bdee54dbe4",
+        "./js/parts/rassvet.js": "./js/parts/rassvet.js?v=1244e992f0",
         "./js/parts/z1.js": "./js/parts/z1.js?v=afd125c054",
-        "./js/parts/external-payloads.js": "./js/parts/external-payloads.js?v=50123c1b56",
-        "./js/parts/assembly.js": "./js/parts/assembly.js?v=495148cc5c",
-        "./js/core/release.js": "./js/core/release.js?v=008d1cbfa3",
-        "./js/figures/eva.js": "./js/figures/eva.js?v=07b36cc643",
+        "./js/parts/external-payloads.js": "./js/parts/external-payloads.js?v=78a3110812",
+        "./js/parts/assembly.js": "./js/parts/assembly.js?v=5f7398652d",
+        "./js/core/release.js": "./js/core/release.js?v=24a95df0cb",
+        "./js/figures/eva.js": "./js/figures/eva.js?v=370b179983",
         "./js/ui/ghost.js": "./js/ui/ghost.js?v=c91db6d918",
         "./js/ui/rendezvous-guide.js": "./js/ui/rendezvous-guide.js?v=c2e18df47a",
-        "./js/ui/controller.js": "./js/ui/controller.js?v=17bd63b46c",
-        "./js/main.js": "./js/main.js?v=77994c1140",
+        "./js/orbit/live.js": "./js/orbit/live.js?v=d045c76416",
+        "./js/orbit/elements.js": "./js/orbit/elements.js?v=6169072553",
+        "./js/orbit/attitude.js": "./js/orbit/attitude.js?v=3eda245424",
+        "./js/orbit/sun-track.js": "./js/orbit/sun-track.js?v=1817ef2aa2",
+        "./js/orbit/theme.js": "./js/orbit/theme.js?v=25eabfe924",
+        "./js/ui/controller.js": "./js/ui/controller.js?v=c5e9cd2798",
+        "./js/main.js": "./js/main.js?v=894c8c5834",
         "./js/launch/complex.js": "./js/launch/complex.js?v=4268723774",
         "./js/launch/droneship.js": "./js/launch/droneship.js?v=8f75ee397c",
         "./js/launch/engine-audio.js": "./js/launch/engine-audio.js?v=17f242600f",
@@ -72,36 +81,40 @@
         "./js/launch/part-labels.js": "./js/launch/part-labels.js?v=d88378ef07",
         "./js/launch/site.js": "./js/launch/site.js?v=aa952daf74",
         "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=282d264bcb",
-        "./js/launch/view.js": "./js/launch/view.js?v=4fc108fbd0",
-        "./js/orbit/sky.js": "./js/orbit/sky.js?v=8136acffec",
-        "./js/orbit/view.js": "./js/orbit/view.js?v=9166f83b83",
-        "./js/sim/ascent.js": "./js/sim/ascent.js?v=a1b4dae5d8",
-        "./js/sim/eva.js": "./js/sim/eva.js?v=559ea8ce8a",
+        "./js/launch/view.js": "./js/launch/view.js?v=31692c47e0",
+        "./js/orbit/earth-map.js": "./js/orbit/earth-map.js?v=81a1f5b043",
+        "./js/orbit/sky.js": "./js/orbit/sky.js?v=313bafd45f",
+        "./js/orbit/storm-ensemble.js": "./js/orbit/storm-ensemble.js?v=f9f3ea4217",
+        "./js/orbit/view.js": "./js/orbit/view.js?v=0f82f19a83",
+        "./js/sim/ascent.js": "./js/sim/ascent.js?v=b2912a5ad4",
+        "./js/sim/eva.js": "./js/sim/eva.js?v=b34f9efc09",
         "./js/sim/orbit.js": "./js/sim/orbit.js?v=f44737761f",
         "./js/sim/plume.js": "./js/sim/plume.js?v=073b15aff4",
         "./js/sim/wind.js": "./js/sim/wind.js?v=4edf09f1ed"
       }
     }
     </script>
-    <link rel="modulepreload" href="js/core/data.js?v=125ebf635a">
-    <link rel="modulepreload" href="js/core/stage.js?v=7f48886c0b">
+    <link rel="modulepreload" href="js/core/data.js?v=54614f5a93">
+    <link rel="modulepreload" href="js/core/stage.js?v=80debd9f24">
     <link rel="modulepreload" href="js/core/quality.js?v=6bd2dc8886">
-    <link rel="modulepreload" href="js/core/kit.js?v=b41e843ce9">
-    <link rel="modulepreload" href="js/core/station.js?v=9b89e755af">
+    <link rel="modulepreload" href="js/core/kit.js?v=bf09b197f8">
+    <link rel="modulepreload" href="js/core/station.js?v=bc027187fa">
     <link rel="modulepreload" href="js/core/cbm.js?v=ed68327318">
     <link rel="modulepreload" href="js/core/surfaces.js?v=d171d10d21">
-    <link rel="modulepreload" href="js/core/hull.js?v=a8069295a6">
+    <link rel="modulepreload" href="js/core/hull.js?v=06040ff9d8">
     <link rel="modulepreload" href="js/core/pma.js?v=b53a6784a2">
-    <link rel="modulepreload" href="js/core/payloads.js?v=54e08c33e0">
-    <link rel="modulepreload" href="js/parts/truss.js?v=b142bb4419">
-    <link rel="modulepreload" href="js/parts/power.js?v=8fac7d6a70">
-    <link rel="modulepreload" href="js/parts/irosa.js?v=7de1fc2eea">
-    <link rel="modulepreload" href="js/parts/thermal.js?v=00b6998a38">
+    <link rel="modulepreload" href="js/core/payloads.js?v=23d8a78760">
+    <link rel="modulepreload" href="js/core/sarj.js?v=c54a09fcf8">
+    <link rel="modulepreload" href="js/parts/truss.js?v=2810155c0b">
+    <link rel="modulepreload" href="js/parts/power.js?v=853c252574">
+    <link rel="modulepreload" href="js/parts/irosa.js?v=55eb019bb3">
+    <link rel="modulepreload" href="js/parts/thermal.js?v=e1a6b732b0">
     <link rel="modulepreload" href="js/parts/destiny.js?v=499ec5830a">
     <link rel="modulepreload" href="js/parts/unity.js?v=47b49c53de">
     <link rel="modulepreload" href="js/parts/harmony.js?v=982e8e2e32">
-    <link rel="modulepreload" href="js/parts/kibo.js?v=dd94bdc5e2">
-    <link rel="modulepreload" href="js/parts/columbus.js?v=7d3f1f83b6">
+    <link rel="modulepreload" href="js/parts/kibo.js?v=a9423988d2">
+    <link rel="modulepreload" href="js/parts/columbus.js?v=d4f4a23b2e">
+    <link rel="modulepreload" href="js/parts/aces.js?v=fa2f210d54">
     <link rel="modulepreload" href="js/parts/tranquility.js?v=8ed0d68c0a">
     <link rel="modulepreload" href="js/parts/quest.js?v=bc896ddbe3">
     <link rel="modulepreload" href="js/parts/leonardo.js?v=0ee41cebf1">
@@ -109,24 +122,31 @@
     <link rel="modulepreload" href="js/parts/zvezda.js?v=7272398135">
     <link rel="modulepreload" href="js/parts/nauka.js?v=22abe4a613">
     <link rel="modulepreload" href="js/parts/prichal.js?v=e8df7d74de">
-    <link rel="modulepreload" href="js/sim/rendezvous.js?v=83f290ad04">
+    <link rel="modulepreload" href="js/sim/rendezvous.js?v=a54d50c51b">
     <link rel="modulepreload" href="js/parts/draco.js?v=600c72af92">
-    <link rel="modulepreload" href="js/parts/dragon.js?v=b669931ecf">
-    <link rel="modulepreload" href="js/parts/soyuz.js?v=c2f348f5a2">
-    <link rel="modulepreload" href="js/parts/robotics.js?v=a1e546c82a">
+    <link rel="modulepreload" href="js/parts/dragon.js?v=6bbf2ba2ef">
+    <link rel="modulepreload" href="js/parts/cargo-dragon.js?v=64d8bad2d8">
+    <link rel="modulepreload" href="js/parts/soyuz.js?v=eb08b87749">
+    <link rel="modulepreload" href="js/parts/robotics.js?v=485d7e028e">
+    <link rel="modulepreload" href="js/parts/dextre.js?v=0eb293c173">
     <link rel="modulepreload" href="js/parts/beam.js?v=c2c04d76ab">
     <link rel="modulepreload" href="js/parts/bishop.js?v=afad66eaf0">
     <link rel="modulepreload" href="js/parts/poisk.js?v=4a665d5ce5">
-    <link rel="modulepreload" href="js/parts/rassvet.js?v=bdee54dbe4">
+    <link rel="modulepreload" href="js/parts/rassvet.js?v=1244e992f0">
     <link rel="modulepreload" href="js/parts/z1.js?v=afd125c054">
-    <link rel="modulepreload" href="js/parts/external-payloads.js?v=50123c1b56">
-    <link rel="modulepreload" href="js/parts/assembly.js?v=495148cc5c">
-    <link rel="modulepreload" href="js/core/release.js?v=008d1cbfa3">
-    <link rel="modulepreload" href="js/figures/eva.js?v=07b36cc643">
+    <link rel="modulepreload" href="js/parts/external-payloads.js?v=78a3110812">
+    <link rel="modulepreload" href="js/parts/assembly.js?v=5f7398652d">
+    <link rel="modulepreload" href="js/core/release.js?v=24a95df0cb">
+    <link rel="modulepreload" href="js/figures/eva.js?v=370b179983">
     <link rel="modulepreload" href="js/ui/ghost.js?v=c91db6d918">
     <link rel="modulepreload" href="js/ui/rendezvous-guide.js?v=c2e18df47a">
-    <link rel="modulepreload" href="js/ui/controller.js?v=17bd63b46c">
-    <link rel="modulepreload" href="js/main.js?v=77994c1140">
+    <link rel="modulepreload" href="js/orbit/live.js?v=d045c76416">
+    <link rel="modulepreload" href="js/orbit/elements.js?v=6169072553">
+    <link rel="modulepreload" href="js/orbit/attitude.js?v=3eda245424">
+    <link rel="modulepreload" href="js/orbit/sun-track.js?v=1817ef2aa2">
+    <link rel="modulepreload" href="js/orbit/theme.js?v=25eabfe924">
+    <link rel="modulepreload" href="js/ui/controller.js?v=c5e9cd2798">
+    <link rel="modulepreload" href="js/main.js?v=894c8c5834">
     <!-- /modules -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
 </head>
@@ -142,14 +162,18 @@
                 </div>
             </div>
             <div class="header-right">
-                <div class="edition eyebrow">Low Earth orbit<strong>Assembly atlas / 1998 - 2023</strong></div>
+                <div class="edition eyebrow">Low Earth orbit<strong>Assembly atlas / 1998 - 2026</strong></div>
                 <nav class="view-switch" aria-label="Camera views"><button data-view="overview"
                         aria-pressed="false">Port</button><button data-view="reverse"
                         aria-pressed="true">Starboard</button><button data-view="zenith"
                         aria-pressed="false">Zenith</button><button data-view="forward"
-                        aria-pressed="false">Forward</button><button data-view="orbit"
-                        aria-pressed="false">Orbit</button><button data-view="launch"
-                        aria-pressed="false">Launch</button></nav>
+                        aria-pressed="false">Forward</button><span class="orbit-tab"><button data-view="orbit"
+                        aria-pressed="false" class="orbit-button">Orbit<svg class="earth-icon" viewBox="0 0 24 24" aria-hidden="true"><circle
+                        cx="12" cy="12" r="10"/><path d="M2 12h20"/><circle class="meridian" cx="12" cy="12" r="10"/><circle
+                        class="meridian late" cx="12" cy="12" r="10"/></svg></button><span class="orbit-theme" role="group" aria-label="Orbit background"><button
+                        type="button" data-orbit-theme="light" aria-pressed="true" title="Paper background">Light</button><button
+                        type="button" data-orbit-theme="dark" aria-pressed="false" title="Black background">Dark</button></span></span><button data-view="launch"
+                        aria-pressed="false" class="launch-tab">Launch<i data-lucide="rocket"></i></button></nav>
             </div>
         </header>
         <nav class="timeline" aria-label="Assembly milestones">
@@ -165,8 +189,8 @@
                         class="event">Truss completed</span></button>
                 <button class="milestone" data-part="nauka" aria-pressed="false"><span class="year">2021</span><span
                         class="event">Nauka &amp; Prichal</span></button>
-                <button class="milestone" data-part="irosa" aria-pressed="false"><span class="year">2023</span><span
-                        class="event">Six new solar arrays</span></button>
+                <button class="milestone" data-part="irosa" aria-pressed="false"><span class="year">2026</span><span
+                        class="event">Eight new solar arrays</span></button>
             </div>
         </nav>
         <section id="viewport" aria-label="Interactive three-dimensional International Space Station">
@@ -184,8 +208,8 @@
             <div id="crew-thought" class="crew-thought" aria-hidden="true" hidden><i></i><i></i><b>Claude code + Ultra code 😐</b></div>
             <div class="viewport-chrome">
                 <div class="viewport-meta"><b id="view-name">02 / STARBOARD FORWARD</b><span
-                        id="configuration-name">JUNE
-                        2023 / ILLUSTRATIVE CONFIGURATION</span></div>
+                        id="configuration-name">5 NOVEMBER
+                        2026 / ILLUSTRATIVE CONFIGURATION</span><span id="sun-state" class="sun-state" hidden></span></div>
                 <div class="orientation"><i data-lucide="compass"></i><span id="orientation-text">ZENITH +Y / FORWARD
                         -Z</span>
                 </div>
@@ -226,7 +250,12 @@
                             aria-pressed="true">ISS</button><button type="button" data-frame="moon"
                             aria-pressed="false">Earth &amp; Moon</button><button type="button" data-frame="sun"
                             aria-pressed="false">Sun</button></div>
+                    <div class="orbit-frame orbit-earth" role="group" aria-label="Earth"><button type="button" data-earth="photo"
+                            aria-pressed="true">Photo</button><button type="button" data-earth="map" aria-pressed="false"
+                            title="Coastlines and borders only, with the surface wind and the storms now">Wind map</button></div>
                     <small id="orbit-source">Loading orbital elements…</small>
+                    <small id="orbit-map-source" hidden></small>
+                    <div class="wind-legend" id="orbit-wind-legend" hidden aria-label="Wind speed, metres per second"><i></i><span>0</span><span>10</span><span>20</span><span>30+ m/s</span></div>
                 </section>
                 <section class="orbit-panel launch-panel" id="launch-panel" aria-label="Falcon 9 launch" hidden>
                     <div class="orbit-time"><b id="launch-clock">T+00:00</b><span id="launch-rate">×1</span></div>
@@ -257,7 +286,7 @@
                 <div class="scale">
                     <div class="scale-line" id="scale-line"></div><span id="scale-label">10 m</span>
                 </div>
-                <div class="drawing-note">2023 CONFIGURATION STUDY<br>SCHEMATIC / ILLUSTRATIVE POSES</div>
+                <div class="drawing-note">2026 CONFIGURATION STUDY<br>SCHEMATIC / ILLUSTRATIVE POSES</div>
             </div>
         </section>
         <aside id="inspector" aria-label="Component details" aria-live="polite" hidden>
@@ -308,10 +337,14 @@
             <button class="tool" id="motion-toggle" aria-label="Animate station and docking approach"
                 aria-pressed="true" data-tip="Scene animation"><i data-lucide="orbit"></i></button>
             <span class="divider"></span>
-            <button class="tool" id="configuration-toggle" aria-label="2023 additions" aria-pressed="false"
-                data-tip="2023 additions"><i data-lucide="layers-2"></i></button>
+            <button class="tool" id="configuration-toggle" aria-label="2026 configuration" aria-pressed="false"
+                data-tip="2026 configuration"><i data-lucide="layers-2"></i></button>
             <button class="tool" id="backdrop-toggle" aria-label="Earth backdrop" aria-pressed="false"
                 data-tip="Earth backdrop"><i data-lucide="earth"></i></button>
+            <button class="tool" id="sun-toggle" aria-label="Real Sun: arrays and light follow the Sun" aria-pressed="true"
+                data-tip="Real Sun"><i data-lucide="sun"></i></button>
+            <button class="tool" id="live-toggle" aria-label="ISS Live: joint angles and attitude from NASA telemetry" aria-pressed="false"
+                data-tip="ISS Live telemetry"><i data-lucide="radio-tower"></i></button>
             <button class="tool" id="capture" aria-label="Download station image" data-tip="Download PNG"><i
                     data-lucide="download"></i></button>
         </nav>

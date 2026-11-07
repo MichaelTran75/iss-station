@@ -5,12 +5,12 @@ import { Kit, material, shapes } from '../core/kit.js';
 import { part, parts, ring } from '../core/station.js';
 import { russianDockingBand } from './zarya.js';
 
-part('rassvet', 'Rassvet / MRM-1', '23 / RUSSIAN DOCKING & STORAGE', 'Rassvet extends below Zarya. This reference configuration shows the blanket-covered module carrying its transverse experiment airlock, stowed radiator and external support frame. The external payload arrangement follows the supplied reference views.', [['Installed', '18 MAY 2010'], ['Reference configuration', 'AIRLOCK & RADIATOR STOWED']], [0, -3.9, 17.8], (kit, group) => {
+part('rassvet', 'Rassvet / MRM-1', '23 / RUSSIAN DOCKING & STORAGE', 'Rassvet extends below Zarya. Its experiment airlock and radiator, carried up in 2010, moved to Nauka in 2023; three debris shields now cover the forward face where the airlock sat. The external fittings follow the supplied reference views.', [['Installed', '18 MAY 2010'], ['Debris shields', 'AUG 2023']], [0, -3.9, 17.8], (kit, group) => {
     group.position.y = .45;
     group.userData.attachment = 'Zarya nadir'; group.userData.dockingPorts = 2;
     group.userData.interfaceCenter = [0, -1.40, 17.8];
     group.userData.reconstruction = '2026-09-30 four supplied Rassvet reference views';
-    group.userData.externalOutfitting = 'Reference configuration with transverse airlock and stowed radiator';
+    group.userData.externalOutfitting = 'November 2026: debris shields on the forward face; airlock and radiator on Nauka since 2023';
     group.userData.skinReference = 'Poisk / MRM-2';
     const silver = 0xb7bdb8, rail = 0x999f95, dark = 0x353c3b, white = 0xf1f2ec, red = 0xd64724;
     const metal = material(silver, .60, .40), paint = material(white, .81, .12);
@@ -23,8 +23,7 @@ part('rassvet', 'Rassvet / MRM-1', '23 / RUSSIAN DOCKING & STORAGE', 'Rassvet ex
         m.bumpMap = poiskSkin.bumpMap.clone(); m.bumpMap.repeat.set(...repeat); m.bumpMap.needsUpdate = true;
         m.bumpScale = bump; m.userData = { skinReference: 'Poisk / MRM-2', poiskSkin: name }; return m;
     }
-    const blanket = skin('hull', [3.2, 3]), patch = skin('patch', [.65, .65], .014), airlockSkin = skin('airlock', [1.5, 1.1], .014);
-    const goldSkin = skin('gold-cover', [1.2, 1.2], .025); goldSkin.color.setHex(0xd99735); goldSkin.roughness = .77; goldSkin.metalness = .30;
+    const blanket = skin('hull', [3.2, 3]), patch = skin('patch', [.65, .65], .014);
     const profile = [[.72, -7.02], [.79, -6.84], [1.02, -6.50], [1.15, -6.20], [1.175, -5.98], [1.175, -2.75], [1.12, -2.43], [.93, -2.06], [.74, -1.80], [.70, -1.71]];
     function radiusAt(y) { let i = profile.findIndex(p => p[1] >= y); i = Math.max(1, i < 0 ? profile.length - 1 : i); const a = profile[i - 1], b = profile[i], t = THREE.MathUtils.clamp((y - a[1]) / (b[1] - a[1]), 0, 1); return a[0] + (b[0] - a[0]) * t * t * (3 - 2 * t); }
     const point = (a, y, lift = 0) => [Math.cos(a) * (radiusAt(y) + lift), y, 17.8 + Math.sin(a) * (radiusAt(y) + lift)];
@@ -81,68 +80,23 @@ part('rassvet', 'Rassvet / MRM-1', '23 / RUSSIAN DOCKING & STORAGE', 'Rassvet ex
         kit.rod([side * 1.22, -3.48, 16.82], [side * 1.22, -5.02, 17.63], .033, silver);
         for (const t of [.18, .55, .85]) { const y = -3.48 - 1.54 * t, z = 16.82 + .81 * t; kit.box([side * 1.22, y, z], [.14, .15, .12], silver, [.47, 0, 0], false); }
     }
-    // The airlock sits crosswise on the forward face: one gold cover and one white domed end.
-    const airlockCenter = [0, -2.82, 15.83], airlockLength = 2.22, airlockRadius = .64;
-    const airlockGroup = new THREE.Group(); airlockGroup.name = 'Rassvet transverse stowed experiment airlock'; group.add(airlockGroup);
-    const ak = new Kit();
-    ak.add(new THREE.CylinderGeometry(airlockRadius, airlockRadius, airlockLength, 72), airlockSkin, airlockCenter, [1, 1, 1], [0, 0, Math.PI / 2], false);
-    for (const x of [-1.075, 1.075]) {
-        ak.cylinder([x, -2.82, 15.83], .662, .058, silver, [0, 0, Math.PI / 2]); ring(ak, [x, -2.82, 15.83], .672, 'x', dark, .016);
-        for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; ak.box([x, -2.82 + Math.cos(a) * .70, 15.83 + Math.sin(a) * .70], [.07, .13, .075], silver, [a, 0, 0], false); }
-    }
-    ak.add(new THREE.SphereGeometry(1, 64, 40), goldSkin, [-1.13, -2.82, 15.83], [.20, .627, .627], [0, 0, 0], false);
-    ak.add(new THREE.SphereGeometry(1, 64, 40), paint, [1.13, -2.82, 15.83], [.21, .627, .627], [0, 0, 0], false);
-    ring(ak, [-1.135, -2.82, 15.83], .618, 'x', 0xb68134, .022); ring(ak, [1.135, -2.82, 15.83], .618, 'x', silver, .024);
-    // Small front panel, black connector row and top fittings visible in the broad elevation.
-    ak.box([.61, -2.88, 15.18], [.47, .23, .035], 0xc4d0cb, [0, 0, 0], false);
-    ak.box([-.59, -2.53, 15.24], [.55, .26, .085], dark, [0, 0, 0], false);
-    for (let i = 0; i < 5; i++) { ak.box([-.37 - i * .105, -2.53, 15.192], [.054, .18, .020], white, [0, 0, 0], false); for (const y of [-2.59, -2.47]) ak.cylinder([-.37 - i * .105, y, 15.173], .011, .012, dark); }
-    ak.cylinder([.02, -2.11, 15.83], .14, .24, 0xb0803e, [0, 0, 0]); ak.cylinder([.02, -1.987, 15.83], .19, .04, silver, [0, 0, 0]);
-    ak.cylinder([.70, -2.08, 15.83], .055, .25, silver, [0, 0, 0]);
-    ak.cylinder([0, -3.00, 15.19], .14, .12, silver);
-    ak.cylinder([0, -3.00, 15.14], .18, .055, 0xaa9a68); ring(ak, [0, -3.00, 15.105], .174, 'z', silver, .012);
-    for (const a of [0, Math.PI * 2 / 3, Math.PI * 4 / 3]) ak.rod([0, -3, 15.08], [Math.cos(a) * .16, -3 + Math.sin(a) * .16, 15.08], .012, silver);
-    ak.finish(airlockGroup);
-    // Open saddle rails support the airlock from the cylindrical hull; no floating end discs.
-    for (const x of [-.92, .92]) {
-        const zTop = 17.8 - Math.sqrt(radiusAt(-2.27) ** 2 - x * x), zBottom = 17.8 - Math.sqrt(radiusAt(-3.38) ** 2 - x * x);
-        for (const [y, zHull] of [[-2.27, zTop], [-3.38, zBottom]]) { kit.rod([x, y, zHull + .025], [x, y, 15.88], .030, silver); kit.box([x, y, zHull], [.16, .16, .12], silver, [0, 0, 0], false); }
-        kit.rod([x, -2.27, 15.88], [x, -3.38, 15.88], .027, silver);
-        kit.rod([x, -2.27, zTop], [x, -3.38, 15.88], .027, silver);
-        kit.rod([x, -3.38, zBottom], [x, -2.27, 15.88], .027, silver);
-    }
-    // Two wide transverse carrier bars end in four red circular plates, seen edge-on from the front.
-    const carrierGroup = new THREE.Group(); carrierGroup.name = 'Rassvet radiator stowage frame'; group.add(carrierGroup); const rk = new Kit();
-    for (const y of [-3.68, -6.46]) {
-        // Dog-leg center section clears the front skin while the red beam ends sit closer to the body.
-        rk.rod([-.66, y, 16.48], [.66, y, 16.48], .048, silver);
-        for (const side of [-1, 1]) { rk.rod([side * .66, y, 16.48], [side * .90, y, 16.84], .048, silver); rk.rod([side * .90, y, 16.84], [side * 1.94, y, 16.84], .048, silver); }
-        for (const side of [-1, 1]) {
-            rk.cylinder([side * 1.96, y, 16.84], .275, .050, red, [0, 0, Math.PI / 2]);
-            rk.cylinder([side * 2.015, y, 16.84], .057, .16, silver, [0, 0, Math.PI / 2]);
-            for (const a of [0, Math.PI * 2 / 3, Math.PI * 4 / 3]) rk.cylinder([side * 1.991, y + Math.cos(a) * .17, 16.84 + Math.sin(a) * .17], .023, .012, dark, [0, 0, Math.PI / 2]);
-            const anchor = [side * .89, y, 17.8 - Math.sqrt(radiusAt(y) ** 2 - .89 ** 2)];
-            rk.rod(anchor, [side * 1.80, y, 16.84], .040, silver); rk.box(anchor, [.20, .20, .15], silver, [0, 0, 0], false);
+    // The experiment airlock and the radiator that Rassvet carried up in 2010 were moved to Nauka by the European
+    // Robotic Arm in April and May 2023 (see the Nauka lower adapter); their saddle rails and carrier frame went with
+    // them. In August 2023 cosmonauts fitted micrometeoroid debris shields on the forward face where the airlock sat:
+    // three curved panels on stand-offs, with a handrail along each. Panel shapes are illustrative.
+    const shieldSkin = material(0xd5d8d1, .74, .18).clone(); shieldSkin.side = THREE.DoubleSide;
+    const shieldArc = .92, shieldHeight = .66;
+    for (const y of [-2.98, -3.72, -4.46]) {
+        const r = radiusAt(y) + .075;
+        kit.add(new THREE.CylinderGeometry(r, r, shieldHeight, 40, 1, true, Math.PI - shieldArc / 2, shieldArc), shieldSkin, [0, y, 17.8], [1, 1, 1], [0, 0, 0], false);
+        for (const edge of [-1, 1]) {
+            const arc = []; for (let i = 0; i <= 12; i++) arc.push(point(-Math.PI / 2 - shieldArc / 2 + shieldArc * i / 12, y + edge * shieldHeight / 2, .078));
+            for (let i = 1; i < arc.length; i++) kit.rod(arc[i - 1], arc[i], .011, silver);
         }
+        for (const a of [-Math.PI / 2 - shieldArc * .42, -Math.PI / 2, -Math.PI / 2 + shieldArc * .42]) for (const dy of [-.22, .22]) kit.rod(point(a, y + dy, .005), point(a, y + dy, .07), .016, silver);
+        kit.rod(point(-Math.PI / 2 - .3, y + .16, .13), point(-Math.PI / 2 + .3, y + .16, .13), .016, 0xd8b043);
+        for (const a of [-Math.PI / 2 - .3, -Math.PI / 2 + .3]) kit.rod(point(a, y + .16, .08), point(a, y + .16, .13), .016, 0xd8b043);
     }
-    for (const side of [-1, 1]) {
-        rk.rod([side * 1.85, -3.68, 16.84], [side * 1.37, -4.31, 16.27], .032, silver);
-        rk.rod([side * 1.85, -6.46, 16.84], [side * 1.37, -5.70, 16.27], .032, silver);
-        rk.rod([side * .86, -6.13, 17.00], [side * 1.34, -5.79, 16.32], .034, silver);
-        for (const z of [16.19, 16.31, 16.43]) {
-            rk.rod([side * 1.39, -3.95, z], [side * 1.39, -5.86, z], .022, silver);
-            for (const y of [-3.95, -5.86]) rk.rod([side * 1.30, y, z], [side * 1.39, y, z], .022, silver);
-        }
-        for (const y of [-3.95, -5.86]) rk.rod([side * 1.39, y, 16.19], [side * 1.39, y, 16.43], .025, silver);
-    }
-    // A single broad white radiator in the front view; three close parallel edges appear in side views.
-    const radiatorCenter = [0, -4.86, 16.25], radiatorSize = [2.72, 2.10, .075];
-    rk.box(radiatorCenter, radiatorSize, white, [0, 0, 0], false);
-    for (const x of [-1.367, 1.367]) rk.box([x, -4.86, 16.26], [.027, 2.14, .096], silver, [0, 0, 0], false);
-    for (const y of [-3.802, -5.918]) rk.box([0, y, 16.26], [2.76, .027, .096], silver, [0, 0, 0], false);
-    for (const x of [-1.30, 1.30]) for (const y of [-3.88, -4.54, -5.18, -5.84]) rk.cylinder([x, y, 16.20], .017, .012, silver);
-    for (const x of [-.97, .97]) for (const y of [-3.94, -5.78]) rk.box([x, y, 16.19], [.037, .28, .045], silver, [0, 0, 0], false);
-    rk.finish(carrierGroup);
     // Lower oblique equipment bracket and antenna are distinctive in the two side views.
     const a = -.47, f = frame(a, -6.28, .04), base = f.p(0, 0, .02), tip = f.p(0, -.45, .64);
     kit.rod(base, tip, .034, silver); kit.rod(f.p(.18, .03, .02), f.p(.18, -.45, .64), .023, silver);
@@ -164,5 +118,5 @@ part('rassvet', 'Rassvet / MRM-1', '23 / RUSSIAN DOCKING & STORAGE', 'Rassvet ex
         const flag = document.createElement('canvas'); flag.width = 180; flag.height = 120; const fc = flag.getContext('2d'); for (const [i, col] of ['#f5f5ef', '#234692', '#c5333c'].entries()) { fc.fillStyle = col; fc.fillRect(0, i * 40, 180, 40); }
         decal(frame(a, -3.65, .040), flag, [0, 0, .02], .43, .25);
     }
-    group.userData.referenceFeatures = { roundedBlanketHull: true, transverseAirlock: true, airlockCenter, airlockAxis: [1, 0, 0], airlockEndColors: { negativeX: 'gold', positiveX: 'white' }, stowedRadiator: true, radiatorCenter, radiatorSize, redCarrierEndplates: 4, carrierCrossbars: 2, sideEquipmentPanels: 6 };
+    group.userData.referenceFeatures = { roundedBlanketHull: true, transverseAirlock: false, debrisShields: 3, stowedRadiator: false, sideEquipmentPanels: 6 };
 });

@@ -5,7 +5,7 @@ import { parts, russianSegmentOffset, trussDrop } from '../core/station.js';
 
 // Keep the connected Russian modules in one translated frame after PMA-1 is rebuilt.
 // Add to existing placements (including Rassvet's .45 collar adjustment); local geometry and labels stay paired.
-for (const id of ['zarya', 'zvezda', 'nauka', 'prichal', 'soyuz', 'poisk', 'rassvet']) {
+for (const id of ['zarya', 'zvezda', 'nauka', 'prichal', 'soyuz', 'soyuz-ms29', 'progress-aft', 'progress-poisk', 'poisk', 'rassvet']) {
     parts.get(id).group.position.add(russianSegmentOffset);
 }
 // Lower the truss with everything it carries; Destiny's strut heads and Canadarm2's base were built at this height.

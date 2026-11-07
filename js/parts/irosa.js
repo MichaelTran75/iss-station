@@ -3,8 +3,12 @@ import * as THREE from 'three';
 import { Kit, palette } from '../core/kit.js';
 import { augmentedChannels, part, wings } from '../core/station.js';
 import { panel } from '../core/surfaces.js';
+import { sarjPivot } from '../core/sarj.js';
 
-part('irosa', 'Roll-out solar arrays', '03 / POWER AUGMENTATION', 'Six iROSA blankets augment channels 2B, 4B, 4A, 1A, 3A and 1B in this June 2023 configuration. Each flexible cell blanket stretches between two composite booms, mounted above an original wing on a triangular support kit.', [['Installed by June 2023', '6 arrays'], ['Blanket dimensions', '18.2 × 6 m']], [32, 10, -10], (kit, group) => {
+part('irosa', 'Roll-out solar arrays', '03 / POWER AUGMENTATION', 'Eight iROSA blankets, one over each of the original wings: 2B and 4B (2021), 3A and 4A (2022), 1A and 1B (2023), 2A (29 October 2026) and 3B (5 November 2026). Each flexible cell blanket stretches between two composite booms, mounted above an original wing on a triangular support kit.', [['Installed by 5 Nov 2026', '8 arrays'], ['Blanket dimensions', '18.2 × 6 m']], [34.5, 10, -10], (kit, group) => {
+    // Each overlay sits in this part's SARJ pivot exactly where its wing sits in the power part's, and copies the wing's
+    // BGA turn.
+    const pivots = { [-1]: sarjPivot(group, -1), [1]: sarjPivot(group, 1) };
     for (const wing of wings.filter(item => augmentedChannels.has(item.channel))) {
         const { direction } = wing;
         const local = new THREE.Group(), mount = new THREE.Group(), innerKit = new Kit(), mountKit = new Kit();
@@ -53,6 +57,6 @@ part('irosa', 'Roll-out solar arrays', '03 / POWER AUGMENTATION', 'Six iROSA bla
         innerKit.finish(local);
         mount.add(local); mountKit.finish(mount);
         mount.position.copy(wing.group.position); mount.userData.channel = wing.channel;
-        wing.overlay = mount; group.add(mount);
+        wing.overlay = mount; pivots[Math.sign(wing.across)].add(mount);
     }
 });

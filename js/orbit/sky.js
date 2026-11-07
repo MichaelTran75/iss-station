@@ -3,13 +3,17 @@
 // inertial frame of date (x toward the vernal equinox, z north) turned so +y points north. Two views draw it: the
 // Orbit view (js/orbit/view.js), and the station's Earth backdrop, drawn at true scale behind the station
 // (renderBehind). It loads the first time either opens. More objects (satellites, a supply ship on its way up) join
-// through addOrbiter().
+// through addOrbiter(). In the Orbit view Earth can also be drawn as a map with live wind and storms (earth-map.js).
 import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { renderer, viewport } from '../core/stage.js';
 import { quality } from '../core/quality.js';
+import { loadElements } from './elements.js';
+import { attitude } from './attitude.js';
+import { createEarthMap } from './earth-map.js';
+import { orbitTheme } from './theme.js';
 import { earthPath, earthRadius, groundTrack, moonLit, moonPath, moonPosition, moonRadius, orbitPath, orbiter, siderealAngle, stateAt,
     sunPosition, sunRadius } from '../sim/orbit.js';
 
@@ -29,30 +33,6 @@ function halved(texture) {
     const g = canvas.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(image, 0, 0, canvas.width, canvas.height);
     return new THREE.CanvasTexture(canvas);
 }
-const celestrak = norad => 'https://celestrak.org/NORAD/elements/gp.php?CATNR=' + norad + '&FORMAT=TLE';
-const cacheHours = 2;   // CelesTrak asks clients not to fetch the same elements more often than every two hours
-
-// Elements for an object: a fresh cached copy, else CelesTrak, else the copy that ships with the page.
-async function loadElements(norad) {
-    const key = 'iss-atlas-tle-' + norad;
-    try {
-        const cached = JSON.parse(localStorage.getItem(key));
-        if (cached && Date.now() - cached.fetched < cacheHours * 3600000) return { tle: cached.tle, source: 'CelesTrak', fetched: cached.fetched };
-    } catch (error) { /* storage blocked: fetch instead */ }
-    try {
-        const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 5000);
-        const response = await fetch(celestrak(norad), { signal: abort.signal }); clearTimeout(timer);
-        const tle = (await response.text()).split('\n').map(line => line.trim()).filter(line => /^[12] /.test(line));
-        if (!response.ok || tle.length !== 2) throw new Error('no elements');
-        try { localStorage.setItem(key, JSON.stringify({ tle, fetched: Date.now() })); } catch (error) { /* not cached */ }
-        return { tle, source: 'CelesTrak', fetched: Date.now() };
-    } catch (error) {
-        const response = await fetch('data/orbits.json?v=b2a99426e6');
-        const data = await response.json(), entry = data.objects.find(object => object.norad === norad);
-        return { tle: entry.tle, source: 'CelesTrak (copy of ' + data.fetched.slice(0, 10) + ')', fetched: Date.parse(data.fetched) };
-    }
-}
-
 function canvasTexture(size, draw) {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
     draw(canvas.getContext('2d'), size); return new THREE.CanvasTexture(canvas);
@@ -81,7 +61,7 @@ export function createSky() {
     // Earth: the day map lit by the Sun, with the detail map's clouds over it and a glint of the Sun on open water;
     // city lights on the night side; a soft terminator. Detail map: red relief, green roughness (0 on water), blue clouds.
     const uniforms = { dayMap: { value: null }, nightMap: { value: null }, detailMap: { value: null }, hasDay: { value: 0 }, hasNight: { value: 0 },
-        hasDetail: { value: 0 }, sunDirection: { value: new THREE.Vector3(1, 0, 0) } };
+        hasDetail: { value: 0 }, sunDirection: { value: new THREE.Vector3(1, 0, 0) }, mapStyle: { value: 0 }, mapLight: { value: 0 } };
     load('earth_day_4096.jpg', texture => { uniforms.dayMap.value = texture; uniforms.hasDay.value = 1; });
     load('earth_night_4096.jpg', texture => { uniforms.nightMap.value = texture; uniforms.hasNight.value = 1; });
     load('earth_bump_roughness_clouds_4096.jpg', texture => { uniforms.detailMap.value = texture; uniforms.hasDetail.value = 1; }, false);
@@ -89,29 +69,47 @@ export function createSky() {
         uniforms,
         vertexShader: `varying vec2 vUv; varying vec3 vNormalW; varying vec3 vPositionW;
             void main() { vUv = uv; vNormalW = normalize(mat3(modelMatrix) * normal); vec4 world = modelMatrix * vec4(position, 1.0); vPositionW = world.xyz; gl_Position = projectionMatrix * viewMatrix * world; }`,
-        fragmentShader: `uniform sampler2D dayMap; uniform sampler2D nightMap; uniform sampler2D detailMap; uniform float hasDay; uniform float hasNight; uniform float hasDetail; uniform vec3 sunDirection;
+        fragmentShader: `uniform sampler2D dayMap; uniform sampler2D nightMap; uniform sampler2D detailMap; uniform float hasDay; uniform float hasNight; uniform float hasDetail; uniform vec3 sunDirection; uniform float mapStyle; uniform float mapLight;
             varying vec2 vUv; varying vec3 vNormalW; varying vec3 vPositionW;
             void main() {
                 vec3 normal = normalize(vNormalW);
                 float light = dot(normal, sunDirection), day = smoothstep(-.1, .16, light);
                 vec3 detail = hasDetail > .5 ? texture2D(detailMap, vUv).rgb : vec3(.5, 1., 0.);
                 float clouds = smoothstep(.2, 1., detail.b), water = 1. - smoothstep(.05, .3, detail.g);
-                vec3 dayColor = hasDay > .5 ? texture2D(dayMap, vUv).rgb : vec3(.05, .12, .2);
-                dayColor = mix(dayColor, vec3(.92), clouds * .9);
-                vec3 nightColor = hasNight > .5 ? texture2D(nightMap, vUv).rgb * vec3(1., .82, .55) * 1.4 * (1. - clouds * .8) : vec3(0.);
-                vec3 halfway = normalize(sunDirection + normalize(cameraPosition - vPositionW));
-                float glint = pow(max(dot(normal, halfway), 0.), 400.) * water * (1. - clouds) * max(light, 0.) * .55;
-                gl_FragColor = vec4(mix(nightColor + dayColor * .025, dayColor * (.06 + 1.1 * max(light, 0.)) + glint, day), 1.);
-                #include <tonemapping_fragment>
+                if (mapStyle > .5) {
+                    // Map: no clouds, no lights, no glint. Dark: dark land, darker sea, a little lighter by day. Light (the
+                    // page's paper, not tone mapped): land a shade lighter than the paper, sea a shade darker, night dimmer.
+                    vec3 dark = mix(vec3(.0085, .0112, .015), vec3(.0042, .0062, .0092), water) * (.5 + .5 * day);
+                    vec3 paper = mix(vec3(.815, .74, .6), vec3(.64, .6, .5), water) * (.84 + .16 * day);
+                    gl_FragColor = vec4(mix(dark, paper, mapLight), 1.);
+                } else {
+                    vec3 dayColor = hasDay > .5 ? texture2D(dayMap, vUv).rgb : vec3(.05, .12, .2);
+                    dayColor = mix(dayColor, vec3(.92), clouds * .9);
+                    vec3 nightColor = hasNight > .5 ? texture2D(nightMap, vUv).rgb * vec3(1., .82, .55) * 1.4 * (1. - clouds * .8) : vec3(0.);
+                    vec3 halfway = normalize(sunDirection + normalize(cameraPosition - vPositionW));
+                    float glint = pow(max(dot(normal, halfway), 0.), 400.) * water * (1. - clouds) * max(light, 0.) * .55;
+                    gl_FragColor = vec4(mix(nightColor + dayColor * .025, dayColor * (.06 + 1.1 * max(light, 0.)) + glint, day), 1.);
+                }
+                #if defined( TONE_MAPPING )
+                    if (mapStyle < .5 || mapLight < .5) gl_FragColor.rgb = toneMapping(gl_FragColor.rgb);
+                #endif
                 #include <colorspace_fragment>
             }`
     }));
     scene.add(earth);
-    // Atmosphere: a rim glow, brighter on the day side.
+    const earthMap = createEarthMap(earth);
+    // The Orbit view's Earth: ?earth=map (or photo) picks it; otherwise the one last picked in this browser.
+    let earthStyle = 'photo', lastDelta = 0;
+    try { earthStyle = localStorage.getItem('iss.orbit.earth') === 'map' ? 'map' : 'photo'; } catch (error) { /* no storage: photo */ }
+    const askedStyle = new URLSearchParams(location.search).get('earth');
+    if (askedStyle) earthStyle = askedStyle === 'map' ? 'map' : 'photo';
+    // Atmosphere: a rim glow, brighter on the day side; dimmer and greyer round the map. On paper (the light Orbit view)
+    // a thin blue rim laid over the page instead (added light would only bleach it), and none round the map.
+    const photoGlow = new THREE.Vector3(.35, .62, 1), mapGlow = new THREE.Vector3(.1, .14, .2), paperGlow = new THREE.Vector3(.36, .55, .78);
     const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(earthRadius * 1.028, 128, 64), new THREE.ShaderMaterial({
-        uniforms: { sunDirection: uniforms.sunDirection },
+        uniforms: { sunDirection: uniforms.sunDirection, glow: { value: photoGlow.clone() }, additive: { value: 1 } },
         vertexShader: 'varying vec3 vNormal; varying vec3 vNormalW; void main() { vNormal = normalize(normalMatrix * normal); vNormalW = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-        fragmentShader: 'uniform vec3 sunDirection; varying vec3 vNormal; varying vec3 vNormalW; void main() { float rim = pow(max(0., .66 + dot(vNormal, vec3(0., 0., 1.))), 3.); float lit = .2 + .8 * smoothstep(-.35, .35, dot(normalize(vNormalW), sunDirection)); gl_FragColor = vec4(vec3(.35, .62, 1.) * rim * lit, 1.); }',
+        fragmentShader: 'uniform vec3 sunDirection; uniform vec3 glow; uniform float additive; varying vec3 vNormal; varying vec3 vNormalW; void main() { float rim = pow(max(0., .66 + dot(vNormal, vec3(0., 0., 1.))), 3.); float lit = .2 + .8 * smoothstep(-.35, .35, dot(normalize(vNormalW), sunDirection)); gl_FragColor = additive > .5 ? vec4(glow * rim * lit, 1.) : vec4(glow, clamp(rim * (.35 + .65 * lit) * 1.6, 0., .85)); }',
         side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false
     }));
     scene.add(atmosphere);
@@ -129,7 +127,8 @@ export function createSky() {
 
     // The Sun: its disc at true size and distance, and a glow of fixed screen size so it shows at any distance.
     const sun = new THREE.Group();
-    sun.add(new THREE.Mesh(new THREE.SphereGeometry(sunRadius, 48, 24), new THREE.MeshBasicMaterial({ color: 0xfff6e0 })));
+    const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(sunRadius, 48, 24), new THREE.MeshBasicMaterial({ color: 0xfff6e0 }));
+    sun.add(sunDisc);
     const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap('rgba(255,246,220,.95)', 'rgba(255,220,160,0)'), depthWrite: false, sizeAttenuation: false, blending: THREE.AdditiveBlending }));
     sunGlow.scale.setScalar(.08); sun.add(sunGlow); scene.add(sun);
     // The Moon, lit by the Sun, so its phase is the real one; its near side faces Earth.
@@ -158,14 +157,20 @@ export function createSky() {
         const material = new LineMaterial({ vertexColors: true, linewidth: width, transparent: true, depthWrite: false });
         lineMaterials.push(material); return new Line2(new LineGeometry(), material);
     }
+    // Faded toward the background: black, or the page's paper in the light Orbit view (`lineTheme`).
+    let lineTheme = 'dark';
+    const paper = new THREE.Color('#e2d6c0'), black = new THREE.Color(0, 0, 0), faded = new THREE.Color();
     function fadeColours(count, nowIndex, colour) {
-        const base = new THREE.Color(colour), colours = new Float32Array(count * 3);
+        const base = new THREE.Color(colour), toward = lineTheme === 'light' ? paper : black, colours = new Float32Array(count * 3);
         for (let k = 0; k < count; k++) {
             const fade = k >= nowIndex ? 1 - .55 * (k - nowIndex) / Math.max(1, count - nowIndex) : .18 + .3 * k / Math.max(1, nowIndex);
-            colours.set([base.r * fade, base.g * fade, base.b * fade], k * 3);
+            faded.copy(toward).lerp(base, fade); colours.set([faded.r, faded.g, faded.b], k * 3);
         }
         return colours;
     }
+    // Line colours, dark and light Orbit view.
+    const ink = { moon: ['#c9d1d9', '#5f6670'], earth: ['#e0c27a', '#8a6a2a'], track: ['#ffc766', '#b4691d'] };
+    const inkFor = pair => pair[lineTheme === 'light' ? 1 : 0];
     function setFadedLine(target, points, colour, nowIndex) {
         const positions = new Float32Array(points.length * 3);
         points.forEach((point, k) => positions.set([point.x, point.y, point.z], k * 3));
@@ -178,9 +183,10 @@ export function createSky() {
     // Orbiting objects: marker, label, orbit, ground track and a line down to the ground for the Orbit view; the orbit
     // as a ring of dots for the backdrop.
     const orbiters = [];
-    function addOrbiter({ id, name, label: shortName, norad, colour = '#91d8c3', showTrack = true }) {
-        const entry = { id, name, label: shortName || name, norad, colour, showTrack, object: null, state: null, source: '', fetched: 0, trackAt: 0 };
-        entry.marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotMap(colour), sizeAttenuation: false, depthWrite: false }));
+    function addOrbiter({ id, name, label: shortName, norad, colour = '#91d8c3', lightColour = '#246c60', showTrack = true }) {
+        const entry = { id, name, label: shortName || name, norad, colour, lightColour, showTrack, object: null, state: null, source: '', fetched: 0, trackAt: 0 };
+        entry.dotMaps = [dotMap(colour), dotMap(lightColour)];
+        entry.marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: entry.dotMaps[0], sizeAttenuation: false, depthWrite: false }));
         entry.marker.scale.setScalar(.026); entry.marker.renderOrder = 3; entry.marker.visible = false; scene.add(entry.marker);
         entry.orbit = line(2.2); entry.track = line(1.8);
         earth.add(entry.track); scene.add(entry.orbit);
@@ -200,8 +206,8 @@ export function createSky() {
     function refreshPaths(entry, date) {
         const period = entry.object.period;
         const orbit = orbitPath(entry.object, date, -period / 2, period / 2, 240).map(point => toScene(point));
-        setFadedLine(entry.orbit, orbit, entry.colour, 120);
-        if (entry.showTrack) setFadedLine(entry.track, groundTrack(entry.object, date, -45, 90, 270, earthRadius + 10).map(point => toScene(point)), '#ffc766', 90);
+        setFadedLine(entry.orbit, orbit, lineTheme === 'light' ? entry.lightColour : entry.colour, 120);
+        if (entry.showTrack) setFadedLine(entry.track, groundTrack(entry.object, date, -45, 90, 270, earthRadius + 10).map(point => toScene(point)), inkFor(ink.track), 90);
         // Dots for the backdrop, bright ahead and dim behind: a third of a revolution round the station, fading out at both
         // ends so the far side of the orbit does not hook up over Earth's limb seen from close; and the whole revolution for
         // the backdrop seen from far out.
@@ -228,6 +234,7 @@ export function createSky() {
     let lit = 0;
     // `at`: draw the sky at that date instead (the Launch view replays a past launch); the orbiters then wait.
     function update(delta, at) {
+        lastDelta = delta;
         if (time.warp !== 1 && !at) time.offset += delta * 1000 * (time.warp - 1);
         const date = time.date = at || new Date(Date.now() + time.offset);
         toScene(sunPosition(date), sun.position);
@@ -240,9 +247,9 @@ export function createSky() {
         moon.quaternion.setFromRotationMatrix(basis.makeBasis(towardEarth, north, side.crossVectors(towardEarth, north)));
         earth.rotation.y = siderealAngle(date);
         if (!(Math.abs(date - paths.moonAt) < 3600000 * Math.max(1, time.warp / 60))) {
-            setFadedLine(moonOrbit, moonPath(date, 240).map(point => toScene(point)), '#c9d1d9', 120); paths.moonAt = date.getTime(); lit = moonLit(date);
+            setFadedLine(moonOrbit, moonPath(date, 240).map(point => toScene(point)), inkFor(ink.moon), 120); paths.moonAt = date.getTime(); lit = moonLit(date);
         }
-        if (!(Math.abs(date - paths.earthAt) < 86400000)) { setFadedLine(earthOrbit, earthPath(date, 360).map(point => toScene(point)), '#e0c27a', 180); paths.earthAt = date.getTime(); }
+        if (!(Math.abs(date - paths.earthAt) < 86400000)) { setFadedLine(earthOrbit, earthPath(date, 360).map(point => toScene(point)), inkFor(ink.earth), 180); paths.earthAt = date.getTime(); }
         for (const entry of orbiters) {
             if (!entry.object || at) continue;
             entry.state = stateAt(entry.object, date);
@@ -261,8 +268,34 @@ export function createSky() {
     // the camera is (the near plane a quarter of the way to the nearest surface, or closer than `nearest` km, the far
     // plane past Earth's orbit).
     const cameraDistance = new THREE.Vector3();
+    // The Orbit view on paper (light) or black (dark): what shows against the background changes with it. Colours meant
+    // for the paper are shown as given (no tone mapping); the dark sky keeps it.
+    let appliedTheme = 'dark';
+    const untoned = (material, on) => { if (material.toneMapped === on) { material.toneMapped = !on; material.needsUpdate = true; } };
+    function applyTheme(theme) {
+        const light = theme === 'light';
+        appliedTheme = lineTheme = theme;
+        stars.visible = !light;
+        uniforms.mapLight.value = light ? 1 : 0;
+        atmosphere.material.uniforms.additive.value = light ? 0 : 1; atmosphere.material.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending;
+        // The Sun: a white-hot disc and glow added to black; an amber disc and halo laid on paper.
+        sunDisc.material.color.set(light ? 0xe8962e : 0xfff6e0); untoned(sunDisc.material, light);
+        sunGlow.material.color.set(light ? 0xf0a640 : 0xffffff); sunGlow.material.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending; untoned(sunGlow.material, light);
+        earthMarker.material.color.set(light ? 0x2f6f9f : 0x6fa8dc); moonMarker.material.color.set(light ? 0x5f6670 : 0xc9ccd1);
+        for (const material of [earthMarker.material, moonMarker.material, ...lineMaterials]) untoned(material, light);
+        for (const entry of orbiters) {
+            entry.marker.material.map = entry.dotMaps[light ? 1 : 0]; untoned(entry.marker.material, light);
+            entry.nadir.material.color.set(light ? entry.lightColour : entry.colour); untoned(entry.nadir.material, light);
+            entry.trackAt = -Infinity;   // its paths again, in the new colours
+        }
+        paths.moonAt = paths.earthAt = NaN;
+        earthMap.setTheme(theme);
+    }
     function prepare(camera, mode, nearest = Infinity) {
         const orbitView = mode === 'orbit', fromEarth = camera.position.length();
+        // The Orbit view's background (js/orbit/theme.js); the backdrop behind the station and the Launch view are dark.
+        const theme = orbitView ? orbitTheme.name : 'dark';
+        if (theme !== appliedTheme) applyTheme(theme);
         for (const entry of orbiters) {
             entry.marker.visible = orbitView && !!entry.state && fromEarth < 3e5;
             entry.orbit.visible = entry.nadir.visible = orbitView && fromEarth < 3e5;
@@ -284,6 +317,12 @@ export function createSky() {
             body.marker.position.copy(body.object.position);
             body.marker.visible = body.radius / cameraDistance.subVectors(camera.position, body.object.position).length() * pixelsPerRadian < 2.5;
         }
+        // The map (Orbit view only): its own Earth, a quieter rim, no labels.
+        const mapOn = orbitView && earthStyle === 'map', light = theme === 'light';
+        uniforms.mapStyle.value = mapOn ? 1 : 0;
+        atmosphere.visible = !(light && mapOn); atmosphere.material.uniforms.glow.value.copy(light ? paperGlow : mapOn ? mapGlow : photoGlow);
+        earthMap.show(mapOn); viewport.classList.toggle('earth-map', mapOn);
+        if (mapOn) earthMap.frame(lastDelta, camera, time.date);
     }
     // Labels beside their objects (Orbit view only), hidden when Earth is in the way or off screen.
     const projected = new THREE.Vector3(), toObject = new THREE.Vector3();
@@ -314,15 +353,16 @@ export function createSky() {
         placeLabel(camera, bodies[2].element, sun.position, 'SUN · ' + million(sun.position.length()), orbitView);
     }
     function hideLabels() { for (const element of [...orbiters.map(entry => entry.element), ...bodies.map(body => body.element)]) element.hidden = true; }
-    function resize(width, height) { for (const material of lineMaterials) material.resolution.set(width, height); }
+    function resize(width, height) { for (const material of lineMaterials) material.resolution.set(width, height); earthMap.resize(width, height); }
 
     // The station's Earth backdrop, at true scale. The station is drawn with an orthographic camera; the sky behind it is
     // drawn by the perspective camera that shows the same picture at the station camera's target. Its eye sits back
     // along the view by the distance at which a 45° field of view spans the station's frame there, and its frustum is
     // shifted as the station's frame is, so the target falls on the same pixel in both and the station keeps its real
     // size against Earth, the Moon and the Sun.
-    // - The station frame (zenith +y, velocity -z, starboard +x) is the ISS's local vertical, local horizontal frame (the
-    //   station flies close to it): Earth stays below and the ground is the ground under the ISS now.
+    // - The station frame (starboard +x, zenith +y, aft +z) is the ISS's local vertical, local horizontal frame turned
+    //   by its attitude (js/orbit/attitude.js: -XVV, end for end, as flown in November 2026, or ISS Live's): Earth
+    //   stays below and the ground is the ground under the ISS now, sliding toward the station's forward end at -XVV.
     // - Framed close, the eye is a few hundred metres from the station, and Earth is what the crew see from 420 km: the
     //   horizon 20° below level and the ground sliding past at 7.7 km/s. Zoomed out, the eye pulls away: Earth shrinks
     //   to a globe once the frame is thousands of kilometres high, and the station to a dot (`marked`: the ISS marker and
@@ -330,12 +370,16 @@ export function createSky() {
     //   distant Earth, and far out Earth moves with it.
     const backdropCamera = new THREE.PerspectiveCamera(45, 1, 1, 1e9), halfView = Math.tan(22.5 * Math.PI / 180);
     const zenith = new THREE.Vector3(), starboard = new THREE.Vector3(), aft = new THREE.Vector3(), frame = new THREE.Quaternion(), stationTurn = new THREE.Quaternion();
+    const axes = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
     const look = new THREE.Vector3(), eye = new THREE.Vector3();
     function renderBehind(stationCamera, target, width, height, marked) {
         if (!iss.state) return false;
         toScene(iss.state.position, position); toScene(iss.state.velocity, velocity);
         zenith.copy(position).normalize(); starboard.crossVectors(velocity, zenith).normalize(); aft.crossVectors(starboard, zenith);
-        frame.setFromRotationMatrix(basis.makeBasis(starboard, zenith, aft));
+        // The station's axes: row i of the attitude's turn gives axis i in the +XVV frame (starboard, zenith, aft).
+        const turn = attitude.turn;
+        axes.forEach((axis, i) => axis.set(0, 0, 0).addScaledVector(starboard, turn[3 * i]).addScaledVector(zenith, turn[3 * i + 1]).addScaledVector(aft, turn[3 * i + 2]));
+        frame.setFromRotationMatrix(basis.makeBasis(axes[0], axes[1], axes[2]));
         stationCamera.getWorldQuaternion(stationTurn);
         backdropCamera.quaternion.multiplyQuaternions(frame, stationTurn);
         // The station camera's frame at its target, in metres (OrthographicCamera keeps the frame's centre as it zooms).
@@ -374,5 +418,9 @@ export function createSky() {
             }
         });
     }
-    return { scene, earth, moon, sun, iss, orbiters, addOrbiter, time, update, prepare, placeLabels, hideLabels, resize, renderBehind, release, moonLit: () => Math.round(lit * 100), ready: iss.ready };
+    return { scene, earth, moon, sun, iss, orbiters, addOrbiter, time, update, prepare, placeLabels, hideLabels, resize, renderBehind, release, moonLit: () => Math.round(lit * 100), ready: iss.ready,
+        get earthStyle() { return earthStyle; }, setEarthStyle(name) {
+            earthStyle = name === 'map' ? 'map' : 'photo';
+            try { localStorage.setItem('iss.orbit.earth', earthStyle); } catch (error) { /* not kept */ }
+        }, mapStatus: () => earthMap.status(), mapLegend: () => earthMap.legend() };
 }

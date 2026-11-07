@@ -6,7 +6,7 @@ import { part, ring } from '../core/station.js';
 import { curvedCbmSaddle } from '../core/cbm.js';
 import { hullBadge, quiltMap } from '../core/surfaces.js';
 
-part('kibo', 'Kibo laboratory', '08 / JAPAN - JAXA', 'Japan\'s laboratory: the pressurized module, with its logistics module on top and the Japanese flag on its forward side, leads to a 12-interface exposed facility carrying payloads on its deck and edges, including the ICS dish. The six-joint main arm has two long booms and a short wrist boom. The exposed deck, seven edge payloads and parked arm follow the supplied 3D reference; surface details are procedural.', [['Main lab length', '11.2 m'], ['External interfaces', '12']], [-8.689909, 2, -4.7], (kit, group) => {
+part('kibo', 'Kibo laboratory', '08 / JAPAN - JAXA', 'Japan\'s laboratory: the pressurized module, with its logistics module on top and the Japanese flag on its forward side, leads to a 12-interface exposed facility carrying payloads on its deck and edges. The six-joint main arm has two long booms and a short wrist boom. The exposed deck, six edge payloads and parked arm follow the supplied 3D reference, less the retired ICS communication dish; surface details are procedural.', [['Main lab length', '11.2 m'], ['External interfaces', '12']], [-8.689909, 2, -4.7], (kit, group) => {
     // Move the complete lab and its EF/arm together to the compact reference interface.
     group.position.x = 1.310091;
     group.userData.connectionTranslation = [1.310091, 0, 0];
@@ -292,12 +292,12 @@ part('kibo', 'Kibo laboratory', '08 / JAPAN - JAXA', 'Japan\'s laboratory: the p
         efKit.rod([4.46, -.71665, z], [5.02, -.71665, z], .035, palette.silver);
     }
     efKit.finish(ef);
-    // Seven instruments, including OCO-3 and ECOSTRESS, which are separate
-    // scene roots in the source file rather than children of node92.
+    // Six instruments, including OCO-3 and ECOSTRESS, which are separate scene roots in the source file rather than
+    // children of node92. The source's seventh, the ICS communication dish, is left off: it is no longer on the deck in
+    // the 2026 configuration, and its site stays bare.
     const payloads = [
         { name: 'Forward instrument', center: [.97290647, -.38442150, 4.00344181], size: [.82702392, 1.03377688, 1.90928817], grapple: [.97432876, .171, 3.6762414] },
         { name: 'OCO-3', center: [2.11076593, -.48857705, 3.82613015], size: [.73736095, 1.01999962, 1.84064102], grapple: [2.12838, .0795, 3.66207] },
-        { name: 'ICS dish payload', center: [4.43893480, -.38442168, 4.00616074], size: [.82702351, 1.03377688, 1.91472626], grapple: [4.44037437, .171, 3.67623997], dish: true },
         { name: 'Opposite-side instrument', center: [3.28366208, -.38442147, -1.84965289], size: [.82702398, 1.033777, 1.72123647], grapple: [3.28435612, .171, -1.61647487] },
         { name: 'CATS', center: [4.43893181, -.38442209, -1.77815232], size: [.82702425, 1.03377694, 1.86423737], grapple: [4.43708, .168, -1.59513] },
         { name: 'Distal instrument', center: [6.48581505, -.41369241, 2.06650233], size: [1.90928888, 1.033777, .82702386], grapple: [6.162961, .14517, 2.06468153] },
@@ -308,20 +308,11 @@ part('kibo', 'Kibo laboratory', '08 / JAPAN - JAXA', 'Japan\'s laboratory: the p
         const assembly = new THREE.Group(), pk = new Kit(); assembly.name = 'Kibo EF / ' + payload.name;
         const [x, y, z] = payload.center, [w, h, d] = payload.size;
         assembly.userData.referenceCenter = payload.center; assembly.userData.referenceSize = payload.size;
-        // Fold lines on white thermal covers, with a recessed well for the ICS reflector.
-        if (payload.dish) {
-            pk.box([x, y, 3.526], [w, h, .954], palette.white);
-            pk.box([x, y - h / 2 + .06, 4.484], [w, .12, .96], palette.silver);
-            for (const side of [-1, 1]) pk.box([x + side * (w / 2 - .025), y, 4.484], [.05, h, .96], palette.white);
-            pk.box([x, y, 4.939], [w, h, .05], palette.white);
-            pk.add(new THREE.SphereGeometry(.3552, 28, 12, 0, Math.PI * 2, 0, Math.PI / 2), material(palette.silver, .32, .7), [4.445709, -.472, 4.427698], [1, .595, 1]);
-            ring(pk, [4.445709, -.467, 4.427698], .3552, 'y', palette.hull, .017);
-        } else {
-            pk.box(payload.center, payload.size, palette.white);
-            for (let n = 0; n < 5; n++) {
-                const zz = z - d * .43 + n * d * .21;
-                pk.rod([x - w * .43, y + h / 2 + .009, zz], [x + w * .43, y + h / 2 + .012, zz + d * .025], .006, 0xc5cac5);
-            }
+        // Fold lines on white thermal covers.
+        pk.box(payload.center, payload.size, palette.white);
+        for (let n = 0; n < 5; n++) {
+            const zz = z - d * .43 + n * d * .21;
+            pk.rod([x - w * .43, y + h / 2 + .009, zz], [x + w * .43, y + h / 2 + .012, zz + d * .025], .006, 0xc5cac5);
         }
         for (const side of [-1, 1]) {
             const xx = x + side * w * .501;
@@ -336,14 +327,14 @@ part('kibo', 'Kibo laboratory', '08 / JAPAN - JAXA', 'Japan\'s laboratory: the p
         if (payload.name === 'OCO-3') {
             pk.box([x, y, z + d / 2 + .012], [.52, .48, .025], 0x5e6b70);
             pk.cylinder([x, y + h / 2 + .029, z + .60], .098, .035, palette.silver, [0, 0, 0]);
-        } else if (!payload.dish) {
+        } else {
             const alongX = w > d, outward = Math.sign(z - deckCenter[2]);
             pk.box([x + (alongX ? w / 2 + .006 : 0), y, z + (alongX ? 0 : outward * (d / 2 + .006))], alongX ? [.015, h * .64, d * .66] : [w * .66, h * .64, .015], 0x82908f, [0, 0, 0], false);
         }
         pk.finish(assembly); ef.add(assembly);
     }
     group.add(ef);
-    group.userData.exposedPayloads = 7;
+    group.userData.exposedPayloads = 6;
     group.userData.referenceDeckFittings = 3;
 
     // Reference pose: the two long JEMRMS booms run along the deck,

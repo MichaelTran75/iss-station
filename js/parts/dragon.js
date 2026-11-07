@@ -51,11 +51,11 @@ const dragonSkins = {
     glass: material(0x183241, .22, .48), ring: material(0xc4c8c6, .4, .35), solar: material(0xffffff, .82, .1, dragonCells),
     solarFin: material(0x1d2232, .6, .22), stripe: material(0x511212, .62, .2)
 };
-// The capsule and trunk alone, for the Launch view: hull and nose cone without outlines, cabin or thrusters, in the
-// Dragon frame (+z toward the nose).
-export function dragonHull() {
+// The capsule and trunk alone, for the Launch view and the docked cargo Dragon: hull and nose cone without outlines,
+// cabin or thrusters, in the Dragon frame (+z toward the nose). `cargo` plates the windows over in the white skin.
+export function dragonHull(cargo = false) {
     const group = new THREE.Group(), noseCone = new THREE.Group(), kit = new Kit(), coneKit = new Kit();
-    for (const [where, surface, positions, indices] of dragonReference.parts) (where === 'n' ? coneKit : kit).add(dragonMesh(positions, indices, surface), dragonSkins[surface], [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
+    for (const [where, surface, positions, indices] of dragonReference.parts) (where === 'n' ? coneKit : kit).add(dragonMesh(positions, indices, surface), dragonSkins[cargo && surface === 'glass' ? 'white' : surface], [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
     kit.finish(group); coneKit.finish(noseCone); noseCone.position.fromArray(dragonReference.hinge); group.add(noseCone);
     return { group, noseCone, openAngle: dragonReference.openAngle };
 }
@@ -282,7 +282,7 @@ const dragonMass = 12500;
 const burnTimes = rendezvous.impulses.map(impulse => {
     const direction = lvlhToStation(impulse.deltaV), speed = direction.length(), at = rendezvous.animAt(impulse.mission);
     // The pods' four aft-canted thrusters push along the axis at cos 26.6° each.
-    const seconds = speed * dragonMass / (4 * dracoThrust * .894), warp = rendezvous.state(impulse.mission).warp || 60;
+    const seconds = speed * dragonMass / (4 * dracoThrust * .894), warp = rendezvous.warpAt(impulse.mission);
     return { at, direction: direction.normalize(), length: Math.max(.9, seconds / warp) };
 });
 const firing = new Float32Array(dracoNozzles.length), commanded = new THREE.Vector3();
@@ -306,7 +306,7 @@ function updateDracos(delta) {
 export function updateApproach(delta) {
     approach.time = Math.min(approach.duration, approach.time + Math.max(0, delta));
     const state = rendezvous.state(rendezvous.missionAt(approach.time));
-    Object.assign(approach, { mission: state.mission, range: state.range, phase: state.phase, label: state.label, warp: state.warp });
+    Object.assign(approach, { mission: state.mission, range: state.range, phase: state.phase, label: state.label, warp: rendezvous.warpAt(state.mission) });
     lvlhToStation([state.position[0], Math.max(state.position[1], approach.contactGap), state.position[2]], approach.offset);
     lvlhToStation(state.thrust, approach.thrust);
     dragon.group.position.copy(dockedOffset).add(approach.offset);
@@ -316,7 +316,7 @@ export function updateApproach(delta) {
 // Phase for the readout, with the time warp while the animation compresses time.
 export function approachPhase() {
     if (approach.time >= approach.duration) return 'DOCKED';
-    return approach.label + ' ×' + approach.warp;
+    return approach.label + ' ×' + Math.round(approach.warp);
 }
 // Every 12 s the crew member in seat 1 raises the right arm, turns the hand palm-down, points the index finger, touches
 // the trace on the right-hand screen and then the green key below it, and settles back. Steps are [start, end, from,

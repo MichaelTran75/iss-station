@@ -80,11 +80,44 @@ export function createRendezvous(meanMotion) {
     const vbar = solvedProfile(cruise => [[0, -arrival[3]], [60, cruise], [vbarTime - 150, cruise], [vbarTime, 0]], w1[1] - w2[1], vbarTime);
     const final = solvedProfile(cruise => [[0, 0], [30, cruise], [finalTime - 60, cruise], [finalTime, contactSpeed]], w2[1], finalTime);
 
-    let mission = 0, anim = 0;
-    for (const phase of phases) {
-        Object.assign(phase, { start: mission, end: mission + phase.seconds, animStart: anim, animEnd: anim + phase.seconds / phase.warp });
-        mission = phase.end; anim = phase.animEnd;
+    let mission = 0;
+    for (const phase of phases) { Object.assign(phase, { start: mission, end: mission + phase.seconds }); mission = phase.end; }
+    // The warp eases between phases on a log scale instead of stepping, so Dragon's speed on screen never jumps. At
+    // WP1 Dragon moves through the change (×60 → ×30), so the ease spans three minutes of mission time centred on it;
+    // before the final approach and after contact Dragon is at rest and only the clock shows it, so 30 s there.
+    const blends = [];
+    for (let k = 1; k < phases.length; k++) {
+        const before = phases[k - 1], after = phases[k], at = after.start;
+        if (before.warp === after.warp) continue;
+        const [from, to] = after.key === 'vbar' ? [at - 90, at + 90] : after.key === 'final' ? [at - 30, at] : [at, at + 30];
+        blends.push({ from, to, a: Math.log(before.warp), b: Math.log(after.warp) });
     }
+    const smooth = t => t * t * t * (t * (t * 6 - 15) + 10);
+    function warpAt(t) {
+        for (const blend of blends) if (t >= blend.from && t < blend.to) return Math.exp(blend.a + (blend.b - blend.a) * smooth((t - blend.from) / (blend.to - blend.from)));
+        return (phases.find(item => t < item.end) || phases[phases.length - 1]).warp;
+    }
+    // Animation time is the integral of 1 / warp over mission time, tabulated every half second (Simpson's rule).
+    const tableStep = .5, tableCount = Math.ceil(mission / tableStep), animTable = new Float64Array(tableCount + 1);
+    for (let i = 1; i <= tableCount; i++) {
+        const m0 = (i - 1) * tableStep, m1 = Math.min(i * tableStep, mission);
+        animTable[i] = animTable[i - 1] + (m1 - m0) * (1 / warpAt(m0) + 4 / warpAt((m0 + m1) / 2) + 1 / warpAt(m1)) / 6;
+    }
+    const anim = animTable[tableCount];
+    const animAt = t => {
+        t = Math.min(Math.max(t, 0), mission);
+        const i = Math.min(tableCount - 1, Math.floor(t / tableStep)), m0 = i * tableStep, m1 = Math.min((i + 1) * tableStep, mission);
+        return animTable[i] + (animTable[i + 1] - animTable[i]) * (t - m0) / (m1 - m0);
+    };
+    const missionAt = time => {
+        if (time <= 0) return 0;
+        if (time >= anim) return mission;
+        let low = 0, high = tableCount;
+        while (high - low > 1) { const middle = (low + high) >> 1; if (animTable[middle] <= time) low = middle; else high = middle; }
+        const m0 = low * tableStep, m1 = Math.min(high * tableStep, mission);
+        return m0 + (m1 - m0) * (time - animTable[low]) / (animTable[high] - animTable[low]);
+    };
+    for (const phase of phases) Object.assign(phase, { animStart: animAt(phase.start), animEnd: animAt(phase.end) });
     const impulses = [
         { mission: 0, deltaV: [departure[0], departure[1], 0] },
         { mission: phases[1].start, deltaV: [-arrival[2], 0, 0] }
@@ -111,15 +144,6 @@ export function createRendezvous(meanMotion) {
         const label = phase.key === 'transfer' && local < 90 ? 'WAYPOINT 0' : phase.key === 'capture' ? local >= phase.seconds ? 'DOCKED' : local > 480 ? 'HARD CAPTURE' : 'SOFT CAPTURE' : phase.label;
         return { mission: t, phase: phase.key, label, warp: phase.warp, position, velocity, thrust, range: Math.hypot(...position) };
     }
-    // Mission time for an animation time, and back.
-    const missionAt = time => {
-        const phase = phases.find(item => time < item.animEnd) || phases[phases.length - 1];
-        return Math.min(phase.end, phase.start + (time - phase.animStart) * phase.warp);
-    };
-    const animAt = t => {
-        const phase = phases.find(item => t < item.end) || phases[phases.length - 1];
-        return phase.animStart + (Math.min(t, phase.end) - phase.start) / phase.warp;
-    };
     // The planned path from WP0 to the port, for drawing.
     function path(samples = 160) {
         const points = [];
@@ -131,7 +155,7 @@ export function createRendezvous(meanMotion) {
     const transferSamples = Array.from({ length: 49 }, (_, k) => ({ t: phases[0].seconds * k / 48, at: state(phases[0].seconds * k / 48).position }));
     const pathAhead = t => [...transferSamples.filter(sample => sample.t > t).map(sample => sample.at), state(t).position, [0, 0, 0]];
     return {
-        meanMotion: n, phases, impulses, state, missionAt, animAt, path, pathAhead,
+        meanMotion: n, phases, impulses, state, missionAt, animAt, warpAt, path, pathAhead,
         duration: anim, missionDuration: mission,
         departureDeltaV: Math.hypot(...departure), vbarCruise: vbar.cruise, finalCruise: final.cruise,
         phaseStart: key => phases.find(item => item.key === key).animStart

@@ -186,6 +186,9 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
     // mini-workstation, the waist tether unclipped and stowed on its D-ring, and hand over hand down the rail to
     // where the crew member started, so the task loops without a jump (62 s).
     const timings = S.timings;
+    // The left glove closes on the tool at 14.5 s; the tool then comes off the mini-workstation to the first bolt in
+    // 1.9 s, which keeps the glove under 0.65 m/s.
+    const toolTaken = 14.5;
     // Task time for a moment of the loop: forward to the turnaround (one cycle of four bolts and the reading, then
     // the tool back at the first bolt's standoff, where it was when it arrived), then back down the same timeline.
     function taskTime(time) {
@@ -195,10 +198,10 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
     // The climb keeps the handhold line near the body's midline; at the worksite the body settles left of it,
     // so the right hand holds on its own side and the left hand works the panel without crossing the chest.
     const hipKeys = {
-        t: [0, 2.3, 4.7, 7.2, 9.8, 11.4, 12.8, 14.6],
-        x: [-1.43, -1.42, -1.44, -1.41, -1.42, -1.40, -1.33, -1.31],
-        y: [3.80, 3.83, 4.15, 4.46, 4.76, 4.76, 4.76, 4.76],
-        z: [10.14, 10.15, 10.15, 10.14, 10.10, 10.08, 10.07, 10.07]
+        t: [0, 2.3, 4.7, 7.2, 9.8, 11.4, 12.8, 14.6, 16.4],
+        x: [-1.43, -1.42, -1.44, -1.41, -1.42, -1.40, -1.33, -1.31, -1.30],
+        y: [3.80, 3.83, 4.15, 4.46, 4.76, 4.76, 4.76, 4.68, 4.58],
+        z: [10.14, 10.15, 10.15, 10.14, 10.10, 10.08, 10.07, 10.03, 9.98]
     };
     const hipsAt = (t, out) => out.set(monotone(hipKeys.t, hipKeys.x, t), monotone(hipKeys.t, hipKeys.y, t), monotone(hipKeys.t, hipKeys.z, t));
     const frameRotation = () => frame.getWorldQuaternion(new THREE.Quaternion());
@@ -211,10 +214,10 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
     // Tool pose in frame space. Returns the handle centre and rotation, the bit angle and the work phase.
     function toolPose(t, position, rotation) {
         const state = {spin: 0, running: false, reading: 0, torque: 0, phase: 'stowed', bolt: -1};
-        if (t < 14.9) { stowPose(position, rotation); return state; }
+        if (t < toolTaken) { stowPose(position, rotation); return state; }
         const tip = new THREE.Vector3();
         if (t < timings.tool) {
-            const s = ramp(t, 14.9, timings.tool), from = new THREE.Vector3(), fromRotation = new THREE.Quaternion();
+            const s = ramp(t, toolTaken, timings.tool), from = new THREE.Vector3(), fromRotation = new THREE.Quaternion();
             stowPose(from, fromRotation);
             tip.copy(standoff(bolts[0])).sub(toolTipLocal);
             position.lerpVectors(from, tip, s).add(new THREE.Vector3(.02, .06, -.06).multiplyScalar(Math.sin(Math.PI * s)));
@@ -254,15 +257,15 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
     // Hand keys: [time, target, orientation, grip, swing, hold]. A target may follow the body; the swing bows
     // the path clear of the rail and the other hand; hold keeps the glove closed on what it carries.
     const leftKeys = [
-        [0, railPoint(4.02), leftOrientation, 1], [1.0, railPoint(4.02), leftOrientation, 1],
-        [2.5, railPoint(4.66), leftOrientation, 1, [.06, 0, -.09]], [6.1, railPoint(4.66), leftOrientation, 1],
-        [7.6, railPoint(5.32), leftOrientation, 1, [.06, 0, -.09]], [13.6, railPoint(5.32), leftOrientation, 1],
-        [14.6, 'tool', 'tool', .15, [.05, -.04, -.12]], [14.9, 'tool', 'tool', 1]
+        [0, railPoint(4.02), leftOrientation, 1], [.8, railPoint(4.02), leftOrientation, 1],
+        [2.8, railPoint(4.66), leftOrientation, 1, [.06, 0, -.09]], [5.9, railPoint(4.66), leftOrientation, 1],
+        [7.9, railPoint(5.32), leftOrientation, 1, [.06, 0, -.09]], [12.6, railPoint(5.32), leftOrientation, 1],
+        [14.2, 'tool', 'tool', .15, [.05, -.04, -.12]], [toolTaken, 'tool', 'tool', 1]
     ];
     const rightKeys = [
-        [0, railPoint(4.50), rightOrientation, 1], [3.6, railPoint(4.50), rightOrientation, 1],
-        [5.1, railPoint(5.08), rightOrientation, 1, [-.06, 0, -.09]], [10.0, railPoint(5.08), rightOrientation, 1],
-        [11.0, 'hook', rightDown, .2, [-.08, .02, -.14]], [11.3, 'hook', rightDown, .85],
+        [0, railPoint(4.50), rightOrientation, 1], [3.4, railPoint(4.50), rightOrientation, 1],
+        [5.4, railPoint(5.08), rightOrientation, 1, [-.06, 0, -.09]], [8.4, railPoint(5.08), rightOrientation, 1],
+        [10.5, 'hook', rightDown, .2, [-.08, .02, -.14]], [10.8, 'hook', rightDown, .85],
         [12.4, 'clip', rightOrientation, .85, [-.05, .04, -.12], true], [12.7, 'clip', rightOrientation, .85],
         [13.6, railPoint(5.18), rightOrientation, 1, [-.04, .02, -.07]]
     ];
@@ -283,6 +286,11 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
         if (moving && next[4] && !next[5]) grip = Math.min(grip, 1 - .78 * smooth(s / .16) * (1 - smooth((s - .74) / .26)));
         return {point, orientation, grip};
     }
+    // Left elbow pole in frame space. On the rails it points out and back; at the panel the hand reaches up across
+    // the chest, nearly opposite that hint (179.9° at 29.97 s), and the IK elbow flipped. So it turns, while the
+    // hand goes to the tool (12.6–14.5 s), to out and below the forearm line, which stays 37° or more off the arm at the panel.
+    const leftPoleRail = new THREE.Vector3(.70, -.55, -.18).normalize(), leftPoleWork = new THREE.Vector3(.54, -.59, .59).normalize();
+    const leftPole = t => leftPoleRail.clone().lerp(leftPoleWork, ramp(t, 12.6, toolTaken)).normalize().toArray();
     const hips = new THREE.Vector3(), hipsBefore = new THREE.Vector3(), hipsAfter = new THREE.Vector3();
     const toolPosition = new THREE.Vector3(), toolRotation = new THREE.Quaternion();
     // Of the hips over the loop's own time (through the turnaround and the way back).
@@ -291,13 +299,14 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
         return out.multiplyScalar(-2).add(hipsBefore).add(hipsAfter).divideScalar(.0144);
     };
     // Gaze leads the hands: the next handhold, the clip point, then the bolt; each change eases over 0.6 s.
-    const gazeKeys = [[0, railPoint(4.66)], [2.6, railPoint(5.08)], [5.2, railPoint(5.32)], [8.6, hookClip], [13.4, bolts[0]]];
+    const gazeKeys = [[0, railPoint(4.66)], [3.2, railPoint(5.08)], [5.9, railPoint(5.32)], [8.6, hookClip], [13.4, bolts[0]]];
     function gazeAt(t, toolPosition) {
-        if (t >= timings.tool) return toolPosition.clone().add(toolTipLocal);
+        const tip = toolPosition.clone().add(toolTipLocal);
+        if (t >= timings.tool) return tip;
         let i = 0; while (i < gazeKeys.length - 1 && t >= gazeKeys[i + 1][0] - .6) i++;
         const [time, point] = gazeKeys[i];
         const previous = gazeKeys[Math.max(0, i - 1)][1];
-        return previous.clone().lerp(point, i === 0 ? 1 : ramp(t, time - .6, time));
+        return previous.clone().lerp(point, i === 0 ? 1 : ramp(t, time - .6, time)).lerp(tip, ramp(t, toolTaken, timings.tool));
     }
     const writeTransform = (object, out, offset) => {
         object.position.toArray(out, offset); object.quaternion.toArray(out, offset + 3);
@@ -312,7 +321,7 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
         // Body: pulled up between grips, then settled at the worksite. Lean, roll and drift stay small,
         // and the body eases toward whichever bolt the tool is on.
         hipsAt(t, hips);
-        const climbing = 1 - ramp(t, 9.4, 11.4), working = ramp(t, 14.9, timings.tool + 1.2);
+        const climbing = 1 - ramp(t, 9.4, 11.4), working = back ? ramp(t, 13.7, timings.tool) : ramp(t, toolTaken, timings.tool + 1.2);
         const toolState = toolPose(t, toolPosition, toolRotation);
         const lagged = new THREE.Vector3(), lagRotation = new THREE.Quaternion();
         toolPose(taskTime(time - .45), lagged, lagRotation);
@@ -322,7 +331,7 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
         const pull = new THREE.Vector3(); acceleration(time, pull);
         // Roll eases toward the reaching hand; the drive reaction yaws the body slightly while the tool runs.
         const bump = (start, end) => { const s = THREE.MathUtils.clamp((t - start) / (end - start), 0, 1); return Math.sin(Math.PI * s) ** 2; };
-        const side = bump(1.0, 2.5) - bump(3.6, 5.1) + bump(6.1, 7.6);
+        const side = bump(.8, 2.8) - bump(3.4, 5.4) + bump(5.9, 7.9);
         const reaction = .010 * toolState.torque;
         actor.rotation.set(-.03 - .03 * climbing - THREE.MathUtils.clamp(pull.y * .15, -.03, .03) + Math.sin(time * .32) * .008,
             .07 + .025 * Math.sin(time * .27) + reaction - .03 * reach.x,
@@ -351,9 +360,9 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
         closeGlove([[45,46,47],[48,49,50],[51,52,53],[54,55,56]], [42,43,44], right.grip);
         closeGlove([[11,12,13],[14,15,16],[17,18,19],[20,21,22]], [8,9,10], left.grip);
         reachHand([39,40,41], rightGripLocal, frame.localToWorld(right.point), right.orientation, [-.70, -.55, -.18]);
-        reachHand([5,6,7], leftGripLocal, frame.localToWorld(left.point), left.orientation, [.70, -.55, -.18]);
+        reachHand([5,6,7], leftGripLocal, frame.localToWorld(left.point), left.orientation, leftPole(t));
         // The tool follows the glove once taken; before that it rides on the mini-workstation.
-        if (t >= 14.9) {
+        if (t >= toolTaken) {
             tool.position.copy(frame.worldToLocal(worldPoint(leftHand, leftGripLocal)));
             tool.quaternion.copy(frameRotation().invert().multiply(leftHand.getWorldQuaternion(new THREE.Quaternion()))).multiply(leftOrientation.clone().invert());
         } else { tool.position.copy(toolPosition); tool.quaternion.copy(toolRotation); }
@@ -363,7 +372,7 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
         const stowedRotation = frameRotation().invert().multiply(hookStow.getWorldQuaternion(new THREE.Quaternion()));
         const gloveRotation = frameRotation().invert().multiply(rightHand.getWorldQuaternion(new THREE.Quaternion()));
         const inGlove = frame.worldToLocal(worldPoint(rightHand, rightGripLocal)).add(hookInGlove.clone().applyQuaternion(gloveRotation));
-        const taken = ramp(t, 11.0, 11.3), clipped = ramp(t, 12.4, 12.7);
+        const taken = ramp(t, 10.5, 10.8), clipped = ramp(t, 12.4, 12.7);
         waistHook.position.copy(stowed).lerp(inGlove, taken).lerp(hookClip, clipped);
         waistHook.quaternion.copy(stowedRotation).slerp(gloveRotation.clone().multiply(hookInGloveRotation), taken).slerp(hookClipRotation, clipped);
         // Webbing: slack bows out to the right side, clear of the suit; stowed, it is a short loop beside the ring.
@@ -389,7 +398,7 @@ export function createEvaSimulation(asset, fairleadTangentArray) {
         line.v2.copy(exit).addScaledVector(exitDirection, Math.min(.18, span * .14)).add(lag);
         writeTube(tubes.tetherSpan, out);
         // Tool tether: retracts into the mini-workstation while the tool is stowed.
-        const toolTetherVisible = t >= 14.9;
+        const toolTetherVisible = t >= toolTaken;
         if (toolTetherVisible) {
             const mount = frame.worldToLocal(toolMount.getWorldPosition(new THREE.Vector3()));
             const butt = frame.worldToLocal(tool.localToWorld(new THREE.Vector3(0, -.075, -.02)));

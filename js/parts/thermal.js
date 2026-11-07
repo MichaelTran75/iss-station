@@ -4,16 +4,29 @@ import { Kit, material, palette, shapes } from '../core/kit.js';
 import { part, radiatorBankX, radiatorBankZ, radiatorTrussSurfaceZ, ring } from '../core/station.js';
 import { radiatorFace } from '../core/surfaces.js';
 
-part('thermal', 'Thermal control radiators', '04 / HEAT REJECTION', 'Two external ammonia loops reject heat through six articulated radiator wings. Each wing has eight white-coated 3.4 × 2.7 m panels, with parallel flow channels, edge manifolds, articulated hinges and flexible connections. The channel detail and shallow folded pose follow the supplied visual reference.', [['Radiator wings / panels', '6 / 48'], ['Panel dimensions', '3.4 × 2.7 m']], [radiatorBankX, 8.3, radiatorBankZ + 12.9], (kit, group) => {
+part('thermal', 'Thermal control radiators', '04 / HEAT REJECTION', 'Two external ammonia loops reject heat through two rotating radiator wings, each of three radiators with eight white-coated 3.4 × 2.7 m panels, parallel flow channels, edge manifolds, articulated hinges and flexible connections. Each wing reaches aft from its truss segment, and its thermal radiator rotary joint (TRRJ) turns it about that long axis, up to 105° either way. The station normally keeps both parked at a set angle and lets them track (edge to the Sun by day, face to Earth by night) only in contingencies. Here the starboard wing turns through its whole range clear of S3, AMS-02 and the logistics carriers; the port wing\'s lower edge reaches the Bishop airlock beyond 19.5°, so a larger angle is drawn at 19.5°. The channel detail and shallow folded pose follow the supplied visual reference.', [['Radiators / panels', '6 / 48'], ['Panel dimensions', '3.4 × 2.7 m'], ['TRRJ range', '±105°'], ['Parked, Nov 2026', 'Port 14.9° / Stbd -29.7°'], ['Turn drawn here', 'Port -105…19.5° / Stbd ±105°']], [radiatorBankX, 8.3, radiatorBankZ + 12.9], (kit, group) => {
     group.userData.radiators = [];
     group.userData.radiatorBanks = [];
-    // NASA ATCS overview, pp. 14–19: three eight-panel ORUs share one
-    // radiator beam and TRRJ per loop. This is a vertical illustrative pose.
+    // NASA ATCS overview, pp. 14–19: three eight-panel ORUs share one radiator beam and TRRJ per loop. The beam
+    // stands across the truss's aft face and the radiators reach aft from it, panels upright with their faces to port
+    // and starboard; the TRRJ turns the beam about the aft axis through its middle (bank.rotation.z). At 0 the wing
+    // stands upright as built here.
     // https://www.nasa.gov/wp-content/uploads/2021/02/473486main_iss_atcs_overview.pdf
+    // Parked angles read from ISS Live on 5 to 7 November 2026 (directed-position mode), degrees: the page holds the
+    // wings there under the Real Sun, and ISS Live moves them to the telemetered angles. A positive angle tips the
+    // zenith edge to port on both sides (js/orbit/live.js).
+    group.userData.parkedTrrj = { port: 14.94 * Math.PI / 180, starboard: -29.74 * Math.PI / 180 };
+    // The turn each wing can make in this model without meeting its neighbours, degrees, measured by sweeping the wing
+    // through its range (at least 2 cm left to everything; 7 November 2026). With S1/P1 at their full length S3/P3 sit
+    // 7 m outboard of the wings, so the starboard wing clears everything through ±105°; the port wing's lower edge
+    // passes 4.4 cm from the Bishop airlock at 19.5° and meets it at 20 (Tranquility next, up to 57.5). Outside these
+    // limits the wing is drawn at the nearest one (js/ui/controller.js).
+    group.userData.trrjClear = { port: [-105 * Math.PI / 180, 19.5 * Math.PI / 180], starboard: [-105 * Math.PI / 180, 105 * Math.PI / 180] };
     for (const side of [-1, 1]) {
         const bank = new THREE.Group(), beamKit = new Kit();
         bank.name = (side < 0 ? 'Port' : 'Starboard') + ' common radiator beam';
         bank.position.set(side * radiatorBankX, 6.8, radiatorBankZ);
+        bank.userData.side = side;
         bank.userData.panelCount = 24;
         bank.userData.rootBackshield = 'Three separate trays, folded side channels and paired tapered root webs';
         bank.userData.rootReference = {file: 'ISS_stationary.glb', nodes: [53, 68], sourceWidth: 4.17826, sourceTrayWidth: 2.73082};
@@ -81,10 +94,16 @@ part('thermal', 'Thermal control radiators', '04 / HEAT REJECTION', 'Two externa
         // Two bearing pads join the saddle to the folded rails across the
         // reference mesh's nominal gap; no floating cross-member remains.
         for (const edge of [-1, 1]) beamKit.box([edge * 1.65, rootY(0), -.39], [.30, .70, .11], palette.silver, [0, 0, 0], false);
+        // The TRRJ: a fixed bearing housing on the truss face, held by the four legs, and the turning ring that carries
+        // the saddle. The housing fills the gap between the truss face and the saddle's rear face.
+        const housingFront = radiatorBankZ - .705, housingDepth = housingFront - radiatorTrussSurfaceZ - .004;
+        kit.cylinder([side * radiatorBankX, 6.8, radiatorTrussSurfaceZ + .004 + housingDepth / 2], .5, housingDepth, palette.silver, [Math.PI / 2, 0, 0]);
+        ring(kit, [side * radiatorBankX, 6.8, housingFront - .03], .5, 'z', palette.dark, .022);
+        ring(beamKit, [0, 0, -.7], .44, 'z', palette.silver, .03);
         for (const upper of [false, true]) for (const dx of [-.49, .49]) {
             const x = side * radiatorBankX + dx, y = upper ? 8.4 : 5.3;
             kit.box([x, y, radiatorTrussSurfaceZ + .065], [.26, .24, .13], palette.silver);
-            kit.rod([x, y, radiatorTrussSurfaceZ + .14], [x, 6.8 + (upper ? .34 : -.34), radiatorBankZ - .67], .075, palette.silver);
+            kit.rod([x, y, radiatorTrussSurfaceZ + .14], [side * radiatorBankX + dx * .84, 6.8 + (upper ? .29 : -.29), radiatorTrussSurfaceZ + .09], .075, palette.silver);
         }
         // Small source-side fitting at X=1.99, Y=-1.91. This belongs to
         // the common beam; it does not require six oversized valve boxes.

@@ -4,9 +4,13 @@ import { renderer } from '../core/stage.js';
 import { Kit, material, shapes } from '../core/kit.js';
 import { part, ring } from '../core/station.js';
 
-// Soyuz reconstructed only from the two supplied spacecraft images.
-// The existing Zvezda connection is retained; the probe is seated in the docked collar.
-part('soyuz', 'Soyuz spacecraft', '18 / VISITING SPACECRAFT', 'A rounded orbital compartment and bell-shaped descent capsule are wrapped in dark thermal blankets. A white aft skirt, green optical mast, external harnesses and two narrow, cross-braced solar wings follow the supplied reference images. Shown connected to Zvezda; small fittings and hidden aft details are illustrative.', [['Crew seats', '3'], ['Main sections', 'Orbital · descent · service']], [0, 1, 45.6], (kit, group) => {
+// Soyuz reconstructed only from the two supplied spacecraft images, built where it docked at Zvezda's aft port (axis
+// +z, docking face at z = 41.99). The same builder makes Progress (cargo = true): Soyuz's service module, wings, skirt
+// and probe, with a cargo module in place of the orbital module (no windows or hatch) and a narrow refuelling module
+// with external propellant lines in place of the descent capsule (no windows, parachute cover or periscope). Shapes
+// of the Progress modules are illustrative. Textures and the shared materials are made once.
+const shared = {};
+function buildSoyuz(kit, group, cargo = false) {
     group.userData.detailPass = 'two-user-images-only';
     group.userData.referenceViews = 2;
     group.userData.blanketFinish = 'Charcoal woven insulation with gathered seams';
@@ -23,24 +27,27 @@ part('soyuz', 'Soyuz spacecraft', '18 / VISITING SPACECRAFT', 'A rounded orbital
     function pipe(points, radius, color) {
         kit.add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p))), Math.max(12, points.length * 3), radius, 6, false), material(color, .88, .08), [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
     }
-    // Fine woven surface and low relief folds replace the former tan shell.
-    const clothCanvas = document.createElement('canvas'); clothCanvas.width = 1024; clothCanvas.height = 512;
-    const clothContext = clothCanvas.getContext('2d'); clothContext.fillStyle = '#414348'; clothContext.fillRect(0, 0, 1024, 512);
-    for (let y = 0; y < 512; y += 2)for (let x = 0; x < 1024; x += 2) {
-        const n = (x * 17 + y * 31) % 19, v = 54 + n;
-        clothContext.fillStyle = `rgb(${v},${v + 2},${v + 6})`; clothContext.fillRect(x, y, 1.5, 1.5);
-    }
-    for (let fold = 0; fold < 28; fold++) {
-        const x = fold * 1024 / 28;
-        clothContext.strokeStyle = fold % 2 ? '#55575b88' : '#25272b88'; clothContext.lineWidth = 1.3;
-        clothContext.beginPath(); clothContext.moveTo(x, 0); clothContext.bezierCurveTo(x + 22, 150, x - 18, 320, x + 3, 512); clothContext.stroke();
-    }
-    const clothMap = new THREE.CanvasTexture(clothCanvas); clothMap.colorSpace = THREE.SRGBColorSpace; clothMap.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-    const cloth = material(0xffffff, .97, .015, clothMap);
-    const bumpCanvas = document.createElement('canvas'); bumpCanvas.width = 256; bumpCanvas.height = 256;
-    const bc = bumpCanvas.getContext('2d'); bc.fillStyle = '#808080'; bc.fillRect(0, 0, 256, 256);
-    for (let y = 0; y < 256; y += 2)for (let x = 0; x < 256; x += 2) { const v = 90 + (x * 11 + y * 19) % 70; bc.fillStyle = `rgb(${v},${v},${v})`; bc.fillRect(x, y, 1, 1); }
-    cloth.bumpMap = new THREE.CanvasTexture(bumpCanvas); cloth.bumpScale = .012;
+    const cloth = shared.cloth ||= (() => {
+        // Fine woven surface and low relief folds replace the former tan shell.
+        const clothCanvas = document.createElement('canvas'); clothCanvas.width = 1024; clothCanvas.height = 512;
+        const clothContext = clothCanvas.getContext('2d'); clothContext.fillStyle = '#414348'; clothContext.fillRect(0, 0, 1024, 512);
+        for (let y = 0; y < 512; y += 2)for (let x = 0; x < 1024; x += 2) {
+            const n = (x * 17 + y * 31) % 19, v = 54 + n;
+            clothContext.fillStyle = `rgb(${v},${v + 2},${v + 6})`; clothContext.fillRect(x, y, 1.5, 1.5);
+        }
+        for (let fold = 0; fold < 28; fold++) {
+            const x = fold * 1024 / 28;
+            clothContext.strokeStyle = fold % 2 ? '#55575b88' : '#25272b88'; clothContext.lineWidth = 1.3;
+            clothContext.beginPath(); clothContext.moveTo(x, 0); clothContext.bezierCurveTo(x + 22, 150, x - 18, 320, x + 3, 512); clothContext.stroke();
+        }
+        const clothMap = new THREE.CanvasTexture(clothCanvas); clothMap.colorSpace = THREE.SRGBColorSpace; clothMap.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        const cloth = material(0xffffff, .97, .015, clothMap);
+        const bumpCanvas = document.createElement('canvas'); bumpCanvas.width = 256; bumpCanvas.height = 256;
+        const bc = bumpCanvas.getContext('2d'); bc.fillStyle = '#808080'; bc.fillRect(0, 0, 256, 256);
+        for (let y = 0; y < 256; y += 2)for (let x = 0; x < 256; x += 2) { const v = 90 + (x * 11 + y * 19) % 70; bc.fillStyle = `rgb(${v},${v},${v})`; bc.fillRect(x, y, 1, 1); }
+        cloth.bumpMap = new THREE.CanvasTexture(bumpCanvas); cloth.bumpScale = .012;
+        return cloth;
+    })();
     function insulatedHull(z0, z1, radiusAt, gather = 1) {
         const pos = [], uv = [], indices = [], around = 160, along = 64;
         for (let j = 0; j <= along; j++)for (let i = 0; i <= around; i++) {
@@ -62,18 +69,21 @@ part('soyuz', 'Soyuz spacecraft', '18 / VISITING SPACECRAFT', 'A rounded orbital
     }
     const orbitalRadius = z => 1.29 * Math.sqrt(Math.max(0, 1 - ((z - 43.05) / 1.29) ** 2));
     const descentProfile = [[44.12, .59], [44.28, .71], [44.52, .91], [44.85, 1.10], [45.20, 1.23], [45.64, 1.29], [45.99, 1.275], [46.12, 1.24]];
+    // Progress's refuelling module: a narrow cone from the cargo module's neck out to the service module.
+    const refuelRadius = z => THREE.MathUtils.lerp(.66, 1.24, THREE.MathUtils.smoothstep(z, 44.12, 46.12) ** .8);
     function descentRadius(z) { let i = descentProfile.findIndex(p => p[0] >= z); i = Math.max(1, i < 0 ? descentProfile.length - 1 : i); const a = descentProfile[i - 1], b = descentProfile[i]; return THREE.MathUtils.lerp(a[1], b[1], THREE.MathUtils.clamp((z - a[0]) / (b[0] - a[0]), 0, 1)); }
     insulatedHull(41.99, 44.18, orbitalRadius, .65);
-    insulatedHull(44.12, 46.12, descentRadius, 1.55);
+    const aftRadius = cargo ? refuelRadius : descentRadius;
+    insulatedHull(44.12, 46.12, aftRadius, cargo ? .8 : 1.55);
     // Gathered fabric gores and overlapping stitched blanket edges.
     for (let gore = 0; gore < 12; gore++) {
         const a = gore * Math.PI / 6, points = [];
         for (let i = 0; i <= 24; i++) { const z = 42.08 + i * 2.01 / 24; points.push(polar(a + .022 * Math.sin(i * .27), orbitalRadius(z) + .012, z)); }
         pipe(points, .009, 0x55575b);
     }
-    for (let gore = 0; gore < 18; gore++) {
-        const a = gore * Math.PI / 9, points = [];
-        for (let i = 0; i <= 24; i++) { const z = 44.22 + i * 1.82 / 24; points.push(polar(a + .025 * Math.sin(i * .19), descentRadius(z) + .017, z)); }
+    for (let gore = 0; gore < (cargo ? 8 : 18); gore++) {
+        const a = gore * Math.PI * 2 / (cargo ? 8 : 18), points = [];
+        for (let i = 0; i <= 24; i++) { const z = 44.22 + i * 1.82 / 24; points.push(polar(a + .025 * Math.sin(i * .19), aftRadius(z) + .017, z)); }
         pipe(points, .010, gore % 3 === 0 ? 0x5c5b57 : 0x33363a);
     }
     ring(kit, [0, 0, 44.18], .635, 'z', 0x504d45, .023);
@@ -98,24 +108,26 @@ part('soyuz', 'Soyuz spacecraft', '18 / VISITING SPACECRAFT', 'A rounded orbital
     kit.cylinder([0, 0, 41.435], .072, .33, silver);
     kit.cylinder([0, 0, 41.225], .09, .09, dark);
     for (const side of [-1, 1]) kit.rod([side * .10, 0, 41.20], [side * .16, 0, 41.12], .027, dark);
-    // Orbital side hatch: a dark cover, pale rim and a separate small viewing window.
-    kit.cylinder([0, 1.238, 43.26], .43, .075, dark, [0, 0, 0]); ring(kit, [0, 1.285, 43.26], .43, 'y', silver, .022);
-    kit.cylinder([0, 1.287, 43.26], .391, .023, 0x32353a, [0, 0, 0]);
-    kit.rod([-.19, 1.318, 43.18], [.19, 1.318, 43.18], .017, 0x777e7e);
-    for (const side of [-1, 1]) {
-        kit.cylinder([side * 1.235, -.13, 43.03], .158, .062, 0x9caaa9, [0, 0, Math.PI / 2]);
-        kit.cylinder([side * 1.274, -.13, 43.03], .126, .026, 0x0f2532, [0, 0, Math.PI / 2]);
-        ring(kit, [side * 1.291, -.13, 43.03], .127, 'x', dark, .014);
+    if (!cargo) {
+        // Orbital side hatch: a dark cover, pale rim and a separate small viewing window.
+        kit.cylinder([0, 1.238, 43.26], .43, .075, dark, [0, 0, 0]); ring(kit, [0, 1.285, 43.26], .43, 'y', silver, .022);
+        kit.cylinder([0, 1.287, 43.26], .391, .023, 0x32353a, [0, 0, 0]);
+        kit.rod([-.19, 1.318, 43.18], [.19, 1.318, 43.18], .017, 0x777e7e);
+        for (const side of [-1, 1]) {
+            kit.cylinder([side * 1.235, -.13, 43.03], .158, .062, 0x9caaa9, [0, 0, Math.PI / 2]);
+            kit.cylinder([side * 1.274, -.13, 43.03], .126, .026, 0x0f2532, [0, 0, Math.PI / 2]);
+            ring(kit, [side * 1.291, -.13, 43.03], .127, 'x', dark, .014);
+        }
+        // A second window sits in the descent capsule's cloth-covered wall.
+        const wa = -.20, wz = 45.17, wr = descentRadius(wz);
+        const windowGroup = new THREE.Group(), wk = new Kit();
+        wk.cylinder([0, 0, 0], .164, .062, 0x8d8070); wk.cylinder([0, 0, -.041], .126, .025, 0x102332); ring(wk, [0, 0, -.058], .14, 'z', silver, .018);
+        wk.finish(windowGroup); windowGroup.position.fromArray(polar(wa, wr + .025, wz)); windowGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), new THREE.Vector3(Math.cos(wa), Math.sin(wa), 0)); group.add(windowGroup);
+        // A stitched rectangular parachute cover follows the capsule side.
+        const coverAngle = -1.0, cover = [];
+        for (const [a, z] of [[coverAngle - .30, 44.87], [coverAngle + .30, 44.87], [coverAngle + .30, 45.63], [coverAngle - .30, 45.63], [coverAngle - .30, 44.87]]) cover.push(polar(a, descentRadius(z) + .025, z));
+        pipe(cover, .014, 0x6f7066);
     }
-    // A second window sits in the descent capsule's cloth-covered wall.
-    const wa = -.20, wz = 45.17, wr = descentRadius(wz);
-    const windowGroup = new THREE.Group(), wk = new Kit();
-    wk.cylinder([0, 0, 0], .164, .062, 0x8d8070); wk.cylinder([0, 0, -.041], .126, .025, 0x102332); ring(wk, [0, 0, -.058], .14, 'z', silver, .018);
-    wk.finish(windowGroup); windowGroup.position.fromArray(polar(wa, wr + .025, wz)); windowGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), new THREE.Vector3(Math.cos(wa), Math.sin(wa), 0)); group.add(windowGroup);
-    // A stitched rectangular parachute cover follows the capsule side.
-    const coverAngle = -1.0, cover = [];
-    for (const [a, z] of [[coverAngle - .30, 44.87], [coverAngle + .30, 44.87], [coverAngle + .30, 45.63], [coverAngle - .30, 45.63], [coverAngle - .30, 44.87]]) cover.push(polar(a, descentRadius(z) + .025, z));
-    pipe(cover, .014, 0x6f7066);
     // Close-fitting dark service band; no exposed long inter-module spacer.
     insulatedHull(46.12, 46.86, z => THREE.MathUtils.lerp(1.255, 1.32, (z - 46.12) / .74), .35);
     for (const z of [46.15, 46.71, 46.84]) ring(kit, [0, 0, z], z > 46.8 ? 1.33 : 1.28, 'z', z > 46.8 ? dark : 0x646c69, .024);
@@ -127,21 +139,30 @@ part('soyuz', 'Soyuz spacecraft', '18 / VISITING SPACECRAFT', 'A rounded orbital
         const a = panel * Math.PI / 6; kit.line([polar(a, 1.435, 47.15), polar(a, 1.396, 47.83), polar(a, 1.305, 48.19)]);
         for (const z of [47.24, 47.86]) bead(polar(a, z < 47.5 ? 1.426 : 1.389, z), [.020, .020, .020], 0xb3bdb6);
     }
-    // Olive exterior cable runs, retaining straps and the green optical mast.
-    for (const side of [-1, 1]) {
-        const path = [[side * .19, .66, 44.23], [side * .35, 1.03, 44.62], [side * .43, 1.35, 45.12], [side * .45, 1.46, 45.80], [side * .40, 1.38, 46.26], [side * .25, 1.33, 46.62]];
-        pipe(path, .044, olive);
-        for (const i of [1, 3, 4]) kit.box(path[i], [.12, .11, .08], copper, [0, 0, 0], false);
+    if (!cargo) {
+        // Olive exterior cable runs, retaining straps and the green optical mast.
+        for (const side of [-1, 1]) {
+            const path = [[side * .19, .66, 44.23], [side * .35, 1.03, 44.62], [side * .43, 1.35, 45.12], [side * .45, 1.46, 45.80], [side * .40, 1.38, 46.26], [side * .25, 1.33, 46.62]];
+            pipe(path, .044, olive);
+            for (const i of [1, 3, 4]) kit.box(path[i], [.12, .11, .08], copper, [0, 0, 0], false);
+        }
+        kit.add(new THREE.CylinderGeometry(.15, .15, 1.11, 16), material(0x77724d, .97, .02), [.38, 1.37, 45.92], [1, 1, 1], [Math.PI / 2, 0, 0], false);
+        for (const z of [45.46, 46.04, 46.38]) ring(kit, [.38, 1.37, z], .154, 'z', copper, .021);
+        kit.box([-.28, 1.275, 45.84], [.31, .12, .47], olive, [0, 0, 0], false);
+        kit.cylinder([-.28, 1.415, 45.84], .165, .17, green, [0, 0, 0]);
+        kit.cylinder([-.28, 1.70, 45.84], .077, .45, green, [0, 0, 0]);
+        for (const y of [1.49, 1.73, 1.91]) ring(kit, [-.28, y, 45.84], .095, 'y', 0x9baf91, .016);
+        kit.box([-.28, 2.015, 45.84], [.245, .235, .25], green, [0, 0, 0], false);
+        kit.cylinder([-.28, 2.015, 45.699], .066, .028, 0x12251a); ring(kit, [-.28, 2.015, 45.682], .067, 'z', silver, .011);
+        kit.cylinder([-.417, 2.015, 45.84], .045, .024, dark, [0, 0, Math.PI / 2]);
+    } else {
+        // Propellant and pressurant lines run along the refuelling module from the cargo module to the service module.
+        for (const a of [.35, 1.92, 3.49, 5.06]) {
+            const line = []; for (let i = 0; i <= 10; i++) { const z = 44.2 + i * 1.86 / 10; line.push(polar(a, aftRadius(z) + .07, z)); }
+            pipe(line, .034, olive);
+            for (const i of [2, 5, 8]) kit.box(line[i], [.1, .1, .08], copper, [0, 0, 0], false);
+        }
     }
-    kit.add(new THREE.CylinderGeometry(.15, .15, 1.11, 16), material(0x77724d, .97, .02), [.38, 1.37, 45.92], [1, 1, 1], [Math.PI / 2, 0, 0], false);
-    for (const z of [45.46, 46.04, 46.38]) ring(kit, [.38, 1.37, z], .154, 'z', copper, .021);
-    kit.box([-.28, 1.275, 45.84], [.31, .12, .47], olive, [0, 0, 0], false);
-    kit.cylinder([-.28, 1.415, 45.84], .165, .17, green, [0, 0, 0]);
-    kit.cylinder([-.28, 1.70, 45.84], .077, .45, green, [0, 0, 0]);
-    for (const y of [1.49, 1.73, 1.91]) ring(kit, [-.28, y, 45.84], .095, 'y', 0x9baf91, .016);
-    kit.box([-.28, 2.015, 45.84], [.245, .235, .25], green, [0, 0, 0], false);
-    kit.cylinder([-.28, 2.015, 45.699], .066, .028, 0x12251a); ring(kit, [-.28, 2.015, 45.682], .067, 'z', silver, .011);
-    kit.cylinder([-.417, 2.015, 45.84], .045, .024, dark, [0, 0, Math.PI / 2]);
     // Copper handrails and compact connector clusters around the instrument band.
     for (const angle of [.40, 2.48]) {
         const p = []; for (const [a, z] of [[angle, 46.72], [angle, 46.20], [angle + .30, 46.20], [angle + .30, 46.63]]) p.push(polar(a, 1.35, z)); pipe(p, .019, copper);
@@ -150,14 +171,17 @@ part('soyuz', 'Soyuz spacecraft', '18 / VISITING SPACECRAFT', 'A rounded orbital
         }
     }
     // Four square leaves per wing: pale perimeter frames and visible X braces.
-    const cellCanvas = document.createElement('canvas'); cellCanvas.width = 512; cellCanvas.height = 512;
-    const cc = cellCanvas.getContext('2d'); cc.fillStyle = '#c1bda6'; cc.fillRect(0, 0, 512, 512);
-    for (let row = 0; row < 32; row++)for (let col = 0; col < 24; col++) {
-        cc.fillStyle = ['#57594f', '#676857', '#73715d', '#4f544e'][(row * 7 + col * 3) % 4]; cc.fillRect(col * 512 / 24 + 1.2, row * 16 + 1.2, 512 / 24 - 2.4, 13.6);
-        cc.fillStyle = '#b3aa86'; cc.fillRect(col * 512 / 24 + 10.1, row * 16 + 1.2, .7, 13.6);
-    }
-    const cells = new THREE.CanvasTexture(cellCanvas); cells.colorSpace = THREE.SRGBColorSpace; cells.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-    const cellMat = material(0xffffff, .72, .20, cells), frame = 0xe0e5de, wingZ = 46.92;
+    const cellMat = shared.cellMat ||= (() => {
+        const cellCanvas = document.createElement('canvas'); cellCanvas.width = 512; cellCanvas.height = 512;
+        const cc = cellCanvas.getContext('2d'); cc.fillStyle = '#c1bda6'; cc.fillRect(0, 0, 512, 512);
+        for (let row = 0; row < 32; row++)for (let col = 0; col < 24; col++) {
+            cc.fillStyle = ['#57594f', '#676857', '#73715d', '#4f544e'][(row * 7 + col * 3) % 4]; cc.fillRect(col * 512 / 24 + 1.2, row * 16 + 1.2, 512 / 24 - 2.4, 13.6);
+            cc.fillStyle = '#b3aa86'; cc.fillRect(col * 512 / 24 + 10.1, row * 16 + 1.2, .7, 13.6);
+        }
+        const cells = new THREE.CanvasTexture(cellCanvas); cells.colorSpace = THREE.SRGBColorSpace; cells.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        return material(0xffffff, .72, .20, cells);
+    })();
+    const frame = 0xe0e5de, wingZ = 46.92;
     for (const side of [-1, 1]) {
         kit.cylinder([side * 1.45, 0, wingZ], .15, .29, silver, [0, 0, Math.PI / 2]);
         for (const end of [-1, 1]) kit.rod([side * 1.48, 0, wingZ], [side * 1.70, 0, wingZ + end * .655], .037, frame);
@@ -203,15 +227,34 @@ part('soyuz', 'Soyuz spacecraft', '18 / VISITING SPACECRAFT', 'A rounded orbital
     }
     kit.cylinder([0, 0, 48.286], .38, .045, dark); ring(kit, [0, 0, 48.315], .38, 'z', silver, .020);
     kit.rod([.30, -1.27, 48.07], [.32, -1.57, 48.39], .026, green);
-    // Only legible markings in the reference are reproduced: Soyuz and the tricolor.
-    const patchCanvas = document.createElement('canvas'); patchCanvas.width = 512; patchCanvas.height = 256;
-    const pc = patchCanvas.getContext('2d'); pc.fillStyle = '#e5e6df'; pc.fillRect(0, 0, 512, 256);
-    pc.fillStyle = '#b33132'; pc.font = 'bold 76px sans-serif'; pc.textAlign = 'center'; pc.fillText('СОЮЗ', 256, 86);
-    for (const [i, color] of ['#ffffff', '#285895', '#b43b3c'].entries()) { pc.fillStyle = color; pc.fillRect(158, 119 + i * 31, 196, 31); }
-    const label = new THREE.CanvasTexture(patchCanvas); label.colorSpace = THREE.SRGBColorSpace;
-    const pp = [], pu = []; for (let j = 0; j < 8; j++)for (let i = 0; i < 12; i++)for (const [ii, jj] of [[i, j], [i + 1, j], [i, j + 1], [i, j + 1], [i + 1, j], [i + 1, j + 1]]) {
-        const a = 2.02 + ii / 12 * .51, z = 42.87 + jj / 8 * .45; pp.push(...polar(a, orbitalRadius(z) + .025, z)); pu.push(ii / 12, jj / 8);
+    if (!cargo) {
+        // Only legible markings in the reference are reproduced: Soyuz and the tricolor.
+        const patchCanvas = document.createElement('canvas'); patchCanvas.width = 512; patchCanvas.height = 256;
+        const pc = patchCanvas.getContext('2d'); pc.fillStyle = '#e5e6df'; pc.fillRect(0, 0, 512, 256);
+        pc.fillStyle = '#b33132'; pc.font = 'bold 76px sans-serif'; pc.textAlign = 'center'; pc.fillText('СОЮЗ', 256, 86);
+        for (const [i, color] of ['#ffffff', '#285895', '#b43b3c'].entries()) { pc.fillStyle = color; pc.fillRect(158, 119 + i * 31, 196, 31); }
+        const label = new THREE.CanvasTexture(patchCanvas); label.colorSpace = THREE.SRGBColorSpace;
+        const pp = [], pu = []; for (let j = 0; j < 8; j++)for (let i = 0; i < 12; i++)for (const [ii, jj] of [[i, j], [i + 1, j], [i, j + 1], [i, j + 1], [i + 1, j], [i + 1, j + 1]]) {
+            const a = 2.02 + ii / 12 * .51, z = 42.87 + jj / 8 * .45; pp.push(...polar(a, orbitalRadius(z) + .025, z)); pu.push(ii / 12, jj / 8);
+        }
+        const patchGeom = new THREE.BufferGeometry(); patchGeom.setAttribute('position', new THREE.Float32BufferAttribute(pp, 3)); patchGeom.setAttribute('uv', new THREE.Float32BufferAttribute(pu, 2)); patchGeom.computeVertexNormals();
+        kit.add(patchGeom, material(0xffffff, .91, .02, label), [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
     }
-    const patchGeom = new THREE.BufferGeometry(); patchGeom.setAttribute('position', new THREE.Float32BufferAttribute(pp, 3)); patchGeom.setAttribute('uv', new THREE.Float32BufferAttribute(pu, 2)); patchGeom.computeVertexNormals();
-    kit.add(patchGeom, material(0xffffff, .91, .02, label), [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
+}
+// Seat a vehicle built along +z (docking face at z = 41.99) on another port: `face` is the port's docking face and
+// `axis` the outward direction the vehicle extends along. Placed before assembly.js adds the Russian segment offset.
+function dockTo(group, face, axis) {
+    group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...axis).normalize());
+    group.position.fromArray(face).sub(new THREE.Vector3(0, 0, 41.99).applyQuaternion(group.quaternion));
+}
+// Simplified comparison: the Soyuz where the reference images show it, on Zvezda's aft port.
+part('soyuz', 'Soyuz spacecraft', '18 / VISITING SPACECRAFT', 'A rounded orbital compartment and bell-shaped descent capsule are wrapped in dark thermal blankets. A white aft skirt, green optical mast, external harnesses and two narrow, cross-braced solar wings follow the supplied reference images. Shown connected to Zvezda; small fittings and hidden aft details are illustrative.', [['Crew seats', '3'], ['Main sections', 'Orbital · descent · service']], [0, 1, 45.6], (kit, group) => buildSoyuz(kit, group));
+// 5 November 2026: the crew ship at Prichal nadir and Progress freighters at Zvezda aft and Poisk zenith.
+part('soyuz-ms29', 'Soyuz MS-29', '18 / VISITING SPACECRAFT', 'The crew Soyuz docked at the nadir port of Prichal, the small spherical node under Nauka. The same model as the simplified view: rounded orbital compartment and bell-shaped descent capsule in dark thermal blankets, a white aft skirt and two cross-braced solar wings; small fittings are illustrative.', [['Crew seats', '3'], ['Port', 'Prichal nadir']], [0, 1, 45.6], (kit, group) => {
+    buildSoyuz(kit, group); dockTo(group, [0, -13.17, 31], [0, -1, 0]);
+});
+const progressText = 'Progress shares the Soyuz service module, solar wings and docking probe; a pressurised cargo module replaces the orbital module, and a narrow refuelling module with external propellant lines replaces the descent capsule. Module shapes are illustrative.';
+part('progress-aft', 'Progress MS-34', '18 / VISITING SPACECRAFT', 'Uncrewed cargo ship on Zvezda\'s aft port, the port whose docked ship can fire its engines to raise the station\'s orbit. ' + progressText, [['Port', 'Zvezda aft'], ['Role', 'Cargo, propellant, reboost']], [0, 1, 45.6], (kit, group) => buildSoyuz(kit, group, true));
+part('progress-poisk', 'Progress MS-35', '18 / VISITING SPACECRAFT', 'Uncrewed cargo ship on the zenith port of Poisk, the small module above Zvezda\'s forward node. ' + progressText, [['Port', 'Poisk zenith'], ['Role', 'Cargo and propellant']], [0, 1, 45.6], (kit, group) => {
+    buildSoyuz(kit, group, true); dockTo(group, [0, 5.86, 31], [0, 1, 0]);
 });

@@ -41,7 +41,7 @@ export function halveLargeMaps(root, limit = 512) {
 export function releaseAfterUpload(root) {
     root.traverse(object => {
         if (!object.geometry || object.isInstancedMesh) return;
-        if (object.isMesh) for (const name of ['normal', 'uv', 'uv1', 'color', 'tangent']) release(object.geometry.attributes[name]);
+        if (object.isMesh) for (const name of ['normal', 'uv', 'uv1', 'color', 'surface', 'tangent']) release(object.geometry.attributes[name]);
         else if (object.userData.outline || object.userData.lineArt) releaseLines(object);
     });
 }

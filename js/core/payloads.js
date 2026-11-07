@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { assetData } from './data.js';
 import { Kit, material, shapes } from './kit.js';
+import { solarRotaryJointX, trussS1End } from './station.js';
 import { carrierGrid, payloadAttachSite, payloadBlanket, payloadCanvas } from './surfaces.js';
 
 // BEGIN PAYLOAD REFERENCE: AMS-02, ELC-1 to ELC-4 and ESP-3, measured on the supplied GLB (nodes 64, 62, 63, 61, 76
@@ -201,14 +202,13 @@ function referencePayload(name, mount) {
     return assembly;
 }
 // GLB contact stations keep their place between the segment's end frames: 21.081 and 26.249 m from the centreline
-// in the GLB, 16 and 22.7 m here. P3 mirrors S3, as its sites do in the GLB.
-const payloadStation = glbX => Math.sign(glbX) * (16 + 6.7 * (Math.abs(glbX) - 21.08088) / 5.16853);
-// AMS-02 sits 0.25 m outboard of its mapped station: its inboard radiators would otherwise cut the edge of the S1
-// radiator bank, which stays on its fixed centreline.
-const payloadStationShift = { 'AMS-02': .25 };
+// in the GLB, 21 and 25.8 m here (S3/P3's ends: js/core/station.js, js/parts/truss.js), so the sites sit within
+// 0.4 m of the GLB's. P3 mirrors S3, as its sites do in the GLB.
+const s3Span = [trussS1End, solarRotaryJointX - .8];
+const payloadStation = glbX => Math.sign(glbX) * (s3Span[0] + (s3Span[1] - s3Span[0]) * (Math.abs(glbX) - 21.08088) / 5.16853);
 // A reference payload on its own attach-site bridge, the bridge sized to the payload's footprint.
 export function seatedPayload(kit, name) {
-    const payload = payloadReference.payloads[name], up = payload.face, x = payloadStation(payload.contact[0]) + (payloadStationShift[name] || 0);
+    const payload = payloadReference.payloads[name], up = payload.face, x = payloadStation(payload.contact[0]);
     payloadAttachSite(kit, x, up, payload.footprint.map(v => v * payloadReferenceScale));
     return referencePayload(name, [x, up > 0 ? 9.05 : 4.98, 4]);
 }

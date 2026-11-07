@@ -68,7 +68,9 @@
             background: var(--paper);
         }
 
-        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"], [data-scene-view="launch"]) {
+        /* Dark page: the station against its Earth backdrop, the Launch view, and the Orbit view when its switch says Dark
+            (js/orbit/theme.js); on paper otherwise. */
+        #app:is([data-backdrop="orbit"]:not([data-scene-view="orbit"]), [data-scene-view="orbit"][data-orbit-background="dark"], [data-scene-view="launch"]) {
             color-scheme: dark;
             --paper: #000000;
             --ink: #e6ece7;
@@ -94,7 +96,7 @@
             text-shadow: 0 1px 2px rgba(226, 214, 192, .85);
         }
 
-        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"], [data-scene-view="launch"]) :is(.header, .timeline, .metric, .colophon) {
+        #app:is([data-backdrop="orbit"]:not([data-scene-view="orbit"]), [data-scene-view="orbit"][data-orbit-background="dark"], [data-scene-view="launch"]) :is(.header, .timeline, .metric, .colophon) {
             text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
         }
 
@@ -188,7 +190,51 @@
             color: var(--paper);
         }
 
-        #app:is([data-backdrop="orbit"], [data-scene-view="orbit"], [data-scene-view="launch"]) .view-switch button[aria-pressed="true"] {
+        /* The Orbit view's background switch (js/orbit/theme.js), under the Orbit button while that view shows. */
+        .orbit-tab {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        /* Dividers before and after Orbit: the views of the station, the Earth view, the launch. */
+        .orbit-tab::before,
+        .orbit-tab::after {
+            content: '';
+            width: 1px;
+            height: 18px;
+            margin: 0 6px;
+            background: var(--line);
+        }
+
+        .orbit-theme {
+            position: absolute;
+            top: calc(100% + 5px);
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            gap: 2px;
+            padding: 2px;
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        #app[data-scene-view="orbit"] .orbit-theme {
+            display: flex;
+        }
+
+        .view-switch .orbit-theme button {
+            min-height: 19px;
+            padding: 0 7px;
+            border-radius: 2px;
+            font: 500 8px/1 'IBM Plex Mono', monospace;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+
+        #app:is([data-backdrop="orbit"]:not([data-scene-view="orbit"]), [data-scene-view="orbit"][data-orbit-background="dark"], [data-scene-view="launch"]) .view-switch button[aria-pressed="true"] {
             color: #15231d;
         }
 
@@ -336,6 +382,14 @@
         .viewport-meta span {
             font: 400 9px/1.8 'IBM Plex Mono', monospace;
             color: var(--muted);
+        }
+
+        .viewport-meta .sun-state {
+            display: block;
+        }
+
+        .viewport-meta .sun-state[hidden] {
+            display: none;
         }
 
         .orientation {
@@ -970,6 +1024,16 @@
                 display: none;
             }
 
+            /* Narrower buttons, so that the dividers and the globe do not push the title onto a third line. */
+            .view-switch button {
+                padding: 0 9px;
+            }
+
+            .orbit-tab::before,
+            .orbit-tab::after {
+                margin: 0 4px;
+            }
+
             .timeline {
                 grid-template-columns: 70px 1fr;
                 gap: 15px;
@@ -1035,8 +1099,30 @@
 
             .view-switch button {
                 min-height: 25px;
-                padding: 0 11px;
+                padding: 0 clamp(5px, calc((100vw - 300px) / 12), 9px);
                 font-size: 10px;
+            }
+
+            /* Six names, two icons and two dividers in the 354 px row of a 390 px phone (and 324 px at 360). */
+            .view-switch {
+                gap: 0;
+            }
+
+            .orbit-tab::before,
+            .orbit-tab::after {
+                height: 14px;
+                margin: 0 4px;
+            }
+
+            .view-switch .orbit-button,
+            .view-switch .launch-tab {
+                gap: 4px;
+            }
+
+            .view-switch .earth-icon,
+            .view-switch .launch-tab svg {
+                width: 12px;
+                height: 12px;
             }
 
             .edition {
@@ -1055,6 +1141,15 @@
                 top: 125px;
                 display: block;
                 padding-top: 10px;
+            }
+
+            /* Orbit view: one more row, under the Orbit button, for the background switch. */
+            #app[data-scene-view="orbit"] {
+                --head: 204px;
+            }
+
+            #app[data-scene-view="orbit"] .timeline {
+                top: 152px;
             }
 
             .timeline-caption {
@@ -1294,6 +1389,15 @@
                 padding-top: 7px;
             }
 
+            /* Orbit view: a row under the Orbit button for the background switch. */
+            #app[data-scene-view="orbit"] {
+                --head: 126px;
+            }
+
+            #app[data-scene-view="orbit"] .timeline {
+                top: 87px;
+            }
+
             .header-right {
                 position: static;
             }
@@ -1485,6 +1589,14 @@
                 width: 154px;
             }
 
+            .viewport-meta:has(.sun-state:not([hidden])) ~ .component-picker {
+                top: 61px;
+            }
+
+            .viewport-meta:has(.sun-state:not([hidden])) ~ .interior-focus {
+                top: 99px;
+            }
+
             .component-picker label {
                 display: none;
             }
@@ -1528,6 +1640,14 @@
                 left: 18px;
                 top: 70px;
                 width: 175px;
+            }
+
+            .viewport-meta:has(.sun-state:not([hidden])) ~ .interior-focus {
+                top: 64px;
+            }
+
+            .viewport-meta:has(.sun-state:not([hidden])) ~ .component-picker {
+                top: 108px;
             }
 
             .component-picker label {
@@ -1586,6 +1706,22 @@
             z-index: 3;
             width: 236px;
             pointer-events: auto;
+        }
+
+        /* Below the Real Sun line while it shows: the Orbit panel, the Columbus button and the component picker (phones
+           and short screens: see their own rules further down). */
+        @media (min-width: 761px) and (min-height: 601px) {
+            .viewport-meta:has(.sun-state:not([hidden])) ~ .orbit-panel {
+                top: 80px;
+            }
+
+            .viewport-meta:has(.sun-state:not([hidden])) ~ .interior-focus {
+                top: 76px;
+            }
+
+            .viewport-meta:has(.sun-state:not([hidden])) ~ .component-picker {
+                top: 122px;
+            }
         }
 
         .orbit-time b {
@@ -1654,6 +1790,19 @@
 
         .orbit-frame {
             margin: 0;
+        }
+
+        .orbit-earth {
+            margin-top: 8px;
+        }
+
+        .orbit-panel #orbit-map-source {
+            margin-top: 4px;
+        }
+
+        /* The Orbit view's wind map carries no text: names beside the ISS, Earth, the Moon and the Sun step aside. */
+        #viewport.earth-map .orbit-label {
+            visibility: hidden;
         }
 
         .orbit-panel small {
@@ -1893,6 +2042,68 @@
             color: #ffd98a;
         }
 
+        /* Orbit view on paper: the names in ink. */
+        #app[data-scene-view="orbit"]:not([data-orbit-background="dark"]) .orbit-label {
+            color: var(--accent);
+            text-shadow: 0 0 2px var(--paper), 0 0 2px var(--paper), 0 0 5px var(--paper);
+        }
+
+        #app[data-scene-view="orbit"]:not([data-orbit-background="dark"]) .orbit-label.body {
+            color: #4f565e;
+        }
+
+        #app[data-scene-view="orbit"]:not([data-orbit-background="dark"]) .orbit-label.sun {
+            color: #95580f;
+        }
+
+        /* Wind speed scale under the wind map's sources: the colour layer's palette (set by js/orbit/view.js). */
+        .wind-legend {
+            position: relative;
+            height: 21px;
+            margin-top: 8px;
+            font: 400 8px/1.4 'IBM Plex Mono', monospace;
+            color: var(--muted);
+        }
+
+        .wind-legend[hidden] {
+            display: none;
+        }
+
+        /* 0, 10, 20 and 30+ m/s under their places on the bar (the palette runs to 30). */
+        .wind-legend span {
+            position: absolute;
+            top: 9px;
+            transform: translateX(-50%);
+            white-space: nowrap;
+        }
+
+        .wind-legend span:nth-of-type(1) {
+            left: 0;
+            transform: none;
+        }
+
+        .wind-legend span:nth-of-type(2) {
+            left: 33.333%;
+        }
+
+        .wind-legend span:nth-of-type(3) {
+            left: 66.667%;
+        }
+
+        .wind-legend span:nth-of-type(4) {
+            right: 0;
+            transform: none;
+        }
+
+        .wind-legend i {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            border-radius: 1px;
+        }
+
         @media (max-width: 760px) {
             .orbit-panel {
                 top: auto;
@@ -1903,9 +2114,13 @@
                 padding: 9px 11px;
                 border: 1px solid var(--line);
                 border-radius: 6px;
-                background: rgba(0, 0, 0, .55);
+                background: rgba(226, 214, 192, .88);
                 backdrop-filter: blur(8px);
                 -webkit-backdrop-filter: blur(8px);
+            }
+
+            #app[data-orbit-background="dark"] .orbit-panel {
+                background: rgba(0, 0, 0, .55);
             }
 
             .orbit-time {
@@ -1962,3 +2177,22 @@
                 font-size: 10px;
             }
         }
+
+/* The rocket beside Launch on the view bar. */
+.launch-tab { display: inline-flex; align-items: center; gap: 6px; }
+/* Orbit: a turning globe beside the name. Each meridian circle narrows and widens as |cos| of the turn (one cycle a
+   half turn, the second a quarter turn behind), its stroke kept at the icon's width while it is squeezed. */
+.orbit-button { display: inline-flex; align-items: center; gap: 6px; }
+.earth-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.earth-icon .meridian { transform-box: fill-box; transform-origin: center; vector-effect: non-scaling-stroke; stroke-width: 1.2px; animation: earth-turn 4s linear infinite; }
+.earth-icon .late { animation-delay: -2s; }
+@keyframes earth-turn {
+    0% { transform: scaleX(1); } 8.333% { transform: scaleX(.966); } 16.667% { transform: scaleX(.866); } 25% { transform: scaleX(.707); }
+    33.333% { transform: scaleX(.5); } 41.667% { transform: scaleX(.259); } 50% { transform: scaleX(.02); } 58.333% { transform: scaleX(.259); }
+    66.667% { transform: scaleX(.5); } 75% { transform: scaleX(.707); } 83.333% { transform: scaleX(.866); } 91.667% { transform: scaleX(.966); } 100% { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .earth-icon .meridian { animation: none; }
+    .earth-icon .late { transform: scaleX(.5); }
+}
+.launch-tab svg { width: 14px; height: 14px; }

@@ -1,13 +1,18 @@
 // Interface: selection and the detail panel, views and camera framing, labels and overlays, the controls,
 // and the frame loop (advance).
 import * as THREE from 'three';
-import { app, camera, controls, inspectionLight, renderer, scene, station, viewport } from '../core/stage.js';
+import { app, camera, controls, hemisphere, inspectionLight, renderer, rim, scene, station, studioLight, sunlight, viewport } from '../core/stage.js';
 import { markShadowsDirty, updateShadows, updateStats, watchFrames } from '../core/quality.js';
-import { destinyShutter, ghostOpacity, modernParts, parts, trackingDishes, wings } from '../core/station.js';
+import { destinyShutter, ghostOpacity, modernParts, parts, referenceParts, shownIn, trackingDishes, wings } from '../core/station.js';
 import { crewThought, updateColumbusCrew } from '../parts/columbus.js';
 import { approach, approachPhase, approachStartTime, dragon, dragonBounds, dragonFlightBounds, lvlhToStation, rendezvous,
     setDragonShell, updateApproach, updateDragonCrew } from '../parts/dragon.js';
 import { evaWorkerState, z1EVA } from '../figures/eva.js';
+import { sarjPivots } from '../core/sarj.js';
+import { bgaFor, orientSun, sarjFor, startSunTrack, sunTrack, updateSunTrack } from '../orbit/sun-track.js';
+import { live, liveFresh, liveHeard, livePose, liveTurn, startLive, stopLive } from '../orbit/live.js';
+import { attitude, attitudeName, datedTurn, inStation, setAttitude } from '../orbit/attitude.js';
+import '../orbit/theme.js';   // the Orbit view's background switch, set before that view first opens
 import { ghostMaterial } from './ghost.js';
 import { updateRendezvousGuide } from './rendezvous-guide.js';
 
@@ -33,12 +38,13 @@ const detailSources = {
     beam: ["NASA · BEAM dimensions and aft attachment", "https://www.nasa.gov/international-space-station/bigelow-expandable-activity-module-beam/"],
     bishop: ["NASA · Bishop port-side installation", "https://www.nasa.gov/blogs/spacestation/2020/12/21/new-science-airlock-expands-stations-research-capacity/"],
     z1: ['JAXA · Z1 structure and systems', 'https://iss.jaxa.jp/iss/3a/mis_z1truss_e.html'],
-    irosa: ['NASA · June 2023 array installation', 'https://www.nasa.gov/blogs/spacestation/2023/06/15/nasa-spacewalkers-finish-installing-roll-out-solar-array/'],
+    irosa: ['NASA · iROSA installation, June 2023', 'https://www.nasa.gov/blogs/spacestation/2023/06/15/nasa-spacewalkers-finish-installing-roll-out-solar-array/'],
     thermal: ['NASA · Thermal systems, p. 203', 'https://www.nasa.gov/wp-content/uploads/2018/04/iss-operating_an_outpost-tagged.pdf'],
     truss: ['NASA · Station systems reference', 'https://www.nasa.gov/wp-content/uploads/2018/04/iss-operating_an_outpost-tagged.pdf'],
     tranquility: ['ESA · Cupola architecture', 'https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/Node-3_Cupola/Cupola'],
     robotics: ['CSA · How Canadarm2 works', 'https://www.asc-csa.gc.ca/eng/iss/canadarm2/about.asp'],
     kibo: ['JAXA · Kibo components', 'https://humans-in-space.jaxa.jp/en/kibo/structure/'],
+    aces: ['ESA · ACES finds its home in orbit', 'https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/ACES_finds_its_home_in_orbit'],
     leonardo: ['NASA · Leonardo relocation', 'https://www.nasa.gov/international-space-station/permanent-multipurpose-module/'],
     harmony: ['NASA · International docking adapter', 'https://www.nasa.gov/missions/station/meet-the-international-docking-adapter/'],
     nauka: ['ESA · European Robotic Arm', 'https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/International_Space_Station/European_Robotic_Arm']
@@ -56,10 +62,11 @@ function setPressed(id, value) { document.getElementById(id).setAttribute('aria-
 setPressed('motion-toggle', motion);
 let toastTimer;
 export function notify(message) { const toast = document.getElementById('toast'); toast.textContent = message; toast.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.hidden = true; }, 3500); }
-// Ghost every visible part except the selection (Dragon keeps Harmony solid, its docking target).
+// Ghost every visible part except the selection (Dragon keeps Harmony solid, its docking target; the cargo Dragon
+// keeps PMA-3).
 function applyGhost() {
     markShadowsDirty();
-    const solid = selected ? new Set(selected === 'dragon' ? dragonDetail === 'cabin' ? ['dragon'] : ['dragon', 'harmony'] : [selected]) : null;
+    const solid = selected ? new Set(selected === 'dragon' ? dragonDetail === 'cabin' ? ['dragon'] : ['dragon', 'harmony'] : selected === 'cargo-dragon' ? ['cargo-dragon', 'pma3'] : [selected]) : null;
     for (const entry of parts.values()) {
         const ghost = solid !== null && !solid.has(entry.id);
         if (!!entry.ghost === ghost) continue;
@@ -97,6 +104,7 @@ export function selectPart(id) {
     if (id && id !== 'columbus' && currentView === 'interior') setView('reverse');
     if (id && globeViews.has(currentView)) setView('reverse');
     if (id && modernParts.has(id) && configuration === 'reference') setConfiguration('modern');
+    if (id && referenceParts.has(id) && configuration === 'modern') setConfiguration('reference');
     if (id === 'destiny' && selected !== 'destiny') destinyDetail = 'supports';
     if (id === 'dragon' && selected !== 'dragon') dragonDetail = 'approach';
     if (id === 'z1' && selected !== 'z1') z1EVA.restart();
@@ -151,14 +159,14 @@ export const stationBounds = new THREE.Box3();
 let stationSpan = 109;
 export function setConfiguration(name) {
     configuration = name; markShadowsDirty();
-    for (const entry of parts.values()) entry.group.visible = !modernParts.has(entry.id) || name === 'modern';
+    for (const entry of parts.values()) entry.group.visible = shownIn(entry.id, name);
     stationBounds.makeEmpty();
     // Dragon may be hundreds of metres out on its approach: the station's frame takes only its last leg.
     for (const entry of parts.values()) if (entry.group.visible && entry.id !== 'dragon') stationBounds.expandByObject(entry.group);
     const size = stationBounds.getSize(new THREE.Vector3()); stationSpan = Math.max(size.x, size.z);
     stationBounds.union(dragonFlightBounds);
     setPressed('configuration-toggle', name === 'modern');
-    document.getElementById('configuration-name').textContent = name === 'modern' ? 'JUNE 2023 / ILLUSTRATIVE CONFIGURATION' : 'CORE ELEMENTS / SIMPLIFIED COMPARISON';
+    document.getElementById('configuration-name').textContent = name === 'modern' ? '5 NOVEMBER 2026 / ILLUSTRATIVE CONFIGURATION' : 'CORE ELEMENTS / SIMPLIFIED COMPARISON';
     if (selected && !parts.get(selected).group.visible) selectPart(null);
     if (!globeViews.has(currentView)) setView(currentView === 'detail' ? 'reverse' : currentView);
 }
@@ -186,10 +194,49 @@ function setFrustum({ halfHeight, aspect, shift }) {
 function fitBox(bounds, direction, margin = 1.16, clearDock = false) {
     const damping = controls.enableDamping;
     controls.enableDamping = false; controls.update(0); controls.enableDamping = damping;
+    const from = flightsReady && !cutting && !reducedMotion.matches ? cameraState() : null;
     const center = bounds.getCenter(new THREE.Vector3());
     controls.target.copy(center); camera.up.set(0, 1, 0); camera.position.copy(center).add(direction); camera.lookAt(center); camera.updateMatrixWorld(true);
     setFrustum(framing(bounds, margin, clearDock));
     camera.zoom = 1; camera.updateProjectionMatrix(); controls.update();
+    flight = null;
+    if (from) startFlight(from, cameraState());
+}
+// A new framing flies there instead of cutting: target, direction (azimuth and elevation about the vertical, the way
+// the orbit controls turn, so a zenith view never rolls at the end), distance and frustum ease together for 0.6–1.6 s.
+// Zooming in pans first and narrows after; zooming out widens first. The first frame, resizes and reduced motion cut;
+// touching the controls, the zoom buttons or auto-rotate ends a flight where it is.
+let flight = null, flightsReady = false, cutting = false;
+const flightSpherical = new THREE.Spherical();
+function cameraState() {
+    const half = (camera.top - camera.bottom) / 2;
+    return { target: controls.target.clone(), offset: new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target)),
+        halfHeight: half / camera.zoom, shift: (camera.top + camera.bottom) / (2 * half) * camera.zoom, aspect: (camera.right - camera.left) / (camera.top - camera.bottom) };
+}
+function startFlight(from, to) {
+    const turn = Math.atan2(Math.sin(to.offset.theta - from.offset.theta), Math.cos(to.offset.theta - from.offset.theta));
+    const angle = Math.abs(turn) * Math.sin(Math.max(from.offset.phi, to.offset.phi)) + Math.abs(to.offset.phi - from.offset.phi);
+    const scale = Math.abs(Math.log(to.halfHeight / from.halfHeight)), pan = from.target.distanceTo(to.target) / Math.max(from.halfHeight, to.halfHeight);
+    const duration = THREE.MathUtils.clamp(.6 + .18 * scale + .25 * Math.min(pan, 2) + .6 * angle / Math.PI, .6, 1.6);
+    if (duration <= .6 && scale < .01 && pan < .01 && angle < .01) return;
+    flight = { from, to, turn, time: 0, duration, width: viewport.clientWidth, height: viewport.clientHeight };
+    poseFlight(0);
+}
+function poseFlight(s) {
+    const { from, to, turn } = flight, smooth = t => { t = THREE.MathUtils.clamp(t, 0, 1); return t * t * t * (t * (t * 6 - 15) + 10); };
+    const zoomingIn = to.halfHeight < from.halfHeight;
+    const pan = smooth(zoomingIn ? s * 1.35 : s * 1.35 - .35), zoom = smooth(zoomingIn ? s * 1.35 - .35 : s * 1.35), orbit = smooth(s);
+    controls.target.lerpVectors(from.target, to.target, pan);
+    flightSpherical.set(Math.exp(THREE.MathUtils.lerp(Math.log(from.offset.radius), Math.log(to.offset.radius), orbit)),
+        THREE.MathUtils.lerp(from.offset.phi, to.offset.phi, orbit), from.offset.theta + turn * orbit);
+    camera.up.set(0, 1, 0); camera.position.setFromSpherical(flightSpherical).add(controls.target); camera.lookAt(controls.target);
+    setFrustum({ halfHeight: Math.exp(THREE.MathUtils.lerp(Math.log(from.halfHeight), Math.log(to.halfHeight), zoom)), aspect: to.aspect, shift: THREE.MathUtils.lerp(from.shift, to.shift, zoom) });
+    camera.zoom = 1; camera.updateProjectionMatrix(); camera.updateMatrixWorld(true);
+}
+function updateFlight(delta) {
+    flight.time = Math.min(flight.duration, flight.time + Math.max(0, delta));
+    poseFlight(flight.time / flight.duration);
+    if (flight.time >= flight.duration) flight = null;
 }
 // Crew Dragon's approach view follows the capsule: the frame eases to hold Harmony, Dragon and the path still ahead of
 // it, so it narrows from the whole transfer down to the docking ring, until someone takes the camera.
@@ -211,7 +258,7 @@ function followDragon(delta) {
     setFrustum({ ...goal, halfHeight: Math.exp(THREE.MathUtils.lerp(Math.log(current), Math.log(goal.halfHeight), ease)) });
     camera.updateProjectionMatrix();
 }
-controls.addEventListener('start', () => { dragonFollow = false; });
+controls.addEventListener('start', () => { dragonFollow = false; flight = null; });
 // Views of the real sky that take the canvas while they show (the station keeps running underneath), each loaded the
 // first time it opens:
 // - Orbit (js/orbit/view.js): the globe with the ISS where it is now.
@@ -226,6 +273,141 @@ const globeView = () => currentView === 'orbit' ? orbitView : currentView === 'l
 let sky = null, skyLoading = null;
 export const getSky = () => sky;
 const loadSky = () => (skyLoading ||= import('../orbit/sky.js').then(module => (sky = module.createSky())));
+// Real Sun (js/orbit/sun-track.js): at the shown time (the clock, or ahead of it while the Orbit view runs fast) the
+// SARJs turn the outboard truss and the BGAs the wings so the cells face the Sun, the TRRJs hold the radiator wings at
+// their parked angles, the key light comes from the Sun's direction and fades in Earth's shadow, and the fill dims a
+// little with it, all under the attitude flown at the configuration's date (js/orbit/attitude.js). ISS Live
+// (js/orbit/live.js) takes the joint angles and the attitude from NASA's telemetry instead. Off, the studio light and
+// the schematic pose return. The joints and the attitude glide from one pose to the next (see `glide`).
+let realSun = true, liveMode = false, sunClock = 0, litShown = -1, sunFixed = null;
+const sunReach = new THREE.Vector3(...studioLight.sun).length(), sunShown = new THREE.Vector3(), sunLine = document.getElementById('sun-state');
+// Radiator wings (js/parts/thermal.js): each turns about +z through its TRRJ; a big turn moves their shadows.
+const { radiatorBanks, parkedTrrj, trrjClear } = parts.get('thermal').group.userData;
+// Joints and attitude as drawn glide to the pose asked for (Real Sun, ISS Live, telemetry carried forward, the
+// schematic pose) instead of jumping: switching ISS Live on turns the arrays and radiators to their telemetered angles,
+// and the Sun and Earth round to the attitude flown, over about two seconds. Each follows its goal on a critically
+// damped spring. A goal that keeps moving (the arrays tracking the Sun, fast while time runs fast) is followed without
+// lag, at the rate between its last two samples, so only a change of source or a jump eases in. SARJs and BGAs turn
+// the short way round; a TRRJ stays within the turn its wing has clear. Without motion (Motion off, or reduced motion
+// asked for) the pose is set at once.
+const glideRate = 3;   // per second: a large turn is 99% done in about 2.2 s
+const glideJoints = new Map(), turnGoal = datedTurn.slice();
+let glideClock = 0, glideSource = '', turnSpeed = 0;
+const wrapAngle = angle => angle - 2 * Math.PI * Math.round(angle / (2 * Math.PI));
+// One step of a critically damped spring (exact for any step): an offset from the goal and its rate, `dt` later.
+function settle(offset, rate, dt) {
+    const push = rate + glideRate * offset, decay = Math.exp(-glideRate * dt);
+    return [(offset + push * dt) * decay, (rate - glideRate * push * dt) * decay];
+}
+// A joint: a SARJ ('port', 'starboard': all that side's pivots), a solar wing's BGA or a radiator wing's TRRJ.
+function jointOf(key) {
+    let joint = glideJoints.get(key);
+    if (joint) return joint;
+    let read, apply, full = true;
+    if (typeof key === 'string') { const pivots = sarjPivots[key]; read = () => pivots[0]?.rotation.x ?? 0; apply = angle => { for (const pivot of pivots) pivot.rotation.x = angle; }; }
+    else if (key.isObject3D) { full = false; read = () => key.rotation.z; apply = angle => { key.rotation.z = angle; }; }
+    else { read = () => key.group.rotation.z; apply = angle => { key.group.rotation.z = angle; key.overlay?.quaternion.copy(key.group.quaternion); }; }
+    const angle = read();
+    glideJoints.set(key, joint = { shown: angle, speed: 0, goal: angle, rate: 0, at: glideClock, full, apply });
+    return joint;
+}
+// A new goal for a joint; `jump` marks a change of source, which eases in rather than setting a rate.
+function aim(key, angle, jump) {
+    const joint = jointOf(key), since = glideClock - joint.at, expected = joint.goal + joint.rate * Math.min(since, 1.5);
+    const goal = joint.full ? expected + wrapAngle(angle - expected) : angle, step = goal - joint.goal;
+    // Rates above 1.2 rad/s are jumps: the SARJs turn 0.7 rad/s while time runs ×600.
+    joint.rate = !jump && since > .05 && Math.abs(step) < 1.2 * since ? step / since : 0;
+    joint.goal = goal; joint.at = glideClock;
+    if (joint.full && Math.abs(goal) > 8 * Math.PI) { const turns = 2 * Math.PI * Math.round(goal / (2 * Math.PI)); joint.goal -= turns; joint.shown -= turns; }
+}
+// Each radiator wing takes its TRRJ angle (parked, or telemetered), drawn within the turn this model leaves it clear
+// of its neighbours (js/parts/thermal.js); bank.userData.trrj keeps the angle asked for.
+function poseJoints(port, starboard, bgaOf, trrj = parkedTrrj, jump = false) {
+    aim('port', port, jump); aim('starboard', starboard, jump);
+    for (const wing of wings) aim(wing, bgaOf(wing), jump);
+    for (const bank of radiatorBanks) {
+        const side = bank.userData.side < 0 ? 'port' : 'starboard', wanted = trrj[side] ?? parkedTrrj[side];
+        bank.userData.trrj = wanted; aim(bank, Math.min(trrjClear[side][1], Math.max(trrjClear[side][0], wanted)), jump);
+    }
+}
+// The attitude as drawn turns toward the one asked for the shortest way round; true while it moves.
+const shownTurn = new THREE.Quaternion(), goalTurn = new THREE.Quaternion(), turnMatrix = new THREE.Matrix4();
+const asQuaternion = (turn, target) => target.setFromRotationMatrix(turnMatrix.set(turn[0], turn[1], turn[2], 0, turn[3], turn[4], turn[5], 0, turn[6], turn[7], turn[8], 0, 0, 0, 0, 1));
+function aimTurn(turn) { for (let i = 0; i < 9; i++) turnGoal[i] = turn[i]; }
+function glideTurn(dt, instant) {
+    if (turnGoal.every((value, i) => value === attitude.turn[i])) { turnSpeed = 0; return false; }
+    const left = asQuaternion(attitude.turn, shownTurn).angleTo(asQuaternion(turnGoal, goalTurn));
+    if (instant || left < 1e-5) { setAttitude(turnGoal); turnSpeed = 0; return true; }
+    const [after, rate] = settle(left, -turnSpeed, dt); turnSpeed = -rate;
+    shownTurn.slerp(goalTurn, 1 - Math.max(0, after) / left);
+    const e = turnMatrix.makeRotationFromQuaternion(shownTurn).elements;
+    setAttitude([e[0], e[4], e[8], e[1], e[5], e[9], e[2], e[6], e[10]]);
+    return true;
+}
+// Every frame: each joint and the attitude a step along; the light follows the attitude, the shadows a moving pose.
+function glide(delta, instant = !motion) {
+    const dt = Math.min(delta, .1);
+    let moving = false;
+    for (const joint of glideJoints.values()) {
+        const goal = joint.goal + joint.rate * Math.min(glideClock - joint.at, 1.5);
+        let shown = goal, speed = joint.rate;
+        if (!instant) {
+            const [offset, offsetRate] = settle(joint.shown - (goal - joint.rate * dt), joint.speed - joint.rate, dt);
+            if (Math.abs(offset) > 1e-5 || Math.abs(offsetRate) > 1e-4) { shown = goal + offset; speed += offsetRate; moving ||= Math.abs(offset) > 2e-3; }
+        } else moving ||= Math.abs(shown - joint.shown) > .005;
+        joint.speed = speed;
+        if (shown !== joint.shown) { joint.shown = shown; joint.apply(shown); }
+    }
+    if (glideTurn(dt, instant) && realSun && sunTrack.state === 'ready') { orientSun(); lightFrom(sunTrack.sun, sunTrack.shadow); moving = true; }
+    if (moving) markShadowsDirty();
+}
+function lightFrom(sun, shadow) {
+    const lit = 1 - shadow;
+    sunlight.position.set(...sun).multiplyScalar(sunReach); sunlight.intensity = studioLight.intensity * lit;
+    hemisphere.intensity = studioLight.hemisphere * (1 - .35 * shadow); rim.intensity = studioLight.rim * (1 - .5 * shadow);
+    if (sunShown.distanceTo(sunlight.position) > sunReach * .004 || Math.abs(litShown - lit) > .02) { markShadowsDirty(); sunShown.copy(sunlight.position); litShown = lit; }
+}
+const degrees = radians => Math.round(radians * 180 / Math.PI);
+function updateSun(delta) {
+    if (!realSun || sunTrack.state !== 'ready' || (sunClock -= delta) > 0) return;
+    sunClock = .5;
+    const date = sunFixed || new Date(Date.now() + (sky ? sky.time.offset : 0));
+    if (!updateSunTrack(date)) return;
+    const { shadow, change } = sunTrack;
+    // Live telemetry stands in for the computed angles and attitude only at the clock's own time: fresh, or carried
+    // forward from the last data while the station is out of contact.
+    const heard = liveMode && !sunFixed && !(sky && sky.time.offset) && liveHeard(), fresh = heard && liveFresh();
+    // A new source (Real Sun, the telemetry, the telemetry carried forward, or the clock moved off now) eases in.
+    const source = (heard ? fresh ? 'live' : 'carried' : 'sun') + (sky && sky.time.offset ? ' ahead' : '') + (sunFixed ? ' fixed' : '');
+    const jump = source !== glideSource; glideSource = source;
+    aimTurn((heard && liveTurn(sunTrack.xvv)) || datedTurn);
+    // The light from the Sun under the attitude as drawn; the joints' goals from the Sun under the attitude asked for.
+    orientSun();
+    const sun = inStation(sunTrack.xvv, turnGoal), name = attitudeName(turnGoal);
+    if (heard) {
+        const joints = livePose(sun, fresh), tip = bgaFor(sun); poseJoints(joints.port, joints.starboard, wing => joints.bga[wing.channel] ?? tip, joints.trrj, jump);
+    } else poseJoints(sarjFor(sun), sarjFor(sun), () => bgaFor(sun), parkedTrrj, jump);
+    lightFrom(sunTrack.sun, shadow);
+    const light = shadow > .99 ? 'EARTH\'S SHADOW' : shadow > .01 ? 'PENUMBRA' : 'DAYLIGHT';
+    const next = change ? ' / ' + (change.sunrise ? 'SUNRISE' : 'SUNSET') + ' IN ' + Math.max(1, Math.round((change.date - date) / 60000)) + ' MIN' : '';
+    const beta = ' / BETA ' + degrees(sunTrack.beta) + '°';
+    if (!liveMode) { sunLine.textContent = 'REAL SUN / ' + name + ' / ' + light + next + beta; return; }
+    if (fresh) { const v = live.values; sunLine.textContent = 'ISS LIVE / ' + name + ' / SARJ ' + v.sarjPort.toFixed(1) + '° · ' + v.sarjStarboard.toFixed(1) + '° / ' + light + next + (Number.isFinite(v.beta) ? ' / BETA ' + v.beta.toFixed(1) + '°' : beta); return; }
+    if (heard) { sunLine.textContent = 'ISS LIVE / NO SIGNAL, LAST DATA ' + Math.max(1, Math.round((Date.now() - live.received) / 60000)) + ' MIN AGO / PREDICTED / ' + name + ' / ' + light + next; return; }
+    const why = live.state === 'failed' ? 'UNAVAILABLE' : live.state === 'on' && !live.aos ? 'NO SIGNAL (LOS)' : live.state === 'on' ? 'WAITING FOR DATA' : 'CONNECTING';
+    sunLine.textContent = 'ISS LIVE / ' + why + ' / COMPUTED SUN / ' + name + ' / ' + light + next;
+}
+function setLive(on) {
+    liveMode = on; setPressed('live-toggle', on); sunClock = 0;
+    if (on) { if (!realSun) setRealSun(true); startLive(); } else { stopLive(); aimTurn(datedTurn); }
+}
+function setRealSun(on) {
+    realSun = on; setPressed('sun-toggle', on); sunClock = 0; sunLine.hidden = !on;
+    if (on) { sunLine.textContent = 'REAL SUN / LOADING'; startSunTrack().then(() => { if (sunTrack.state === 'failed' && realSun) sunLine.textContent = 'REAL SUN / UNAVAILABLE OFFLINE'; }); return; }
+    if (liveMode) setLive(false);
+    glideSource = 'schematic'; poseJoints(0, 0, wing => wing.base, { port: 0, starboard: 0 }, true); sunlight.position.set(...studioLight.sun); sunlight.intensity = studioLight.intensity;
+    hemisphere.intensity = studioLight.hemisphere; rim.intensity = studioLight.rim; sunShown.set(0, 0, 0); litShown = -1; markShadowsDirty(); render();
+}
 const globeTexts = {
     orbit: ['06 / LOW EARTH ORBIT', 'SGP4 PREDICTION / NOT LIVE TELEMETRY', 'INERTIAL FRAME / NORTH UP'],
     launch: ['07 / FALCON 9 LAUNCH', 'DEMO-2 PROFILE / 30 MAY 2020 / LC-39A', 'PAD FRAME / NORTH-EAST TRACK']
@@ -283,7 +465,7 @@ export function setView(name) {
     leaveGlobe();
     inspectionLight.visible = false; dragonFollow = false;
     currentView = name; app.dataset.sceneView = name; controls.autoRotate = false; setPressed('rotate-toggle', false);
-    for (const entry of parts.values()) entry.group.visible = name === 'interior' ? entry.id === 'columbus' : !modernParts.has(entry.id) || configuration === 'modern';
+    for (const entry of parts.values()) entry.group.visible = name === 'interior' ? entry.id === 'columbus' : shownIn(entry.id, configuration);
     applyGhost();
     const bounds = name === 'interior' ? new THREE.Box3().setFromObject(parts.get('columbus').group) : stationBounds;
     fitBox(bounds, cameraDirection(name), name === 'interior' ? 1.25 : 1.16);
@@ -302,10 +484,10 @@ export function focusPart(id) {
         : id === 'dragon' ? dragonApproachBounds().clone() : new THREE.Box3().setFromObject(parts.get(id).group);
     if (id === 'dragon' && !cabinDetail) bounds.union(new THREE.Box3().setFromObject(parts.get('harmony').group));
     controls.autoRotate = false; setPressed('rotate-toggle', false);
-    const detailDirections = { destiny: [-110, 68, -145], poisk: [-155, 85, -140], rassvet: [-145, -85, -135], prichal: [-140, 20, -180], soyuz: [-160, 120, 160], beam: [-120, 80, 150], bishop: [-155, 100, -140], z1: [-85, 58, -165], s3payloads: [125, 70, -160], p3payloads: [-125, 70, -160], tranquility: [-100, -120, -155], robotics: [-40, 120, 150], thermal: [-155, 80, -100], irosa: [-100, 160, -130] };
+    const detailDirections = { 'soyuz-ms29': [-160, -100, 140], 'progress-aft': [-160, 120, 160], 'progress-poisk': [-160, 120, 100], pma3: [-150, 110, -140], 'cargo-dragon': [-160, 90, -150], dextre: [140, 80, -160], aces: [150, -95, -140], destiny: [-110, 68, -145], poisk: [-155, 85, -140], rassvet: [-145, -85, -135], prichal: [-140, 20, -180], soyuz: [-160, 120, 160], beam: [-120, 80, 150], bishop: [-155, 100, -140], z1: [-85, 58, -165], s3payloads: [125, 70, -160], p3payloads: [-125, 70, -160], tranquility: [-100, -120, -155], robotics: [-40, 120, 150], thermal: [-155, 80, -100], irosa: [-100, 160, -130] };
     const direction = windowDetail ? new THREE.Vector3(65, -180, -105) : cabinDetail ? new THREE.Vector3(-100, -20, 35) : id === 'dragon' ? new THREE.Vector3(-165, 70, 75) : detailDirections[id] ? new THREE.Vector3(...detailDirections[id]) : cameraDirection('reverse');
     // The selected assembly stays solid; the rest of the station remains as ghosted line art for context.
-    for (const entry of parts.values()) entry.group.visible = !modernParts.has(entry.id) || configuration === 'modern';
+    for (const entry of parts.values()) entry.group.visible = shownIn(entry.id, configuration);
     applyGhost();
     inspectionLight.visible = windowDetail || cabinDetail || id === 'tranquility';
     currentView = 'detail'; app.dataset.sceneView = 'detail';
@@ -416,7 +598,11 @@ function updateApproachDistance(hidden) {
     if (approachDistBadge.textContent !== rangeText) approachDistBadge.textContent = rangeText;
 }
 // Crew 1's thought follows his head on screen. It shows only while the camera looks into the see-through side of
-// Columbus's hull and the crew are large enough to read (about 35 px a metre or more, as in the laboratory's own view).
+// Columbus's hull and the crew are large enough to make out (20 px a metre or more: the laboratory's own view gives
+// them 29 on a phone and 45 on a wide window; at 35, as before, a window under 1,150 px wide never showed it). Near
+// the frame's right edge the bubble slides left over its tail, which stays on his head; its width is read as it
+// appears.
+let crewThoughtWidth = 0;
 function updateCrewThought() {
     const element = crewThought.element, columbus = parts.get('columbus'), lab = columbus && columbus.group.userData.lab, person = lab && lab.crew[0];
     let show = !!person && crewThought.level > .01;
@@ -428,10 +614,13 @@ function updateCrewThought() {
         const pixelsPerMetre = Math.hypot((top.x - base.x) * width / 2, (top.y - base.y) * height / 2) / .22;
         const toCamera = camera.getWorldDirection(new THREE.Vector3()).negate().applyQuaternion(lab.interior.getWorldQuaternion(new THREE.Quaternion()).invert());
         const angle = Math.atan2(toCamera.y, toCamera.x);
-        show = pixelsPerMetre > 35 && Math.abs(top.x) < .95 && Math.abs(top.y) < .92 && top.z < 1 && angle > lab.open.a0 + .2 && angle < lab.open.a1 - .2;
+        show = pixelsPerMetre > 20 && Math.abs(top.x) < .95 && Math.abs(top.y) < .92 && top.z < 1 && angle > lab.open.a0 + .2 && angle < lab.open.a1 - .2;
         if (show) {
-            element.style.transform = 'translate(' + ((top.x * .5 + .5) * width).toFixed(1) + 'px,' + ((-top.y * .5 + .5) * height).toFixed(1) + 'px)';
+            const x = (top.x * .5 + .5) * width, bubble = element.lastElementChild;
+            if (element.hidden) { element.hidden = false; crewThoughtWidth = bubble.offsetWidth; }
+            element.style.transform = 'translate(' + x.toFixed(1) + 'px,' + ((-top.y * .5 + .5) * height).toFixed(1) + 'px)';
             element.style.opacity = crewThought.level.toFixed(2);
+            bubble.style.left = Math.min(13, width - 8 - x - crewThoughtWidth).toFixed(1) + 'px';
         }
     }
     element.hidden = !show;
@@ -507,8 +696,13 @@ export function resize() {
     if (!width || !height) return;
     renderer.setSize(width, height);
     if (globeViews.has(currentView)) { globeView()?.resize(width, height); render(); return; }
-    if (currentView === 'interior') fitBox(new THREE.Box3().setFromObject(parts.get('columbus').group), cameraDirection('interior'), 1.25);
-    else if (currentView === 'detail' && selected) focusPart(selected); else if (currentView !== 'detail') fitBox(stationBounds, cameraDirection(currentView));
+    // A new pixel ratio alone keeps a flight going; a new viewport size cuts to the framing for it.
+    if (flight && flight.width === width && flight.height === height) { render(); return; }
+    cutting = true;
+    try {
+        if (currentView === 'interior') fitBox(new THREE.Box3().setFromObject(parts.get('columbus').group), cameraDirection('interior'), 1.25);
+        else if (currentView === 'detail' && selected) focusPart(selected); else if (currentView !== 'detail') fitBox(stationBounds, cameraDirection(currentView));
+    } finally { cutting = false; }
     render();
 }
 document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => { selectPart(null); setView(button.dataset.view); }));
@@ -537,9 +731,9 @@ document.getElementById('reset').addEventListener('click', () => {
 // Over Earth, below the station's usual range, each press zooms four steps at once: from the station to the whole
 // Earth and Moon is seven orders of magnitude.
 const zoomSteps = () => orbital && camera.zoom < .45 ? 4 : 1;
-for (const [id, multiplier] of [['zoom-in', 1.25], ['zoom-out', .8]]) document.getElementById(id).addEventListener('click', () => { if (globeViews.has(currentView)) { globeView()?.zoomBy(multiplier); return; } dragonFollow = false; camera.zoom = THREE.MathUtils.clamp(camera.zoom * multiplier ** zoomSteps(), controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); render(); });
+for (const [id, multiplier] of [['zoom-in', 1.25], ['zoom-out', .8]]) document.getElementById(id).addEventListener('click', () => { if (globeViews.has(currentView)) { globeView()?.zoomBy(multiplier); return; } dragonFollow = false; flight = null; camera.zoom = THREE.MathUtils.clamp(camera.zoom * multiplier ** zoomSteps(), controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); render(); });
 document.getElementById('labels-toggle').addEventListener('click', () => { labelsEnabled = !labelsEnabled; setPressed('labels-toggle', labelsEnabled); render(); });
-document.getElementById('rotate-toggle').addEventListener('click', () => { controls.autoRotate = !controls.autoRotate; setPressed('rotate-toggle', controls.autoRotate); });
+document.getElementById('rotate-toggle').addEventListener('click', () => { flight = null; controls.autoRotate = !controls.autoRotate; setPressed('rotate-toggle', controls.autoRotate); });
 document.getElementById('motion-toggle').addEventListener('click', () => { motion = !motion; setPressed('motion-toggle', motion); render(); });
 document.getElementById('configuration-toggle').addEventListener('click', () => setConfiguration(configuration === 'reference' ? 'modern' : 'reference'));
 function toggleBackdrop() {
@@ -553,6 +747,13 @@ function toggleBackdrop() {
     render();
 }
 document.getElementById('backdrop-toggle').addEventListener('click', toggleBackdrop);
+document.getElementById('sun-toggle').addEventListener('click', () => setRealSun(!realSun));
+document.getElementById('live-toggle').addEventListener('click', () => setLive(!liveMode));
+// The real Sun starts once the station is on screen (js/main.js), so its libraries and elements load after the page.
+export const startRealSun = () => setRealSun(realSun);
+// Holds the real Sun at a date (null: the clock again); for checking poses at chosen times.
+export { setLive };
+export function showSunAt(date) { sunFixed = date; sunClock = 0; updateSun(0); glide(0, true); renderer.shadowMap.needsUpdate = true; render(); return { ...sunTrack }; }
 document.getElementById('capture').addEventListener('click', () => {
     render(); const canvas = document.createElement('canvas'); canvas.width = renderer.domElement.width; canvas.height = renderer.domElement.height;
     const context = canvas.getContext('2d'); context.fillStyle = getComputedStyle(app).backgroundColor; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(renderer.domElement, 0, 0);
@@ -579,16 +780,19 @@ reducedMotion.addEventListener('change', event => { if (event.matches) { motion 
 new ResizeObserver(resize).observe(viewport);
 export function advance(delta) {
     const started = performance.now();
+    glideClock += delta;
     if (motion) {
         elapsed += delta; updateApproach(delta); updateShutter(delta); z1EVA.update(delta); updateDragonCrew(elapsed); updateColumbusCrew(elapsed);
-        for (const wing of wings) { wing.group.rotation.z = wing.base + Math.sin(elapsed * .07) * .035 * wing.direction; if (wing.overlay) wing.overlay.quaternion.copy(wing.group.quaternion); }
+        if (!realSun || sunTrack.state !== 'ready') for (const wing of wings) aim(wing, wing.base + Math.sin(elapsed * .07) * .035 * wing.direction, false);
         // A small illustrative prime-antenna tracking arc about its azimuth and elevation axes; the spare stays parked.
         for (const dish of trackingDishes) {
             dish.azimuth.rotation.y = dish.baseAzimuth + Math.sin(elapsed * .11) * Math.PI / 30;
             dish.elevation.rotation.x = dish.baseElevation + Math.sin(elapsed * .16) * Math.PI / 60;
         }
     }
-    if (dragonFollow && currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach') followDragon(delta);
+    updateSun(delta); glide(delta);
+    if (flight && !globeViews.has(currentView)) updateFlight(delta);
+    else if (dragonFollow && currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach') followDragon(delta);
     if (globeViews.has(currentView)) globeView()?.update(delta);
     else if (orbital && sky) sky.update(delta);
     // The wheel speeds up below the station's usual range, so the reach out to the Moon takes a few dozen notches.
@@ -597,4 +801,5 @@ export function advance(delta) {
     controls.update(delta); render();
     if (watchFrames(delta, motion)) resize();
     updateStats(delta, performance.now() - started, evaWorkerState);
+    flightsReady = true;
 }

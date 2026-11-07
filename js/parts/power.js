@@ -3,11 +3,15 @@ import * as THREE from 'three';
 import { Kit, material, palette } from '../core/kit.js';
 import { part, powerChannels, ring, solarRootX, solarStations, solarWingStagger, solarWingY, wings } from '../core/station.js';
 import { panel } from '../core/surfaces.js';
+import { intoPivot, sarjPivot } from '../core/sarj.js';
 
-part('power', 'Photovoltaic wings', '02 / ELECTRICAL POWER', 'Eight original solar-array wings unfold into sixteen dark photovoltaic blankets around deployable lattice masts. Rotary joints orient the cell faces toward sunlight. The two wings of each module sit one above the other; their mast canisters enter one beta-gimbal frame from opposite faces.', [['Original wings', '8 / 16 blankets'], ['Array span', '~73 m']], [48, 7, -17], (kit, group) => {
+part('power', 'Photovoltaic wings', '02 / ELECTRICAL POWER', 'Eight original solar-array wings unfold into sixteen dark photovoltaic blankets around deployable lattice masts. Rotary joints orient the cell faces toward sunlight. The two wings of each module sit one above the other; their mast canisters enter one beta-gimbal frame from opposite faces.', [['Original wings', '8 / 16 blankets'], ['Array span', '~73 m']], [48.4, 7, -17], (kit, group) => {
     group.userData.mastCanisters = 8;
     group.userData.photovoltaicModules = 4;
     group.userData.wingStagger = { axis: 'vertical', offset: solarWingStagger, upper: 'aft wing' };
+    // Every wing is outboard of a SARJ and turns with it; within its pivot the wing turns on its own BGA (rotation.z,
+    // about the mast).
+    const pivots = { [-1]: sarjPivot(group, -1), [1]: sarjPivot(group, 1) };
     for (const across of solarStations) for (const direction of [-1, 1]) {
         const wing = new THREE.Group(), wingKit = new Kit(); wing.position.set(solarRootX(across), solarWingY(direction), 4 + direction * 2.35);
         const channel = powerChannels[across][direction < 0 ? 0 : 1];
@@ -118,11 +122,16 @@ part('power', 'Photovoltaic wings', '02 / ELECTRICAL POWER', 'Eight original sol
             wingKit.rod([side * .70, -.15, direction * 1.16], [side * 1.0, -.15, direction * 1.20], .075, palette.silver);
             wingKit.box([side * .95, -.15, direction * 1.20], [.20, .30, .39], palette.white);
         }
-        // Low drive/electrical enclosure stays attached to the inboard end.
-        wingKit.box([.67, -.27, direction * -1.72], [.29, .41, .57], palette.white);
-        wingKit.box([.827, -.27, direction * -1.72], [.026, .29, .43], palette.silver, [0, 0, 0], false);
-        wingKit.rod([.53, -.21, direction * -1.71], [.68, -.21, direction * -1.71], .065, palette.silver);
+        // Low drive/electrical enclosure on the barrel at the inboard end, where it first stood (22 degrees below the
+        // across axis), with a cable stub running outboard along the barrel. It keeps within 0.67 m of the BGA axis:
+        // the S5/P5 crossmember under the lower inner wing is 0.705 m from that axis, so the box clears the beta-gimbal
+        // frame at every BGA angle. Until 7 November 2026 it stood 0.94 m out and swept through the frame's top and
+        // bottom crossmembers.
+        const housing = -Math.atan2(.27, .67), onBarrel = (r, depth) => [Math.cos(housing) * r, Math.sin(housing) * r, direction * depth];
+        wingKit.box(onBarrel(.605, -1.72), [.09, .28, .57], palette.white, [0, 0, housing]);
+        wingKit.box(onBarrel(.656, -1.72), [.012, .22, .43], palette.silver, [0, 0, housing], false);
+        wingKit.rod(onBarrel(.615, -1.43), onBarrel(.615, -1.25), .03, palette.silver);
         wingKit.box([0, -.025, direction * 1.2], [spreaderWidth - .08, .21, .32], palette.white);
-        wingKit.finish(wing); group.add(wing); wings.push({ group: wing, direction, across, channel, base: 0 });
+        wingKit.finish(wing); intoPivot(pivots[Math.sign(across)], wing); wings.push({ group: wing, direction, across, channel, base: 0 });
     }
 });

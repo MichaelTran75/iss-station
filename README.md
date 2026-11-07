@@ -1,8 +1,10 @@
 # ISS · Trạm Vũ trụ Quốc tế 3D
 
-Mô hình three.js (WebGL) của Trạm Vũ trụ Quốc tế: 26 khối có thể chọn để xem chi tiết, cấu hình hiện tại và cấu hình gốc,
+Mô hình three.js (WebGL) của Trạm Vũ trụ Quốc tế: các khối có thể chọn để xem chi tiết, cấu hình ngày 5/11/2026 (mặc định) và cấu hình gốc,
+khớp quay SARJ và BGA cùng ánh sáng theo Mặt Trời thật (kể cả lúc trạm vào bóng Trái Đất), chế độ ISS Live đọc góc khớp và tư thế thật từ NASA,
 Crew Dragon tiếp cận và ghép nối theo phương trình Clohessy–Wiltshire với các điểm chờ của Crew-2, phi hành đoàn làm việc
-trong Columbus, phi hành gia đi bộ ngoài không gian ở Z1 (leo bằng tay, móc dây thắt lưng, súng vặn PGT, dây an toàn
+trong Columbus (người ngồi laptop chống cằm nhìn sang 8 s mỗi vòng 35 s, kèm bong bóng suy nghĩ khi người đủ to
+trên màn hình, từ 20 điểm ảnh mỗi mét), phi hành gia đi bộ ngoài không gian ở Z1 (leo bằng tay, móc dây thắt lưng, súng vặn PGT, dây an toàn
 85 ft nối về khóa khí Quest; làm xong một lượt bốn bu lông thì cất dụng cụ, tháo móc và leo xuống, vòng lặp 62 s), góc nhìn quỹ đạo (ISS ở đúng vị trí hiện tại trên quả địa cầu thật tỉ lệ) và góc nhìn
 Launch: Falcon 9 đưa Crew Dragon rời bệ LC-39A lên quỹ đạo theo lịch chuyến Demo-2.
 Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
@@ -13,12 +15,16 @@ Trang: https://michaeltran75.github.io/iss-station/ (nhúng Wix bằng iframe).
 | `css/app.css` | kiểu giao diện |
 | `js/boot.js` | khởi động: nạp dữ liệu, rồi `main.js`; hiện bảng lỗi nếu trang không chạy được |
 | `js/main.js` | import mọi module theo thứ tự dựng cảnh, rồi khởi chạy trang |
-| `js/core/` | nền: `data` (dữ liệu mô hình), `stage` (renderer, camera, đèn), `quality` (mức chất lượng, lịch vẽ bóng đổ), `kit` (vật liệu, gộp lưới), `station` (sổ bộ phận `part()`, hằng số bố trí), `release` (bỏ bản dữ liệu đỉnh trên CPU khi GPU đã giữ), cùng các chi tiết dùng chung: `cbm`, `surfaces`, `hull`, `pma`, `payloads` |
+| `js/core/` | nền: `data` (dữ liệu mô hình), `stage` (renderer, camera, đèn), `quality` (mức chất lượng, lịch vẽ bóng đổ), `kit` (vật liệu, gộp lưới theo loại bề mặt), `station` (sổ bộ phận `part()`, hằng số bố trí, bộ phận theo cấu hình), `release` (bỏ bản dữ liệu đỉnh trên CPU khi GPU đã giữ), `sarj` (trục quay SARJ: tách giàn ngoài, cánh pin, iROSA vào hai trục quay), cùng các chi tiết dùng chung: `cbm`, `surfaces`, `hull`, `pma`, `payloads` |
 | `js/parts/` | mỗi tệp một bộ phận (truss, power, … z1). `assembly.js` chạy sau cùng: dời cụm Nga, hạ giàn, thu nhỏ Z1 |
 | `js/figures/eva.js` | lưới phi hành gia EVA; mỗi khung chép tư thế nhận từ worker |
 | `js/ui/` | `ghost` (khối mờ, nét viền), `rendezvous-guide` (đường tiếp cận, điểm chờ, vùng cấm 200 m), `controller` (chọn bộ phận, góc nhìn, nhãn, nút bấm, vòng lặp khung hình) |
 | `js/orbit/sky.js` | bầu trời thật dùng chung: Trái Đất (ngày, đêm, mây), ISS, Mặt Trăng, Mặt Trời, sao, theo giờ hiện tại; vẽ cả nền Trái Đất sau trạm. Tải khi mở lần đầu; khi không góc nhìn nào vẽ nó, GPU bỏ bản của nó tới lần vẽ sau |
 | `js/orbit/view.js` | góc nhìn quỹ đạo: khung ISS / Earth & Moon / Sun, zoom ra tới 600 triệu km, tua nhanh thời gian |
+| `js/orbit/elements.js` | TLE của ISS: CelesTrak, lưu tạm 2 giờ, dự phòng `data/orbits.json`; dùng chung cho bầu trời và Mặt Trời thật |
+| `js/orbit/sun-track.js` | Mặt Trời thật trong hệ trạm: hướng, bóng Trái Đất, lần mọc/lặn kế tiếp, góc SARJ và BGA hướng pin về Mặt Trời |
+| `js/orbit/attitude.js` | tư thế trạm: phép quay từ hệ +XVV sang hệ trạm; mặc định −XVV (tư thế bay ngày 5–7/11/2026), ISS Live thay bằng tư thế thật |
+| `js/orbit/live.js` | ISS Live: telemetry NASA (Lightstreamer ISSLIVE) — góc SARJ, 8 BGA, 2 TRRJ, tư thế, beta; tải khi bật |
 | `js/launch/` | góc nhìn Launch: `vehicle` (Falcon 9 + Crew Dragon, cánh lưới, chân đáp, lửa động cơ, Draco), `ground` (ảnh mặt đất phủ lên gò bệ, tháp, bầu trời trong khí quyển), `complex` (khu phóng 39: gò bệ, rãnh lửa, tháp thu sét 39B, VAB, LCC, HIF), `site` (các công trình khác trong vùng 17 km quanh bệ, từ `data/launch-site.json`: nhà, tháp, bồn cầu, tháp nước), `exhaust` (khói ở bệ, trên sà lan và vệt khói trôi theo gió), `internals` (cấu trúc bên trong hai tầng cho chế độ cắt dọc và nhìn xuyên), `part-labels` (nhãn tên bộ phận bên trong), `engine-audio` (âm thanh động cơ), `droneship` (sà lan đáp), `view` (camera, hai lượt vẽ, bảng điều khiển). Dựng khi mở, dọn khi rời |
 | `js/sim/ascent.js` | mô phỏng bay Falcon 9 (lực đẩy, lực cản, khí quyển, Trái Đất quay) và tầng 1 quay về sà lan, tua thời gian; chỉ có toán |
 | `js/sim/plume.js` | luồng xả Merlin theo điều kiện bay (giãn nở đẳng entropy, chu kỳ sóng sốc, trộn khí, cháy tiếp); chỉ có toán |
@@ -56,7 +62,7 @@ Nhúng vào Wix: *Thêm → Nhúng mã → Nhúng trang web* rồi dán đườn
 ## Thêm bộ phận
 
 1. Tạo `js/parts/ten.js`. Import `THREE` từ `'three'`, `part` từ `../core/station.js`, và các hàm dựng cần dùng (`moduleAt` trong `core/hull.js`, `hullBadge` trong `core/surfaces.js`, …).
-2. Gọi `part('id', 'Tên', 'NN / NHÓM', 'mô tả', [['Thông số', 'giá trị']], [x, y, z], (kit, group) => { … })`. `kit` gom chi tiết thành một lưới cho mỗi vật liệu, `group` là nhóm có thể chọn.
+2. Gọi `part('id', 'Tên', 'NN / NHÓM', 'mô tả', [['Thông số', 'giá trị']], [x, y, z], (kit, group) => { … })`. `kit` gom chi tiết thành lưới theo loại bề mặt (chi tiết chỉ khác màu, độ nhám, độ kim loại vẽ chung một lần), `group` là nhóm có thể chọn. Bộ phận chỉ có trong một cấu hình thì thêm `id` vào `modernParts` hoặc `referenceParts` (`core/station.js`).
 3. Thêm `import './parts/ten.js';` vào `main.js`, trước `parts/assembly.js`. Nếu bộ phận gắn vào giàn hoặc cụm Nga, thêm `id` vào danh sách tương ứng trong `parts/assembly.js`.
 4. Chạy `./preview.sh` để xem.
 
@@ -72,6 +78,8 @@ Theo lịch ghép nối Crew-2 (24/4/2021) và tốc độ của Demo-2. Thời 
 | Tiếp cận cuối | 5 phút | 7 cm/s, chạm cổng ở 5 cm/s | ×4 |
 | Bắt mềm → móc khóa xong | 13 phút | | ×60 |
 
+Hệ số tua chuyển dần theo thang log, không nhảy bậc, nên tốc độ Dragon trên màn hình không giật. Ở WP1 Dragon đang chạy qua chỗ đổi (×60 → ×30), nên chuyển trong 3 phút thời gian thật quanh mốc đó; trước tiếp cận cuối (×30 → ×4) và sau khi chạm (×4 → ×60) Dragon đứng yên, chỉ đồng hồ thấy, nên chuyển trong 30 s. Thời gian hoạt cảnh là tích phân của 1/hệ số tua theo thời gian thật (bảng mỗi nửa giây, Simpson). Trước đây ở WP1 tốc độ trên màn hình rơi từ 12,0 xuống 5,9 m/s trong một khung.
+
 Nắp mũi mở suốt chặng tiếp cận: ngoài thực tế nắp mở khoảng 13 phút sau khi phóng (Demo-2: T+12:46), lâu trước Waypoint 0, nên tới điểm 2 (20 m) nắp đã mở sẵn và 4 Draco phía trước dưới nắp dùng được cả chặng. (Trước đây trang cho nắp mở ở 20 m cho dễ nhìn; đã bỏ để khớp với góc nhìn Launch.)
 
 Động cơ Draco (`js/parts/draco.js`): Crew Dragon có 16 chiếc, mỗi chiếc 400 N (90 lbf), Isp 300 s, nhiên liệu MMH và N₂O₄ tự bốc cháy khi gặp nhau, bật tắt theo xung ngắn tới 30 ms.
@@ -79,6 +87,61 @@ Nắp mũi mở suốt chặng tiếp cận: ngoài thực tế nắp mở kho�
 - 12 chiếc trong bốn cụm SuperDraco, mỗi cụm 3: một chếch ra sau, hai chiếc ngang (xoay, dịch ngang theo cặp). Vỏ cụm che kín nên vị trí bên trong được đặt theo nhiệm vụ của từng chiếc.
 - Chọn động cơ: chiếc nào có lực đẩy (ngược hướng khí phụt) gần hướng cần đẩy nhất thì phun. Mỗi lần đốt của chặng chuyển kéo dài đúng thời gian thật quy theo nhịp tua (ít nhất 1 giây trên màn hình); dọc trục ghép thì phun theo xung; giữa các lần đốt, thỉnh thoảng một cặp động cơ ngang ở hai cụm đối diện phun xung ngắn để giữ tư thế.
 - Hình ảnh: tia lửa ngắn ở miệng ống, rồi khói trắng phun ra theo hình nón khoảng 30°, loang và tan trong chưa tới một giây (dưới nắng, giọt nhiên liệu chưa cháy và hơi ngưng tụ hiện màu trắng). Xem Dragon (bấm ô CREW DRAGON) thì khung hình bám theo Dragon và phần đường còn lại, kèm đường đi dự kiến, các điểm chờ, vùng cấm 200 m. Ở góc nhìn toàn trạm, khi Dragon ở ngoài khung, một đường chỉ hướng và khoảng cách nằm ở mép màn hình.
+
+## Chuyển góc nhìn
+
+Đổi khung (chọn bộ phận, nút góc nhìn, Reset) thì camera bay tới khung mới thay vì cắt (`fitBox`, `startFlight` trong `js/ui/controller.js`): tâm nhìn, hướng nhìn (phương vị và độ cao quanh trục đứng, như cách điều khiển quỹ đạo xoay, nên nhìn từ đỉnh không bị lật ở cuối), khoảng cách và khung hình trượt cùng nhau trong 0,6–1,6 s tuỳ độ xa. Phóng to thì dời trước rồi thu khung; thu nhỏ thì mở khung trước. Khung đầu tiên, đổi cỡ cửa sổ và chế độ giảm chuyển động của hệ điều hành thì cắt thẳng; chạm vào điều khiển, nút zoom hay tự xoay thì dừng chuyến bay tại chỗ.
+
+## Cấu hình 5/11/2026
+
+Nút cấu hình đổi giữa **5 NOVEMBER 2026 / ILLUSTRATIVE CONFIGURATION** (mặc định) và **CORE ELEMENTS / SIMPLIFIED COMPARISON** (cấu hình gốc). `modernParts` trong `js/core/station.js` là các khối chỉ có trong cấu hình mới, `referenceParts` là các khối chỉ có trong cấu hình gốc, `shownIn(id, cấu hình)` quyết định hiện hay ẩn. Chọn một khối không có trong cấu hình đang xem thì trang tự đổi cấu hình.
+
+Theo ảnh tàu ghé thăm của NASA ngày 5/11/2026:
+- Crew Dragon (Crew-13) ở cổng trước Harmony, như trước.
+- Cargo Dragon CRS-35 ở đỉnh Harmony, qua PMA-3 / IDA-3 (`js/parts/cargo-dragon.js`): cùng vỏ với Crew Dragon (`dragonHull(true)`), không có ghế, bảng lái và động cơ thoát hiểm; cửa sổ bịt lại. Chi tiết mang tính minh hoạ.
+- Progress MS-34 ở đuôi Zvezda, Progress MS-35 ở đỉnh Poisk, Soyuz MS-29 ở đáy Prichal (`js/parts/soyuz.js`, `dockTo`). Soyuz ở đuôi Zvezda của bản cũ (lần cuối thật là TMA-16, 2009–10) chỉ còn trong cấu hình gốc.
+- Tám tấm iROSA: 2B, 4B (2021), 3A, 4A (2022), 1A, 1B (2023), 2A (29/10/2026), 3B (5/11/2026).
+- Rassvet: khoang khí thí nghiệm và tản nhiệt đã sang Nauka (4–5/2023); ba tấm chắn mảnh vỡ ở mặt trước (8/2023).
+- Kibo: bỏ chảo liên lạc ICS (tháo 2/2020), còn 6 thiết bị ở bệ ngoài.
+- Columbus: bỏ đài SOLAR (tháo 1/2020).
+- ACES, đồng hồ nguyên tử của ESA (`js/parts/aces.js`): lắp 25/4/2025 ở chỗ hướng Trái Đất của bệ ngoài Columbus (đáy khung dưới, đầu ngoài), cạnh ASIM. Hộp là khoảng chỗ dành cho tải ở vị trí đó (0,864 × 1,245 × 1,168 m) dưới tấm đế; mặt dưới có đĩa ăng-ten S-band, loa Ku-band, ăng-ten GNSS, gương và đầu dò laser theo ảnh "The parts of ACES" của ESA, kích thước và chỗ đặt các chi tiết là minh hoạ. Khối vàng nhỏ cũ dưới sàn khung đã bỏ. Chỉ chạm Columbus ở mặt đế (5 mm).
+- Dextre trên chốt nắm PDGF phía trước của bệ di động MBS (`js/parts/dextre.js`): cao 3,5 m, hai tay 3,35 m.
+
+Các khối mới chỉ chạm khối bên cạnh ở mặt ghép (cách nhau gần nhất 4–14 mm), không xuyên vào nhau.
+
+## Mặt Trời thật và ISS Live
+
+Nút **Real Sun** (bật sẵn): từ TLE của ISS (SGP4) và vị trí Mặt Trời (astronomy-engine), trang tính hướng Mặt Trời trong hệ +XVV rồi quay sang hệ trạm (mạn phải +x, đỉnh +y, đuôi +z) theo tư thế: mặc định −XVV, tức trạm bay lùi, đầu trước quay ngược hướng bay, như ISS Live báo ngày 5–7/11/2026 (`js/orbit/attitude.js`), phần Mặt Trời bị Trái Đất che, lần mọc/lặn kế tiếp, góc beta. Từ đó:
+- Hai SARJ quay giàn ngoài (từ P4/S4 ra) quanh trục giàn mỗi vòng quỹ đạo một lần: θ = atan2(s_z, s_y). Giàn, cánh pin và iROSA tách vào hai trục quay ở x = ±26,6 m, tâm vòng SARJ trên mô hình NASA (`js/core/sarj.js`).
+- Mỗi BGA nghiêng cánh pin theo beta: φ = atan2(−s_x, √(s_y² + s_z²)).
+- Đèn nắng đi theo Mặt Trời; vào bóng Trái Đất thì nắng tắt dần theo phần bị che, đèn trời còn 65%, đèn viền còn 50%.
+- Dòng trạng thái: DAYLIGHT / PENUMBRA / EARTH'S SHADOW, phút tới lần mọc hoặc lặn, BETA.
+- Không tải được TLE hay thư viện (ngoại tuyến) thì giữ đèn studio và tư thế sơ đồ (REAL SUN / UNAVAILABLE OFFLINE). Tắt nút thì về đèn studio, SARJ và TRRJ về 0.
+- Đã đối chiếu ngày 6/11/2026: beta 35,4° (Live báo 35,3°), SARJ quay đủ một vòng mỗi quỹ đạo; nhìn từ phía Mặt Trời thì mọi cánh pin đều quay mặt về phía mình.
+
+Tư thế hiện ở dòng trạng thái (REAL SUN / −XVV / …). Đèn nắng, SARJ, BGA, beta và nền Trái Đất đều theo tư thế này. Hoạt cảnh Dragon tiếp cận vẫn theo +XVV vì dựng lại chuyến Crew-2 (2021), góc nhìn Launch theo Demo-2.
+
+Tản nhiệt (TRRJ, `js/parts/thermal.js`): mỗi bên một cánh 3 tấm tản nhiệt chung một dầm. Theo tài liệu ATCS của NASA, dầm đứng ngang mặt sau giàn, tấm tản nhiệt vươn về phía đuôi, mặt tấm quay sang hai mạn. TRRJ quay cả cánh quanh trục dọc hướng đuôi, tối đa ±105°. Tư thế dựng đứng là 0°. Bình thường trạm để cả hai cánh đứng yên ở một góc đặt sẵn, chỉ bám (cạnh hướng Mặt Trời ban ngày, mặt hướng Trái Đất ban đêm) khi có sự cố.
+- Góc đặt sẵn đọc từ ISS Live ngày 5–7/11/2026 (chế độ 4, giữ vị trí): trái 14,94°, phải −29,74°. Real Sun giữ hai cánh ở đó. ISS Live dùng S0000002 (trái), S0000001 (phải), chế độ S0000006/7.
+- Chiều dương: trang coi số đọc là góc quay tay phải quanh trục hướng đuôi, dương thì mép đỉnh nghiêng sang trái (mạn port), cả hai bên như nhau. Đây là suy luận, NASA không công bố: với chiều này, các góc trong bản ghi ISS Mimic cho hai cánh gần song song, và cánh phải (vòng A, ít amoniac hơn) quay cạnh về Mặt Trời.
+- Bố trí giàn (từ 7/11/2026, hằng số trong `js/core/station.js`): S1/P1 chạy từ 7 tới 21 m (trước tới 16 m; S1 thật dài 13,7 m, mô hình NASA ISS_stationary 6,84 → 21,02 m). S3/P3 từ 21 tới 25,8 m, AMS-02 và các ELC đặt theo khoảng cách trên mô hình NASA (lệch dưới 0,4 m, `payloadStation` trong `js/core/payloads.js`). SARJ ở ±26,6 m. Từ S4 ra ngoài dựng theo mô hình NASA: S4/P4 từ 27,4 tới 33,15 m, hết ở mút ngoài IEA (IEA 28,1–33,2 m); S5/P5 từ 33,15 tới 36,71 m là khung BGA trong, tâm cánh ±34,53 m; S6/P6 từ 36,71 m gồm đoạn nối tới 42,16 m, IEA tới 47,66 m và khung BGA ngoài mở tới 51,36 m, tâm cánh ngoài ±49,96 m (đúng mô hình NASA). Tâm cánh tản nhiệt vẫn ở x = ±14 m.
+- Quét cánh từng độ (cách mọi khối ≥ 2 cm): cánh phải quay hết ±105° không chạm gì (ở −29,74° cách AMS-02 và kệ hàng S3 2,3 m; trước đây chỉ quay được ±2,5°). Cánh trái từ −105° tới 19,5°: quá đó thì mép dưới cánh chạm Bishop (ở 14,94° còn cách 0,46 m). Ngoài khoảng này trang vẽ cánh ở góc gần nhất còn hở (`trrjClear`), `bank.userData.trrj` giữ góc thật.
+- Sải trạm trên trang 111,45 m, đo ở tư thế Mặt Trời thật lúc thử (mô hình NASA 111,98 m, trạm thật khoảng 109 m). Từ 7/11 tới khi dựng lại S4/S5 (cùng ngày), S4 ôm BGA trong vào một hốc và S5 nằm ngoài nó, nên phần ngoài lệch ra 2,75 m mỗi bên và sải là 116,9 m.
+- Quét BGA đủ 360° (SARJ ở 0): mọi điểm của cánh pin và iROSA cách trục BGA quá 1 m đều cách giàn và kệ hàng hơn 0,45 m. Mép trong của cánh trong tới |x| = 27,63 m, còn phần đứng yên (nửa trong SARJ, ELC) chỉ ra tới 27,12 m, nên SARJ quay góc nào cũng không chạm. Hộp điện ở đầu trong ống cột buồm (`js/parts/power.js`) từ 7/11/2026 nằm sát vỏ ống, cách trục BGA không quá 0,67 m (thanh ngang S5/P5 dưới cánh trong cách trục 0,705 m), nên BGA quay góc nào cũng không chạm khung: quét từng 5° còn hở ít nhất 0,034 m (cánh trong dưới), 0,072 m (cánh ngoài dưới), 0,13 m (cánh trên). Trước đó hộp nhô ra tới 0,94 m và quẹt qua thanh ngang trên và dưới của khung BGA.
+- PVR (tấm toả nhiệt của mô-đun pin, trên S4/P4 và S6/P6, `js/parts/truss.js`), từ 7/11/2026 theo mô hình NASA: 7 tấm rộng 3,52 m, dài tổng 12,97 m, buông vuông góc với cột buồm và với giàn, ở mặt phẳng giữa của giàn (giữa hai cánh của mô-đun), tâm lùi vào 0,29 m so với tâm IEA. Tấm gấp sâu 0,5 m (từ mặt phẳng giữa lệch về phía đuôi rồi quay lại), hai mép có thanh cắt kéo chạy ngược pha nên nhìn ngang thấy chuỗi hình thoi như mô hình NASA; khung gốc dưới khay ORU thu hẹp xuống bản lề đầu. Trước đó PVR rộng 3,12 m, dài 12,4 m, gấp 0,27 m, treo ngay sau mặt sau giàn và lệch ra ngoài 0,5 m. Hướng buông vẫn như cũ: vuông góc với cột buồm cả trước lẫn sau khi sửa.
+
+Nút **ISS Live** (tắt sẵn; bật thì kết nối push.lightstreamer.com): telemetry công khai của NASA, khoảng mỗi giây một lần khi có liên lạc mặt đất (AOS). Trang thay góc tính bằng góc thật:
+- SARJ: S0000004 (trái), S0000003 (phải); chế độ S0000008/9 (5 = tự bám Mặt Trời). Trái θ = −số đọc, phải θ = +số đọc.
+- BGA: 1A, 3A (S4), 1B, 3B (S6), 2A, 4A (P4), 2B, 4B (P6). 2A/4B φ = 90 − r; 4A/2B r − 270; 1A/3B r − 90; 3A/1B 270 − r.
+- Tư thế: quaternion USLAB000018–21 (số vô hướng trước) giữa hệ thẳng đứng địa phương và thân trạm, đổi thành phép quay từ +XVV sang hệ trạm (`liveTurn`). Chiều quay chọn bằng SARJ đang tự bám (lệch 0,74° khi thử với TLE mới); lệch quá 10° cả hai chiều (TLE cũ, dữ liệu trễ) thì giữ chiều trước. Hướng Mặt Trời, ánh sáng và nền Trái Đất theo tư thế thật; dòng trạng thái ghi tên tư thế (+XVV, −XVV hoặc YAW n°).
+- TRRJ: S0000002 (trái), S0000001 (phải), độ; vẽ trong giới hạn ở trên.
+- Mất liên lạc (LOS): dữ liệu cuối được giữ; SARJ đang tự bám tiếp tục bám Mặt Trời dự báo, cánh có BGA cách Mặt Trời dưới 5° tiếp tục bám, còn lại giữ góc. Dòng trạng thái ghi NO SIGNAL và số phút từ lần dữ liệu cuối.
+- Lúc thử (đêm 6–7/11/2026): SARJ trái tự bám 207 → 215°, SARJ phải tắt ở 290,1° (chế độ 7), trạm bay −XVV (lùi, yaw 176°). Từ 7/11/2026 Real Sun cũng tính theo −XVV.
+- Thử lại 7/11/2026 khoảng 07:00 UTC: trạm đã quay sang +XVV (quaternion gần đơn vị, yaw −4°; khớp với SARJ đang tự bám, lệch 1,07°), cả hai SARJ tự bám (137° · 223°), các BGA khoảng 78° lúc trạm trong bóng Trái Đất. Real Sun vẫn dùng −XVV của ngày cấu hình (5/11).
+- Chuyển mượt (`glide` trong `js/ui/controller.js`): bật hay tắt ISS Live (hoặc Real Sun), có lại tín hiệu sau lúc mất liên lạc, hoặc đồng hồ quay về hiện tại thì các khớp SARJ, BGA, TRRJ và tư thế trạm lướt tới vị trí mới trong khoảng 2 giây, thay vì nhảy ngay. Mỗi khớp theo một lò xo tắt dần tới hạn (không vọt quá đích); SARJ và BGA quay đường ngắn, TRRJ quay trong giới hạn của nó; tư thế quay theo cung ngắn nhất (slerp), ánh sáng và nền Trái Đất theo cùng. Lúc khớp đang bám Mặt Trời, trang theo đúng tốc độ đo giữa hai lần cập nhật nên không trễ: ở ×600 SARJ quay đều 0,6–0,7° mỗi khung, lệch Mặt Trời trung vị 0,66° (trước đây nhảy 19,5° mỗi nửa giây). Tắt Motion (hoặc máy đặt giảm chuyển động) thì đặt ngay, `showSunAt` cũng đặt ngay.
+- Đo ngày 7/11/2026 (Chromium, feed thật): trước đây bật Live thì trong 1 khung cánh pin quay 114°, cánh tản nhiệt 55°, tư thế 176° (−XVV sang +XVV); nay lướt trong 2,35 s, mỗi khung nhiều nhất 2,2°, 1,1° và 3,4°.
+- Chưa từng nhận được dữ liệu thì dùng Mặt Trời tính toán (ISS LIVE / CONNECTING, WAITING FOR DATA, NO SIGNAL (LOS), UNAVAILABLE).
+- `window.issAtlas.showSunAt(date)` đặt trạm ở một thời điểm (thử, chụp ảnh); `setLive(true)` bật Live.
 
 ## Góc nhìn quỹ đạo
 
@@ -92,6 +155,30 @@ Mặt Trăng và Mặt Trời ở vị trí và kích thước thật, tính b�
 
 Thêm vệ tinh: thêm mã NORAD vào `OBJECTS` trong `tle.py` và gọi `addOrbiter({ id, name, norad })` trong `js/orbit/view.js`. Chuyến tiếp tế (phóng → bám quỹ đạo → tiếp cận) có thể ghép `js/sim/orbit.js` cho chặng xa với `js/sim/rendezvous.js` cho chặng gần.
 
+### Nền của Orbit view
+
+Dưới nút **Orbit** (chỉ hiện khi đang ở Orbit view) có công tắc **Light | Dark**. Light (mặc định) là màu giấy của trang (`--paper` #E2D6C0); Dark là nền đen như trước. `?theme=dark` (hoặc `light`) mở thẳng nền đó; không có thì trang dùng lựa chọn lần trước trong trình duyệt (`localStorage` `iss.orbit.theme`). Code ở `js/orbit/theme.js`: đặt `data-orbit-background` trên `#app`, `css/app.css` đổi biến màu theo nó, `js/orbit/sky.js` đổi cảnh 3D mỗi khi nền đổi.
+- Light: không vẽ sao; Mặt Trời màu hổ phách; với ảnh chụp, vầng khí quyển là viền xanh pha thường (không cộng sáng); với bản đồ gió thì không có vầng khí quyển. Đường quỹ đạo, vết mặt đất, chấm Trái Đất / Mặt Trăng và chấm vệ tinh dùng màu mực đậm; đoạn đường mờ dần về màu giấy. Nhãn có quầng màu giấy để đọc được cả trên nửa đêm của ảnh chụp. Các màu cho nền giấy bỏ qua tone mapping ACES (`toneMapped: false`, hoặc tắt trong shader) để lên màn hình đúng màu đã chọn.
+- Dark: như trước.
+- Nền sau trạm (Earth backdrop) và Launch view luôn tối, không theo công tắc này.
+- Nút Orbit có vạch ngăn trước và sau (tách bốn góc nhìn trạm, Orbit, Launch) và hình quả địa cầu đang quay cạnh chữ (SVG trong `index.html`: hai kinh tuyến co giãn theo |cos| của góc quay, 4 s mỗi nửa vòng; người dùng bật giảm chuyển động thì đứng yên).
+- Điện thoại và màn thấp (cao ≤ 600 px): công tắc có hàng riêng dưới nút Orbit, dòng mốc năm lùi xuống. Trên điện thoại, bảng Orbit có nền theo màu của nền đang chọn.
+
+### Bản đồ gió
+
+Trong bảng Orbit, nút **Photo | Wind map** đổi Trái Đất: ảnh chụp, hoặc quả địa cầu trơn chỉ có bờ biển và biên giới (không chữ, không mây), tô màu theo tốc độ gió mặt đất, cùng vệt gió đang thổi, bão đang hoạt động và các đường dự báo đi của bão. Mỗi nền (Light, Dark) có bộ màu riêng. `?earth=map` (hoặc `?earth=photo`) mở thẳng kiểu đó; không có thì trang dùng lựa chọn lần trước trong trình duyệt (`localStorage` `iss.orbit.earth`). Nền sau trạm (Earth backdrop) luôn là ảnh chụp. Code ở `js/orbit/earth-map.js`; `js/orbit/sky.js` đổi shader Trái Đất (`mapStyle`) và làm vầng sáng viền dịu đi.
+- Bờ biển và biên giới: Natural Earth 1:50m qua `world-atlas@2.0.2` (TopoJSON, jsDelivr). Cung hai nước dùng chung là biên giới đất liền (mờ hơn); cung chỉ một nước dùng là bờ biển.
+- Gió: GFS của NOAA, gió ở độ cao 10 m, lưới 1°, bước 3 giờ gần giờ đang hiển thị nhất, lấy từ ERDDAP của PacIOOS (`ncep_global`, nhị phân OPeNDAP, khoảng 290 kB gzip, 2–5 s). Khi chạy ×60/×600, mỗi lần sang bước 3 giờ mới thì tải lưới mới (nhiều nhất 20 s một lần); lỗi thì giữ lưới cũ và thử lại sau 1 phút. Máy chủ có dự báo tới khoảng 8 ngày sau.
+- Lớp màu tốc độ gió: một vỏ cầu cách mặt đất 1 km (lưới hình cầu của Trái Đất, phóng to), tô theo tốc độ gió trên bản đồ 1° (360×180 điểm, tính một lần cho mỗi lưới gió mới) qua bảng màu 0–30 m/s; gió mạnh hơn 30 m/s giữ màu cuối; nửa đêm tối hơn một chút. Light: giấy nhạt → xanh ngọc → vàng → cam → đỏ → tím mận. Dark: xanh đen → xanh lục → ô liu → cam → đỏ → tím hồng → tím nhạt. Thang màu (0, 10, 20, 30+ m/s) hiện dưới dòng nguồn trong bảng Orbit, sau khi lưới gió tải xong.
+- Vệt gió: tối đa 6.000 vệt (chất lượng high; mức khác 3.000; giảm một nửa ngày 7/11/2026). Mỗi vệt gồm 24 điểm cách nhau 1/25 s (đuôi khoảng 1 s), vẽ thành dải mỏng 1,7 px quay về phía màn hình (instanced, mỗi đoạn 2 tam giác, vẽ cả hai mặt). Số vệt theo diện tích quả địa cầu trên màn hình (một vệt mỗi 150 px², ít nhất 200 vệt) và chỉ sinh trong phần đang nhìn thấy. Trên màn hình, vệt chạy 3 px/s cho mỗi m/s, nên nhìn cả địa cầu hay nhìn gần đều giống nhau (nhanh hơn gió thật từ 4.000 đến 80.000 lần). Gió yếu thì vệt mờ. Vệt ẩn khi Trái Đất chỉ còn là chấm nhỏ (khung Earth & Moon, Sun). Nền Dark: vệt sáng, cộng sáng; nền Light: vệt mực đậm, pha thường.
+- Bão: GDACS (Trung tâm Nghiên cứu Chung của Ủy ban châu Âu và Liên Hợp Quốc, theo bản tin JTWC/NHC), tải lại mỗi 30 phút, gồm các cơn có bản tin trong 36 giờ qua. Mỗi cơn có dấu xoáy ở tâm (màu theo cấp: áp thấp nhạt, bão nhiệt đới cam, bão cuồng phong đỏ cam; trên nền Light các màu đậm hơn; chiều xoáy theo bán cầu), đường đã đi (nét liền), đường dự báo 5 ngày (nét đứt) và nón sai số (mờ). Dấu xoáy to nhỏ theo quả địa cầu trên màn hình: khoảng 60 px khi thấy cả địa cầu trên màn lớn, 20 px trên điện thoại, không to hơn khi nhìn gần; ẩn khi địa cầu nhỏ hơn 40 px.
+- Đường dự báo tổ hợp (ensemble) của ECMWF: dưới đường dự báo chính thức, mỗi cơn có 51 đường mảnh, mờ (thành viên đối chứng + 50 thành viên nhiễu của IFS ENS) cho 5 ngày tới, mỗi đoạn tô theo gió mạnh nhất của thành viên đó ở bước 6 giờ đó (dưới 17,5 m/s: áp thấp; dưới 33 m/s: bão nhiệt đới; từ 33 m/s: bão cuồng phong / bão lớn). Các đường chụm lại thì dự báo chắc; tỏa ra thì không chắc. Nguồn: dữ liệu mở của ECMWF trên AWS (`ecmwf-forecasts`, CC BY 4.0, có CORS), tệp `…-enfo-tf.bufr` khoảng 1,2 MB mỗi lượt chạy 00 và 12 UTC, có khoảng 7 giờ sau giờ chạy; trang thử 4 lượt gần nhất, lấy lại mỗi 3 giờ. Tệp là BUFR bản 4, mẫu WMO 3 16 082, mỗi cơn một bản tin, 51 thành viên nén chung. `js/orbit/storm-ensemble.js` tự giải mã đúng phần mẫu đó cần (bảng B/D chép từ ecCodes, bảng gốc WMO 35) và bỏ qua các cơn chỉ là dự báo hình thành (mã 70–79 của mỗi vùng biển); giải mã mất khoảng 25 ms. Mỗi cơn GDACS lấy cơn ECMWF có điểm xuất phát trung bình cách nó dưới 4°. Đo ngày 7/11/2026, lượt 00 UTC: 02S (nam Ấn Độ Dương), 38W (THIRTYONE-26; ECMWF đánh số 38W), 04C (PENA-26), mỗi cơn 51 đường.
+- Xích đạo: một đường đỏ (Line2, rộng 1,4 px, cách mặt đất 4 km, trên vệt gió, dưới nón và đường đi của bão). Light đỏ đậm `#c8281e`, Dark đỏ tươi `#ff4a3a`.
+- Ở chế độ này nhãn ISS/EARTH/MOON/SUN ẩn; vòng quỹ đạo và vết mặt đất của ISS vẫn hiện.
+- Chi phí đo ngày 7/11/2026 (Chromium, khung 1400×900): JS mỗi khung tăng khoảng 0,5 ms ở góc nhìn gần (12.000 vệt, trước khi giảm một nửa); mỗi nhịp mô phỏng mất khoảng 1 ms và đẩy khoảng 3,5 MB lên GPU.
+- Đã thử ngày 7/11/2026: lưới gió 06:00 UTC, 2 cơn bão (THIRTYONE-26 gần quần đảo Mariana, PENA-26 phía nam Hawaii).
+- Không dùng: NHC (không có CORS; cả thư mục ATCF `aid_public` dự báo của các mô hình), a-deck của UCAR RAL (không có CORS), `ens_tracker` của NOMADS (không có CORS), kho GFS của NODD (chỉ có tcvitals, không có đường dự báo), NOMADS (không trả lời), tệp GRIB2 của NODD (phải tự giải mã GRIB2), Open-Meteo nhiều điểm (tính phí theo từng điểm).
+
 Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó sau trạm, **đúng tỉ lệ**: trạm 109 m, Trái Đất 12.742 km, ISS ở độ cao thật (~420 km).
 - Trạm vẫn vẽ bằng camera trực giao. Nền vẽ bằng camera phối cảnh tương đương: mắt lùi lại theo hướng nhìn một khoảng sao cho góc nhìn 45° phủ đúng khung hình của trạm tại tâm nhìn (khung cao 200 m thì mắt cách khoảng 240 m). Hai camera khớp nhau đúng ở mặt phẳng tâm nhìn, nên kích thước trạm so với Trái Đất là kích thước thật.
 - Hệ trục của trạm là hệ quỹ đạo của ISS (đỉnh +y, hướng bay −z, mạn phải +x). ISS bay gần như theo hệ này, nên Trái Đất luôn ở dưới, mặt đất phía dưới là nơi ISS đang bay qua, ngày đêm đúng giờ.
@@ -101,7 +188,7 @@ Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó s
 - Vòng chấm là một phần ba quỹ đạo thật quanh trạm (sáng phía trước, mờ phía sau). Khi mắt đã lùi xa hơn 8.000 km thì hiện cả vòng.
 - Khi Dragon nhỏ hơn 26 điểm ảnh, có vòng tròn đánh dấu nó.
 - Mây là ảnh tĩnh, không phải mây thời gian thực.
-- Ánh sáng trên trạm vẫn cố định để mô hình luôn rõ. Khi ISS bay vào vùng đêm, nền tối nhưng trạm vẫn sáng.
+- Ánh sáng trên trạm theo Mặt Trời thật (mục Mặt Trời thật): ISS bay vào vùng đêm thì trạm tối theo. Tắt nút Real Sun thì về đèn studio cố định.
 - Ảnh Trái Đất 4096 px chỉ có khoảng 10 km mỗi điểm ảnh. Nhìn thẳng xuống từ 420 km, một khung 45° phủ khoảng 350 km mặt đất, tức chỉ khoảng 35 điểm ảnh của bản đồ, nên mặt đất ngay dưới trạm bị mờ; về phía chân trời thì đỡ hơn. Muốn sắc nét thì phải tải ảnh theo ô (ví dụ NASA GIBS) như các bản đồ trực tuyến.
 
 Ảnh Trái Đất (ngày, đêm, mây, độ nhám) của [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0), bản thu nhỏ trong ví dụ của three.js, lấy trực tiếp từ threejs.org. Ảnh Mặt Trăng là của ví dụ three.js, chưa rõ giấy phép; nên thay bằng ảnh Mặt Trăng 2K của Solar System Scope (CC BY 4.0) đặt trong `assets/`.
@@ -109,6 +196,12 @@ Nút **Earth backdrop** (nền sau trạm) vẽ cùng bầu trời thật đó s
 ## Góc nhìn Launch
 
 Nút **Launch** (thanh góc nhìn, hoặc tab *Launch* của Crew Dragon) mở cảnh Falcon 9 phóng Crew Dragon từ LC-39A, bắt đầu từ T−4:30 (giàn dựng còn ôm tên lửa; ba giây cuối đếm 3, 2, 1 rồi LIFTOFF bằng chữ lớn giữa cảnh) và chạy liền tới khi Dragon ghép vào ISS: Waypoint 0 (400 m dưới trạm) sau 18 giờ 08 phút, chạm cổng ở T+18:53:15, móc khóa xong ở T+19:06:15. Không phải chuyển sang trang trạm. Hai nút **Rocket & Dragon** / **Booster** chọn bám theo tên lửa lên quỹ đạo hay tầng 1 bay về sà lan; mỗi bên có nhịp tua riêng (chậm lại quanh các lần đốt và lúc đáp). Mỗi lần đốt nâng quỹ đạo của Dragon chạy ở ×90 thay vì ×1.500: Dragon xoay tấm chắn nhiệt theo hướng đốt (4 Draco phía trước đẩy nó lùi về sau), phun Draco suốt thời gian đốt (435 và 466 s cho hai lần lên 410 km, khoảng 22 s cho hai lần hạ xuống 400 km, 43 s cho TPI; 1,6 kN trên 12,5 t), rồi xoay lại. Lần đốt hạ độ cao không cần xoay: mũi đi trước, Draco phía trước đẩy lùi. Lần đốt ở Waypoint 0 để Dragon quay mũi về trạm luôn cho chặng tiếp cận.
+
+Cảnh xa ở các chặng ×1.500 (`farShot()` trong `js/launch/view.js`): ở nhịp đó Dragon chạy một vòng quanh Trái Đất mỗi 4 s, camera đứng cạnh thì mặt đất trôi qua 95°/s. Nên trong 3 s trước chặng, camera lùi ra 4,4 bán kính Trái Đất, nhìn cả quả địa cầu nghiêng 30° so với mặt phẳng quỹ đạo (như Overview). Ở đó nó đứng yên so với các vì sao, chỉ thấy Trái Đất tự quay (một vòng mỗi phút ở ×1.500). 3 s sau chặng, nó bay về cạnh Dragon. Khoảng cách tới Dragon tăng theo cấp số nhân, nên đoạn 30 m đầu chậm như đoạn 3.000 km cuối. Camera hướng dần từ Dragon sang tâm Trái Đất, nên Dragon gần giữa khung suốt đường bay.
+- Lúc ở xa, camera đi quanh pháp tuyến quỹ đạo tối đa 3°/s. Phần còn lại của góc Dragon đi được thành độ lệch giữa mắt camera và Dragon, bằng nhau lúc đi và lúc về (tối đa 70°, để đường bay không cắt qua Trái Đất). Như vậy lúc bay ra/về camera không phải xoay thêm.
+- Cửa sổ ×90 của lần đốt kề một chặng ×1.500 mở sớm (hoặc đóng muộn) thêm 270 s, đúng 3 s bay của camera. Camera về sát Dragon trước khi Dragon xoay vào tư thế đốt.
+- Khoảng giữa hai lần đốt cùng cặp ngắn hơn 50 phút thì chạy ở ×150, camera ở cạnh Dragon: chừng đó quá ngắn cho một cảnh xa.
+- Đo từng khung (30 khung/s): lúc bay ra/về camera quay tối đa 28–43°/s, lúc ở xa 5–10°/s (trước đây khoảng 95°/s). Camera không xuống thấp hơn Dragon. Trong cảnh xa không kéo xoay hay zoom được: kéo thì camera cũng chỉ bật về chỗ cũ. Màn hình phụ khi theo Booster cũng có cảnh xa của Dragon theo nhịp tua của Booster.
 
 ### Mô phỏng bay (`js/sim/ascent.js`)
 
@@ -221,7 +314,7 @@ Không còn nội suy telemetry: đường bay được tích phân (Runge–Kut
   - Camera vẫn nhìn ngang Dragon, từ phía cảng của trạm (port side). Khi Dragon còn cách cổng 70 m, camera quay vuông góc với thân nó và nâng lên 27° trên trục ghép: dàn pin mặt trời của trạm chìa ra trước cổng 23 m, cao hơn trục 5 m, nên nhìn thấp hơn sẽ xuyên qua dàn pin. Camera lùi ra cho cổng cùng vào khung (Dragon lệch trái 12°, cổng lệch phải 22°), rồi lại gần cùng Dragon tới lúc chạm.
 - Đường chấm nối liền từ bệ phóng tới ISS. Trong lúc phóng, đoạn phóng vẽ theo mặt đất mà tên lửa bay qua, còn các vòng quỹ đạo phía trước vẽ như chúng sẽ đứng trong không gian lúc kết thúc chặng phóng. Sau đó các vòng quỹ đạo vẽ như chúng đang đứng trong không gian (hệ quán tính), đoạn phóng xoay theo để đường không đứt. Nếu vẽ bám mặt đất, sau vài giờ các vòng sẽ quấn quanh địa cầu như cái lồng. Vòng đã bay quá 2 giờ mờ đi.
 - Vòng quỹ đạo của ISS (chấm xanh lá), chấm ISS cùng nhãn độ cao, và ô *Range to ISS* trong bảng sau khi Dragon tách.
-- Nút **Overview**: camera lùi ra nhìn cả Trái Đất, nghiêng 30° so với mặt phẳng quỹ đạo từ phía con tàu. Trục "lên" của camera là pháp tuyến quỹ đạo, luôn lệch 60° so với hướng nhìn nên khung hình không lật. Ở xa, chấm và nhãn đánh dấu con tàu đang bám.
+- Nút **Overview**: camera lùi ra nhìn cả Trái Đất, nghiêng 30° so với mặt phẳng quỹ đạo từ phía con tàu. Trục "lên" của camera là pháp tuyến quỹ đạo, luôn lệch 60° so với hướng nhìn nên khung hình không lật. Ở xa, chấm và nhãn đánh dấu con tàu đang bám. Trong cảnh xa ở ×1.500, Overview đứng chỗ của cảnh xa thay vì đuổi theo Dragon.
 - Độ sâu chia hai lớp (xa từ 20 km, rồi gần): quỹ đạo cách hàng nghìn km vẫn bị Trái Đất che đúng, trong khi bệ phóng cách vài mét vẫn không bị nhấp nháy.
 
 Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc và góc bay lúc tắt máy của telemetry, nó lên tới khoảng 210 km nên rơi về lâu hơn; hướng đi, khối lượng và lực cản thật của tầng 1 không được công bố đủ để khớp hơn.
@@ -345,6 +438,19 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
 
     Rời Launch thì số đối tượng trên GPU về đúng mức trước khi mở. Tổng RAM không về hẳn mức lúc mới vào trang (1.335 MB) vì tiến trình GPU của Chrome giữ lại một phần bộ nhớ đã giải phóng để dùng lại.
 - Trình duyệt chỉ tải lại module nào đổi nội dung: import map trỏ mỗi module tới bản có dấu băm của chính nó.
+- Gộp lượt vẽ theo loại bề mặt (7/11/2026, `Kit.finish` trong `js/core/kit.js`): trong mỗi nhóm, các chi tiết chỉ khác màu, độ nhám, độ kim loại vẽ chung một lưới. Màu thành màu đỉnh, độ nhám và kim loại thành thuộc tính đỉnh `surface` (16 bit) mà vật liệu `KitSurface` đọc thay cho hai uniform. Mỗi lưới gộp tối đa 65.535 đỉnh để chỉ mục vẫn 16 bit. Bề mặt có texture hoặc có `userData` riêng (ngoài `decal`) vẫn vẽ riêng: Poisk, Nauka, Prichal, Rassvet tìm lớp MLI theo vật liệu.
+  Đo (Chrome, GPU M4, `?quality=high`, toàn trạm, cùng giờ Mặt Trời):
+
+  | | Trước | Sau |
+  |---|---|---|
+  | Lượt vẽ | 1.412 | 492 |
+  | Lưới của trạm | 1.300 | 373 |
+  | Một khung (render + `gl.finish`, trung vị) | 4,8 ms | 1,7 ms |
+  | Bộ đệm trên GPU | 76,5 MB | 79,1 MB |
+  | Dữ liệu đỉnh trạm giữ trên CPU | 62,4 MB | 61,8 MB |
+  | JS heap | 125 MB | 117 MB |
+
+  Ảnh 8 góc nhìn và ba trạng thái chọn/ghost trùng bản cũ (khác chỉ ở người đang cử động). Còn lại: 173 lưới có texture (84 bộ texture, gộp thêm chỉ bớt 24), 109 bộ đường viền (mỗi nhóm một bộ để tô màu khi chọn), 41 đồ nghề EVA ở Z1 đang chuyển động.
 
 ## Thêm hoạt cảnh phức tạp
 
@@ -352,6 +458,19 @@ Tầng 1 về muộn hơn thực tế khoảng 1 phút: theo đúng vận tốc 
 2. Đăng ký nó trong `js/sim/worker.js` (`factories`).
 3. Trong `js/figures/`, dựng lưới như `figures/eva.js` (`createZ1Maintenance`). Gửi `{type: 'init', kind, payload}` một lần. Mỗi khung gửi `{type: 'step', time, buffer}`, rồi chép tư thế nhận về vào lưới. Gọi `update(delta)` của hình mới trong `advance()` (`ui/controller.js`).
    Mô hình chạy trong worker nên không làm chậm luồng vẽ; nếu trình duyệt không có worker, cùng mô hình đó chạy trên luồng chính.
+
+### Người ở hộp găng trong Columbus
+
+Crew 2 làm việc ở hộp găng một vòng 26 s (`gloveKeys`, `workGlovebox` trong `js/parts/columbus.js`): tay phải lấy ống mẫu trong khay, nâng lên trước cửa sổ; tay trái vặn nắp hai vòng, nhấc ra, đậy lại, vặn chặt; ống trả về khay, rồi hai tay cùng làm một dụng cụ nhỏ ở giữa. Mỗi mốc là [thời gian, x, y, z, xoay, nắm]; tay luôn ở trong găng khi thân trôi nhẹ, nhanh nhất 0,12 m/s; đầu nhìn theo tay, cuối vòng liếc sang laptop. Bản cũ tay chỉ nhích ≤ 3 cm/s nên trông như tượng.
+
+### Phi hành gia EVA ở Z1: giới hạn chuyển động
+
+Đo bằng cách bước 1/60 s trên luồng chính (`?worker=0`, `z1EVA.useMainThread()`), ghi vị trí khuỷu và cổ tay mỗi khung.
+
+- Tay trong bộ đồ EVA di chuyển chậm: cổ tay khoảng ≤ 0,65 m/s, khuỷu ≤ 1 m/s. Mỗi lần chuyển tay vịn mất 2 s, với tới móc dây hông 2,1 s, móc vào tay vịn 1,6 s, lấy súng bắt vít 1,6 s.
+- IK hai xương suy biến khi hướng vai → cổ tay gần song song với hướng gợi ý khuỷu (pole), hoặc khi tay gập hết cỡ. Bản cũ gặp cả hai: tay trái ở tấm panel gập còn 17% chiều dài tay, hướng tay lệch 179,9° so với pole, nên khuỷu lật ở 29,97 s (28,9 m/s).
+- Cách sửa: tới chỗ làm việc thì thân hạ 18 cm và lùi 9 cm, nên tay trái duỗi 37–74% chiều dài tay. Pole tay trái quay từ "ra ngoài, ra sau" (lúc leo) sang "ra ngoài, dưới cẳng tay" (lúc làm việc), khi tay đi lấy súng (13,0–14,9 s). Ở tấm panel, hướng tay luôn cách trục pole từ 37° trở lên.
+- Chỗ quay đầu (45,7 s): độ nghiêng thân về phía súng (`working`) và hướng nhìn đi theo một đường liền nên không giật. Trước đây thân nhảy khoảng 1,5 cm và đầu lệch 7 cm hướng nhìn.
 
 ## Mô hình
 

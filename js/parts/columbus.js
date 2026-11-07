@@ -16,13 +16,13 @@ import { pmaArray } from '../core/pma.js';
 // and gaze targets. `axes` are bone-local axes for finger curl, elbow and wrist bend and head turns.
 const columbusCrewHuman = assetData.columbusCrewHuman;
 // END COLUMBUS CREW REFERENCE
-// BEGIN COLUMBUS CREW MOTION: work loops for Crew 1 (30 s) and Crew 3 (36 s), keyed from the same solver. Each key is a
+// BEGIN COLUMBUS CREW MOTION: work loops for Crew 1 (35 s) and Crew 3 (36 s), keyed from the same solver. Each key is a
 // full pose (int16 quaternions per bone, key by key), the hip position and a root transform: for Crew 1 an offset and
 // turn from its place at the laptop, for Crew 3 the transform of the group it floats in. `type` and `pad` say when
 // Crew 1 types or works the touchpad. `axes` are bone-local axes for breathing and for the floating legs.
 const columbusCrewMotion = assetData.columbusCrewMotion;
 // END COLUMBUS CREW MOTION
-part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laboratory, drawn after ESA\'s cutaway illustration. A 75%-transparent section of the hull shows racks along the far wall and deck of a square aisle, three crew at work (one at a laptop who types, stops to read, uses the touchpad, reaches up to a rack switch and now and then turns, one hand still on the laptop, to watch the crew member beside him with his chin on his fist; one with both hands in the glovebox; one who holds a rack rail while working a panel, then pushes off and glides to the next rail) and the Harmony hatch at the far end; the near-wall and overhead racks are left out so the cabin stays in view. The outboard end cone carries a platform with SOLAR and a gold instrument box above, and a white frame of finned instrument boxes below. Rack contents, crew poses and payload shapes are illustrative.', [['Joined station', 'FEB 2008'], ['Hull window', '75% transparent']], [4.965376, 1.0, -4.7], (kit, group) => {
+part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laboratory, drawn after ESA\'s cutaway illustration. A 75%-transparent section of the hull shows racks along the far wall and deck of a square aisle, three crew at work (one at a laptop who types, stops to read, uses the touchpad, reaches up to a rack switch and now and then turns, one hand still on the laptop, to watch the crew member beside him with his chin on his fist; one with both hands in the glovebox; one who holds a rack rail while working a panel, then pushes off and glides to the next rail) and the Harmony hatch at the far end; the near-wall and overhead racks are left out so the cabin stays in view. The outboard end cone carries a platform and a gold instrument box above (the SOLAR observatory on its tower, no longer there, is left off), and a white frame of finned instrument boxes below, with the ACES atomic clocks hanging under its floor in the 2026 configuration. Rack contents, crew poses and payload shapes are illustrative.', [['Joined station', 'FEB 2008'], ['Hull window', '75% transparent']], [4.965376, 1.0, -4.7], (kit, group) => {
     group.position.x = -1.134624;
     group.userData.connectionTranslation = [-1.134624, 0, 0];
     // Rebuilt after ESA's Columbus cutaway illustration. Local frame: the module axis is z (+z outboard, toward the
@@ -350,8 +350,8 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
     crewPlay(crew[0], motion.typist, 0); crewPlay(crew3, motion.floater, 0, hover);
     interior.traverse(object => { object.userData.interior = true; if (object.isMesh) { object.castShadow = false; object.receiveShadow = false; } });
 
-    // External payloads on the outboard cone: SOLAR on a tower above, a gold instrument box hanging outboard
-    // of the upper deck, and an EuTEF-style instrument pallet below. Shapes follow the illustration only.
+    // External payloads on the outboard cone: small boxes on the upper platform, a gold instrument box hanging
+    // outboard of it, and an EuTEF-style instrument pallet below. Shapes follow the illustration only.
     const foilCanvas = document.createElement('canvas'); foilCanvas.width = 256; foilCanvas.height = 256;
     const fg = foilCanvas.getContext('2d'); fg.fillStyle = '#b8962f'; fg.fillRect(0, 0, 256, 256);
     let noiseState = 97; const noise = () => { noiseState = (noiseState * 16807) % 2147483647; return (noiseState - 1) / 2147483646; };
@@ -361,7 +361,7 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
         fg.beginPath(); fg.moveTo(x, y); fg.lineTo(x + 4 + noise() * 16, y - 7); fg.lineTo(x + 12, y + 5); fg.closePath(); fg.fill();
     }
     const foilMap = new THREE.CanvasTexture(foilCanvas); foilMap.colorSpace = THREE.SRGBColorSpace;
-    const foil = material(0xffffff, .72, .38, foilMap), khaki = 0xb9a86a, bracketTone = 0xd8dbd4;
+    const foil = material(0xffffff, .72, .38, foilMap), bracketTone = 0xd8dbd4;
     const coneRadius = z => R + (coneR - R) * (z - barrel) / (coneEnd - barrel);
     // Plates of the upper platform and the lower frame: a perforated grid and a waffle grid of square recesses.
     const plateCanvas = draw => { const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256; draw(canvas.getContext('2d')); const t = new THREE.CanvasTexture(canvas); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy()); return t; };
@@ -381,21 +381,7 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
         for (const x of [-.72, .72]) payloadKit.rod([x, deckY, 2.98], [x, deckY, 4.58], .028, bracketTone);
         for (let n = 1; n < 6; n++) payloadKit.line([[-.7, deckY + side * .032, 2.98 + n * .267], [.7, deckY + side * .032, 2.98 + n * .267]]);
     }
-    // SOLAR: a tapering tower, a gimbal and a tilted gold instrument box with its sensor window.
-    const towerBase = [[-.3, 3.5], [.3, 3.5], [.3, 4.1], [-.3, 4.1]], towerTop = [[-.1, 3.7], [.1, 3.7], [.1, 3.9], [-.1, 3.9]], yBase = 1.89, yTop = 2.78;
-    towerBase.forEach(([x, z], i) => {
-        payloadKit.rod([x, yBase, z], [towerTop[i][0], yTop, towerTop[i][1]], .03, khaki);
-        const [nx, nz] = towerBase[(i + 1) % 4];
-        payloadKit.rod([x, yBase + .02, z], [nx, yBase + .02, nz], .025, khaki);
-        payloadKit.rod([x, yBase, z], [towerTop[(i + 1) % 4][0], yTop, towerTop[(i + 1) % 4][1]], .016, khaki);
-    });
-    payloadKit.cylinder([0, yTop + .05, 3.8], .09, .5, palette.dark, [0, 0, Math.PI / 2]);
-    const solar = new THREE.Group(), sk = new Kit(); solar.position.set(0, yTop + .26, 3.8); solar.rotation.set(-.55, .3, 0);
-    sk.add(shapes.box, foil, [0, 0, 0], [.95, .42, .6]);
-    sk.box([.12, .214, .05], [.34, .01, .26], 0xeef0ec, [0, 0, 0], false);
-    for (let i = 0; i < 4; i++) sk.cylinder([-.3 + i * .07, .215, -.16], .022, .012, palette.dark, [0, 0, 0]);
-    sk.cylinder([-.3, .1, .31], .06, .06, palette.white);
-    sk.finish(solar); external.add(solar);
+    // SOLAR's tower, gimbal and tilted gold box are left off: the instrument is no longer on the platform.
     payloadKit.box([.4, 2.02, 3.3], [.36, .26, .34], palette.white); payloadKit.box([-.42, 2.03, 3.35], [.34, .28, .36], 0x2b3033);
     payloadKit.cylinder([.4, 2.06, 4.35], .09, .18, palette.white, [0, 0, 0]);
     // The gold instrument box hangs outboard of the upper deck, its open face holding three white instruments.
@@ -435,7 +421,7 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
         payloadKit.rod([wallX + .08, -1.27, z - .1], [wallX + .08, -1.27, z + .1], .013, 0xe2b81f);
     }
     payloadKit.add(shapes.box, foil, [.53, -2.26, 4.86], [.46, .28, 1.1]);
-    payloadKit.add(shapes.box, foil, [.18, floorY - .1, 3.0], [.34, .14, .32]); payloadKit.cylinder([.18, floorY - .22, 3.0], .07, .12, 0x2f3436, [0, 0, 0]);
+    // The floor's underside is the facility's Earth-facing site: ACES hangs there (js/parts/aces.js).
     for (const z of [2.9, 3.55]) payloadKit.rod([.41, floorY + .03, z], [.47, floorY + .06, z], .012, 0xe2b81f);
     payloadKit.rod([.47, floorY + .06, 2.9], [.47, floorY + .06, 3.55], .013, 0xe2b81f);
     payloadKit.finish(external);
@@ -483,7 +469,7 @@ function crewPlay(person, track, time, root) {
     return { type: level(track.type), pad: level(track.pad) };
 }
 const crewTurn = new THREE.Quaternion(), crewForward = new THREE.Vector3(0, 0, 1);
-// How much Crew 1's thought shows (0-1): while he rests his chin on his fist and watches the glovebox.
+// How much Crew 1's thought shows (0-1): while he rests his chin on his fist and watches the glovebox (8 s of the 35).
 export const crewThought = { element: document.getElementById('crew-thought'), level: 0 };
 const crewAxes = (() => { const a = columbusCrewHuman.axes, v = list => new THREE.Vector3(...list), out = { headYaw: v(a.headYaw), headPitch: v(a.headPitch) };
     for (const group of ['flex', 'elbow', 'wrist']) for (const [bone, axis] of Object.entries(a[group])) out[bone] = v(axis);
@@ -499,7 +485,7 @@ export function updateColumbusCrew(time) {
     const look = (person, yaw, pitch) => turn(person, 'Head', [crewAxes.headYaw, yaw], [crewAxes.headPitch, pitch]);
     const work = crewPlay(typist, motion.typist, time); crewPlay(floater, motion.floater, time, hover);
     const turnTime = time % motion.typist.cycle;
-    crewThought.level = THREE.MathUtils.smoothstep(turnTime, 17.9, 18.3) - THREE.MathUtils.smoothstep(turnTime, 21, 21.4);
+    crewThought.level = THREE.MathUtils.smoothstep(turnTime, 17.9, 18.3) - THREE.MathUtils.smoothstep(turnTime, 26, 26.4);
     // Breathing (about 4 s a breath) and small head movements that never quite repeat.
     for (const [person, rate, phase] of [[typist, 1.5, 0], [floater, 1.37, 1.1]]) {
         const breath = Math.sin(time * rate + phase);
@@ -521,8 +507,80 @@ export function updateColumbusCrew(time) {
     // Crew 3's legs drift a little on their own: knees and hips out of step.
     add(floater, 'LeftLeg', crewAxes.LeftLeg, .07 * Math.sin(time * .47)); add(floater, 'RightLeg', crewAxes.RightLeg, .06 * Math.sin(time * .39 + 1.9));
     add(floater, 'LeftUpLeg', crewAxes.LeftUpLeg, .035 * Math.sin(time * .31 + .7)); add(floater, 'RightUpLeg', crewAxes.RightUpLeg, .03 * Math.sin(time * .43 + 2.4));
-    gloves.position.copy(gloves.userData.rest.position); gloves.position.y += .012 * Math.sin(time * .7);
-    gloves.quaternion.copy(gloves.userData.rest.quaternion).multiply(crewTurn.setFromAxisAngle(crewForward, .015 * Math.sin(time * .5)));
-    turn(gloves, 'LeftForeArm', [crewAxes.LeftForeArm, .06 * Math.sin(time * 1.1)]); turn(gloves, 'RightForeArm', [crewAxes.RightForeArm, .06 * Math.sin(time * 1.1 + 1.7)]);
-    look(gloves, .05 * Math.sin(time * .45), .02 * Math.sin(time * .6));
+    workGlovebox(gloves, time, parts.get('columbus').group.userData.lab.interior, turn);
+}
+// Crew 2 at the glovebox, a 26 s loop. Each hand follows keyed offsets from where it rests in its port, in the cabin
+// frame (-x reaches into the box, +y is up, +z runs along the rack toward the left port): the right hand takes a sample
+// tube from the tray and lifts it toward the window; the left unscrews its cap in two turns, lifts it off, puts it back
+// and screws it on; the tube goes back, and both hands work a small tool at the centre. Keys are [time, x, y, z, roll,
+// grip]; the roll twists the hand about its long axis and the grip closes the fingers. A two-bone solve that keeps each
+// elbow in its rest plane reaches the hands, which stay in the gloves while the body floats; hands move at 0.12 m/s at
+// most. The head follows the hands and looks up a little when the tube is raised; near the end of the loop it glances
+// at the laptop.
+const gloveKeys = {
+    Right: [[0, 0, 0, 0, 0, .25], [1.5, 0, 0, 0, 0, .25], [3.5, -.075, -.035, .045, 0, .25], [4.2, -.075, -.035, .045, 0, .85],
+        [6.4, -.035, .05, .08, .15, .85], [7.4, -.035, .05, .08, .5, .85], [8.4, -.035, .05, .08, 0, .85], [14.6, -.035, .05, .08, 0, .85],
+        [16.6, -.075, -.035, .045, 0, .85], [17.2, -.075, -.035, .045, 0, .25], [19.2, -.05, -.01, .08, 0, .25], [19.8, -.05, -.01, .08, 0, .7],
+        [21, -.06, -.02, .085, .2, .7], [22.2, -.05, -.01, .08, 0, .7], [22.8, -.05, -.01, .08, 0, .25], [24.8, 0, 0, 0, 0, .25], [26, 0, 0, 0, 0, .25]],
+    Left: [[0, 0, 0, 0, 0, .25], [6.6, 0, 0, 0, 0, .25], [8.6, -.04, .055, -.1, 0, .3], [9.1, -.04, .055, -.1, 0, .85], [9.8, -.04, .055, -.1, -.55, .85],
+        [10.2, -.04, .055, -.1, -.55, .3], [10.6, -.04, .055, -.1, 0, .3], [11, -.04, .055, -.1, 0, .85], [11.7, -.04, .055, -.1, -.55, .85],
+        [12.5, -.03, .07, -.06, -.55, .85], [13.3, -.04, .055, -.1, -.55, .85], [14, -.04, .055, -.1, 0, .85], [14.4, -.04, .055, -.1, 0, .3],
+        [16.4, -.02, 0, -.02, 0, .25], [19.2, -.05, -.01, -.08, 0, .25], [19.8, -.05, -.01, -.08, 0, .6], [21, -.06, -.02, -.085, -.2, .6],
+        [22.2, -.05, -.01, -.08, 0, .6], [22.8, -.05, -.01, -.08, 0, .25], [24.8, 0, 0, 0, 0, .25], [26, 0, 0, 0, 0, .25]]
+};
+const gloveSmooth = t => t * t * t * (t * (t * 6 - 15) + 10);
+function gloveKey(keys, time) {
+    const t = time % 26;
+    let i = 0; while (i < keys.length - 2 && t >= keys[i + 1][0]) i++;
+    const a = keys[i], b = keys[i + 1], e = gloveSmooth(THREE.MathUtils.clamp((t - a[0]) / (b[0] - a[0]), 0, 1));
+    return a.map((value, k) => value + (b[k] - value) * e);
+}
+const gloveVectors = Array.from({ length: 6 }, () => new THREE.Vector3()), gloveTurn = new THREE.Quaternion(), gloveParent = new THREE.Quaternion();
+const fingerAxis = new THREE.Vector3(0, 1, 0);
+// Turns a bone so that its child direction `from` points along `to` (world vectors).
+function turnToward(bone, from, to) {
+    bone.parent.getWorldQuaternion(gloveParent);
+    gloveTurn.setFromUnitVectors(from.normalize(), to.normalize());
+    bone.quaternion.premultiply(gloveParent.clone().invert().multiply(gloveTurn).multiply(gloveParent));
+    bone.updateMatrixWorld(true);
+}
+function workGlovebox(person, time, interior, turn) {
+    const data = person.userData, bones = data.bones;
+    // Where the hands rest in their ports, in the cabin frame, measured once with the body at rest.
+    if (!data.portHands) {
+        person.position.copy(data.rest.position); person.quaternion.copy(data.rest.quaternion);
+        for (const [name, quaternion] of Object.entries(data.rest.bones)) bones[name].quaternion.copy(quaternion);
+        person.updateMatrixWorld(true);
+        data.portHands = Object.fromEntries(['Left', 'Right'].map(side => [side, interior.worldToLocal(bones[side + 'Hand'].getWorldPosition(new THREE.Vector3()))]));
+    }
+    const right = gloveKey(gloveKeys.Right, time), left = gloveKey(gloveKeys.Left, time);
+    // The body floats a little in front of the box; it breathes and its head follows the hands.
+    person.position.copy(data.rest.position); person.position.y += .012 * Math.sin(time * .7);
+    person.quaternion.copy(data.rest.quaternion).multiply(crewTurn.setFromAxisAngle(crewForward, .015 * Math.sin(time * .5)));
+    const breath = Math.sin(time * 1.43 + 2.3);
+    turn(person, 'Spine1', [crewAxes.Spine1, .006 * breath]); turn(person, 'Spine2', [crewAxes.Spine2, .01 * breath]);
+    const t = time % 26, glance = THREE.MathUtils.smoothstep(t, 23.6, 24.2) - THREE.MathUtils.smoothstep(t, 25.2, 25.8);
+    const focusZ = (left[3] + right[3]) / 2, focusY = (left[2] + right[2]) / 2;
+    turn(person, 'Head', [crewAxes.headYaw, THREE.MathUtils.lerp(1.3 * focusZ + .03 * Math.sin(time * .45), .45, glance)],
+        [crewAxes.headPitch, THREE.MathUtils.lerp(-1.4 * focusY + .02 * Math.sin(time * .6), -.12, glance)]);
+    person.updateMatrixWorld(true);
+    for (const [side, key] of [['Left', left], ['Right', right]]) {
+        const arm = bones[side + 'Arm'], fore = bones[side + 'ForeArm'], hand = bones[side + 'Hand'];
+        arm.quaternion.copy(data.rest.bones[side + 'Arm']); fore.quaternion.copy(data.rest.bones[side + 'ForeArm']); arm.updateMatrixWorld(true);
+        const [shoulder, elbow, wrist, target, reach, bend] = gloveVectors;
+        arm.getWorldPosition(shoulder); fore.getWorldPosition(elbow); hand.getWorldPosition(wrist);
+        interior.localToWorld(target.copy(data.portHands[side]).add(reach.set(key[1], key[2], key[3])));
+        const upper = shoulder.distanceTo(elbow), lower = elbow.distanceTo(wrist);
+        reach.subVectors(target, shoulder);
+        const distance = THREE.MathUtils.clamp(reach.length(), Math.abs(upper - lower) + .01, upper + lower - .01); reach.normalize();
+        bend.subVectors(elbow, shoulder); bend.addScaledVector(reach, -bend.dot(reach)).normalize();
+        const along = (upper * upper - lower * lower + distance * distance) / (2 * distance), height = Math.sqrt(Math.max(0, upper * upper - along * along));
+        const elbowTarget = shoulder.clone().addScaledVector(reach, along).addScaledVector(bend, height);
+        turnToward(arm, elbow.clone().sub(shoulder), elbowTarget.sub(shoulder));
+        fore.getWorldPosition(elbow); hand.getWorldPosition(wrist);
+        turnToward(fore, wrist.clone().sub(elbow), target.clone().sub(elbow));
+        turn(person, side + 'Hand', [fingerAxis, key[4]]);
+        for (const finger of ['Index', 'Middle', 'Ring', 'Pinky']) [.55, .75, .45].forEach((angle, k) => turn(person, side + 'Hand' + finger + (k + 1), [crewAxes[side + 'Hand' + finger + (k + 1)], angle * key[5]]));
+        [.25, .3].forEach((angle, k) => turn(person, side + 'HandThumb' + (k + 2), [crewAxes[side + 'HandThumb' + (k + 2)], angle * key[5]]));
+    }
 }

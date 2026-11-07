@@ -120,14 +120,16 @@ export function genericEndInterface(kit, side, endRadius, half, hollow = false) 
         kit.box([Math.cos(angle) * endRadius * .61, Math.sin(angle) * endRadius * .61, side * (half + .43)], [.18, .12, .27], palette.silver, [0, 0, angle - Math.PI / 2], false);
     }
 }
-// Build into a local frame, then merge into the kit at `position` with `rotation`.
+// Build into a local frame, then merge into the kit at `position` with `rotation`. Each surface comes across as its
+// plain colour, roughness, metalness and map.
 export function placedKit(kit, position, rotation, build) {
-    const local = new THREE.Group(); const innerKit = new Kit(); build(innerKit); innerKit.finish(local);
-    local.rotation.set(...rotation); local.position.fromArray(position); local.updateMatrixWorld(true);
-    local.traverse(child => {
-        if (child.isMesh) kit.add(child.geometry.clone().applyMatrix4(child.matrixWorld), material(child.material.color.getHex(), child.material.roughness, child.material.metalness, child.material.map), [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
-        else if (child.isLineSegments) kit.outlines.push(child.geometry.clone().applyMatrix4(child.matrixWorld));
-    });
+    const innerKit = new Kit(); build(innerKit);
+    const place = new THREE.Matrix4().compose(new THREE.Vector3(...position), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)), new THREE.Vector3(1, 1, 1));
+    for (const [surface, geometries] of innerKit.batches) {
+        const plain = material(surface.color.getHex(), surface.roughness, surface.metalness, surface.map);
+        for (const geometry of geometries) kit.add(geometry.applyMatrix4(place), plain, [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
+    }
+    for (const edges of innerKit.outlines) kit.outlines.push(edges.applyMatrix4(place));
 }
 export function moduleAt(kit, position, length, radius, axis = 'z', options = {}) {
     placedKit(kit, position, axis === 'x' ? [0, Math.PI / 2, 0] : axis === 'y' ? [Math.PI / 2, 0, 0] : [0, 0, 0], innerKit => tubeModule(innerKit, length, radius, options));

@@ -23,6 +23,15 @@ export function createOrbitView(sky) {
         for (const entry of sky.orbiters) entry.trackAt = 0;
     }
     warpButtons.forEach(button => button.addEventListener('click', () => setWarp(+button.dataset.warp)));
+    // Earth as photographed, or the map: borders, wind and storms (js/orbit/earth-map.js).
+    const earthButtons = [...panel.querySelectorAll('[data-earth]')];
+    function setEarth(name) {
+        sky.setEarthStyle(name);
+        for (const button of earthButtons) button.setAttribute('aria-pressed', String(button.dataset.earth === sky.earthStyle));
+        field('orbit-map-source').hidden = sky.earthStyle !== 'map';
+        if (sky.earthStyle !== 'map') field('orbit-wind-legend').hidden = true;
+    }
+    earthButtons.forEach(button => button.addEventListener('click', () => setEarth(button.dataset.earth)));
     // Frames; null once the camera is taken by hand.
     const frameButtons = [...panel.querySelectorAll('[data-frame]')];
     let frameName = 'iss';
@@ -59,11 +68,19 @@ export function createOrbitView(sky) {
     const pad = value => String(value).padStart(2, '0');
     const utc = date => date.getUTCFullYear() + '-' + pad(date.getUTCMonth() + 1) + '-' + pad(date.getUTCDate()) + ' ' + pad(date.getUTCHours()) + ':' + pad(date.getUTCMinutes()) + ':' + pad(date.getUTCSeconds()) + ' UTC';
     const age = ms => ms < 3600000 ? Math.round(ms / 60000) + ' min' : ms < 172800000 ? Math.round(ms / 3600000) + ' h' : Math.round(ms / 86400000) + ' days';
+    let legendShown = '';
     function updateReadout() {
         const state = sky.iss.state, iss = sky.iss;
         field('orbit-clock').textContent = utc(sky.time.date);
         field('orbit-rate').textContent = sky.time.warp === 1 ? 'LIVE' : '×' + sky.time.warp;
         field('orbit-moon').textContent = Math.round(sky.moon.position.length()).toLocaleString('en-US') + ' km · ' + sky.moonLit() + '% lit';
+        if (sky.earthStyle === 'map') {
+            field('orbit-map-source').textContent = sky.mapStatus();
+            // The wind speed scale, in the palette of the theme shown, once the speeds are on the globe.
+            const legend = field('orbit-wind-legend'), gradient = sky.mapLegend();
+            legend.hidden = !gradient;
+            if (gradient && gradient !== legendShown) { legendShown = gradient; legend.querySelector('i').style.background = gradient; }
+        }
         if (!state) { field('orbit-source').textContent = iss.object ? 'SGP4 failed for this time' : 'Loading orbital elements…'; return; }
         field('orbit-altitude').textContent = state.height.toFixed(1) + ' km';
         field('orbit-speed').textContent = state.speed.toFixed(2) + ' km/s';
@@ -108,7 +125,7 @@ export function createOrbitView(sky) {
     return {
         camera, controls, setWarp, setFrame,
         get frame() { return frameName; },
-        enter() { active = true; controls.enabled = true; panel.hidden = false; setWarp(sky.time.warp); setFrame('iss'); resize(viewport.clientWidth, viewport.clientHeight); },
+        enter() { active = true; controls.enabled = true; panel.hidden = false; setWarp(sky.time.warp); setFrame('iss'); setEarth(sky.earthStyle); resize(viewport.clientWidth, viewport.clientHeight); },
         leave() { active = false; controls.enabled = false; panel.hidden = true; setWarp(1); sky.hideLabels(); },
         update, resize,
         render() { camera.updateMatrixWorld(); sky.prepare(camera, 'orbit'); if (active) sky.placeLabels(camera, 'orbit'); renderer.render(sky.scene, camera); },

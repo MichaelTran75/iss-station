@@ -184,6 +184,8 @@ part('robotics', 'Canadarm2 & Mobile Base System', '19 / CANADA - CSA', 'Canadar
         strut([mbsX + .90, frameY + .39, 1.32], [mbsX + 1.78, frameY + .39, 1.32], .18, .20, charcoal);
         endEffector([mbsX + 2.46, frameY + .39, 1.32], [1, 0, 0], false, .72);
         group.userData.mobileBase.frontFixtureCenters = heads.map(h => toWorld(h.p));
+        // The cage is mirrored across x, so the fixtures' outward normals flip in x too.
+        group.userData.mobileBase.frontFixtureNormals = heads.map(h => [-h.n[0], h.n[1], h.n[2]]);
 
 
     }

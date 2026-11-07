@@ -28,15 +28,18 @@ controls.maxPolarAngle = Math.PI * .92;
 controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 export const hemisphere = new THREE.HemisphereLight(0xeef2f6, 0x6d727e, 1.15);
 scene.add(hemisphere);
-export const sunlight = new THREE.DirectionalLight(0xfffbf2, 3.2);
-sunlight.position.set(-65, 110, -85);
+// The studio key light; with the real Sun on (js/ui/controller.js) it moves to the Sun's direction and dims in Earth's
+// shadow, and the fill lights dim a little with it.
+export const studioLight = { sun: [-65, 110, -85], intensity: 3.2, hemisphere: 1.15, rim: .75 };
+export const sunlight = new THREE.DirectionalLight(0xfffbf2, studioLight.intensity);
+sunlight.position.set(...studioLight.sun);
 sunlight.castShadow = true;
 sunlight.shadow.mapSize.set(2048, 2048);
 Object.assign(sunlight.shadow.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 1, far: 270 });
 sunlight.shadow.normalBias = .12;
 sunlight.shadow.bias = -.00015;
 scene.add(sunlight);
-const rim = new THREE.DirectionalLight(0xe0e6fa, .75);
+export const rim = new THREE.DirectionalLight(0xe0e6fa, .75);
 rim.position.set(50, 15, 65);
 scene.add(rim);
 export const inspectionLight = new THREE.DirectionalLight(0xe5eee9, 1.6);

@@ -1,41 +1,54 @@
 // Integrated truss structure.
 import * as THREE from 'three';
 import { Kit, material, palette, shapes, vertical } from '../core/kit.js';
-import { inSolarPocket, part, ring, solarPocketHalf, solarRootX, solarRotaryJointX, solarStations, solarWingY,
-    trussSections } from '../core/station.js';
+import { innerEquipmentCenter, innerSolarStation, inSolarPocket, outerSolarStation, part, ring, solarPocketHalf, solarRootX,
+    solarRotaryJointX, solarStations, solarWingY, trussS1End, trussSections } from '../core/station.js';
 import { badge, payloadBlanket } from '../core/surfaces.js';
+import { splitAtJoints } from '../core/sarj.js';
 
-part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented backbone carries shielded equipment bays, power-conversion hardware, cooling loops and the rails for the mobile servicing system.', [['Truss length', '~94 m'], ['Completed', '2009']], [8, 8, 4], (kit, group) => {
+// Segment ends along the truss (starboard; port mirrors), metres from the centreline, after NASA's model
+// (ISS_stationary): S1/P1 run to trussS1End and S3/P3 to the SARJ's open span (0.8 m either side of its centre). S4/P4
+// end at their IEA's outboard end (33.15 there), S5/P5 (33.15 to 36.71 there) hold the inner beta-gimbal frame, and
+// S6/P6's long spacer runs out to their IEA, whose end face the outer wings stand beyond.
+const s3End = solarRotaryJointX - .8, s4Start = solarRotaryJointX + .8, s5Start = 33.15, s6Start = 36.71,
+    outerEnd = outerSolarStation - .7, s6Equipment = outerEnd - 5.5;
+const truss = part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented backbone carries shielded equipment bays, power-conversion hardware, cooling loops and the rails for the mobile servicing system.', [['Truss length', '~100 m'], ['Completed', '2009']], [8, 8, 4], (kit, group) => {
     group.userData.equipmentBays = 16;
     group.userData.sarjReference = [];
     group.userData.referenceStructure = 'GLB-derived five-bay S0 hexagonal core, open SARJ bearings, uneven S1/P1 bays and short S5/P5 with S6/P6 extensions; existing payload and array anchors retained';
-    group.userData.referenceSegmentSpans = { S0:[-7,7], S1:[7,16], S3:[16,22.7], SARJ:[22.7,24.3], S4:[24.3,33.7], S5:[33.7,37.25], S6Extension:[37.25,41.8], S6Equipment:[41.8,47.3] };
+    group.userData.referenceSegmentSpans = { S0:[-7,7], S1:[7,trussS1End], S3:[trussS1End,s3End], SARJ:[s3End,s4Start], S4:[s4Start,s5Start], S5:[s5Start,s6Start], S6Extension:[s6Start,s6Equipment], S6Equipment:[s6Equipment,outerEnd] };
     group.userData.bracing = { source: 'ISS_stationary.glb nodes 67, 65, 60, 59, 58; one diagonal per bay and face, none crossing',
-        S1: 'aft-face diamonds, zigzag deck and underside', S3: 'Λ faces, parallel deck and underside', S4: 'Warren zigzag, V through the beta-gimbal crossmember',
-        S5: 'single brace, then a K into the middle frame', S6: 'Warren zigzag, a Λ per face on the long spacer, continuing through the IEA' };
+        S1: 'aft-face diamonds, zigzag deck and underside', S3: 'Λ faces, parallel deck and underside', S4: 'Warren zigzag under the IEA',
+        S5: 'the inner beta-gimbal frame: open faces between the canister posts, a V on the deck and underside into the BGA crossmember, a K from the outer frame into the outboard posts',
+        S6: 'Warren zigzag, a Λ per face on the long spacer, continuing through the IEA' };
     group.userData.memberSections = trussSections;
     group.userData.photovoltaicRadiators = 4;
     group.userData.solarAlphaRotaryJoints = 2;
     group.userData.solarAlphaRotaryJointCenters = [-solarRotaryJointX, solarRotaryJointX];
     group.userData.betaGimbalSupports = 8;
     group.userData.outerMountPlacement = 'Outboard of the terminal equipment face';
-    group.userData.outerTrussEnd = 47.30;
-    group.userData.outerSolarRoot = 49.60;
-    group.userData.innerEquipmentCenter = 27.55;
+    group.userData.outerTrussEnd = outerEnd;
+    group.userData.outerSolarRoot = solarRootX(outerSolarStation);
+    group.userData.innerEquipmentCenter = innerEquipmentCenter;
     // Reference-led lattice and equipment covers. Small fittings are illustrative.
     // The outer rectangular lattice ends at the IEA face; paired SAWs
     // sit beyond it on spreading diagonal supports.
     // Separate pieces terminate on each side of the SARJs. The outer
     // spacer is short; the following open span belongs to S6/P6.
-    const trussEnds = [-47.30,-41.8,-37.25,-33.7,-24.3,-22.7,-16,-7,7,16,22.7,24.3,33.7,37.25,41.8,47.30];
+    const ends = [7, trussS1End, s3End, s4Start, s5Start, s6Start, s6Equipment, outerEnd];
+    const trussEnds = [...ends.map(x => -x).reverse(), ...ends];
+    // S1/P1's seven frames keep the GLB's spacing, now at its own length (14.05 m there, 14 here).
     const sourceS1Frames = [-7.137784,-4.550570,-2.758906,-.966953,1.675464,4.331906,6.917079];
     const referenceBayFrames = (start,end) => {
         const middle=(start+end)/2, a=Math.abs(middle), sign=Math.sign(middle);
-        if(a>7 && a<16) return sourceS1Frames.map(x=>sign*(7+9*(6.917079-x)/(6.917079+7.137784))).sort((x,y)=>x-y);
-        if(a>16 && a<22.7) return [start,sign*(16+6.7*(2.7753536701-.0847024694)/(2.7753536701+2.3931732178)),end];
-        if(a>33.7 && a<37.25) return [start,sign*(33.7+(37.25-33.7)*.475),end];
+        if(a>7 && a<trussS1End) return sourceS1Frames.map(x=>sign*(7+(trussS1End-7)*(6.917079-x)/(6.917079+7.137784))).sort((x,y)=>x-y);
+        if(a>trussS1End && a<s3End) return [start,sign*(trussS1End+(s3End-trussS1End)*(2.7753536701-.0847024694)/(2.7753536701+2.3931732178)),end];
+        // S4/P4 keep their 2.35 m bays under the IEA and end in a short bay at its outboard end.
+        if(a>s4Start && a<s5Start) return [start,sign*(s4Start+2.35),sign*(s4Start+4.7),end];
+        // S5/P5's middle frame is the beta-gimbal crossmember the inner BGAs hang from.
+        if(a>s5Start && a<s6Start) return [start,sign*innerSolarStation,end];
         // Two bays: the zigzag then draws the GLB long spacer's single A-frame as a Λ on each face.
-        if(a>37.25 && a<41.8) return [start,(start+end)/2,end];
+        if(a>s6Start && a<s6Equipment) return [start,(start+end)/2,end];
         const count=Math.ceil((end-start)/2.7);
         return Array.from({length:count+1},(_,i)=>start+(end-start)*i/count);
     };
@@ -46,7 +59,7 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
     // The five source-spaced S0 frames and sloping covers are built
     // separately below; all outboard section profiles stay fixed.
     const forwardZ = 2.3, fullAftZ = 5.7, narrowAftZ = 4.0, narrowTop = 7.47, narrowBottom = 6.23, s0AftBottom = 5.95, s0AftTop = 7.75;
-    const chamferStart = 4.25, narrowFrom = 7, narrowTo = 16;
+    const chamferStart = 4.25, narrowFrom = 7, narrowTo = trussS1End;
     // The section at x: forward chords at forwardZ (top, bottom), aft chords at aftZ (aftTop, aftBottom) and, across S0,
     // knee chords on S1/P1's aft plane where the top starts to fall and the underside to rise.
     const profile = x => {
@@ -95,7 +108,7 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
         geometry.translate((start[0] + end[0]) / 2, (start[1] + end[1]) / 2, (start[2] + end[2]) / 2);
         kit.add(geometry, material(color), [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
     };
-    const segmentOf = x => { const a = Math.abs(x); return a < 16 ? 'S1' : a < 22.7 ? 'S3' : a < 33.7 ? 'S4' : a < 37.25 ? 'S5' : 'S6'; };
+    const segmentOf = x => { const a = Math.abs(x); return a < trussS1End ? 'S1' : a < s3End ? 'S3' : a < s5Start ? 'S4' : a < s6Start ? 'S5' : 'S6'; };
     const chordSection = (segment, key) => trussSections[segment][key[0] === 'f' ? 'fore' : 'aft'];
     // Half-depth across the truss of a chord; S5/P5's struts at their swell.
     const chordHalf = (segment, key) => (segment === 'S5' ? trussSections.S5.strut[1] : chordSection(segment, key)[0]) / 2;
@@ -104,7 +117,7 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
     const sectionArea = size => Array.isArray(size) ? size[0] * size[1] : size * size;
     const frameSection = x => {
         const a = Math.abs(x);
-        if (Math.abs(a - 41.8) < 1e-3 || Math.abs(a - 47.3) < 1e-3) return trussSections.S6.endPost;
+        if (Math.abs(a - s6Equipment) < 1e-3 || Math.abs(a - outerEnd) < 1e-3) return trussSections.S6.endPost;
         return [x - 1e-3, x + 1e-3].map(v => trussSections[segmentOf(v)].frame).reduce((p, q) => sectionArea(q) > sectionArea(p) ? q : p);
     };
     // Triangular gussets, a cover plate and two fasteners at a corner of a face, seated on the outer face of the
@@ -123,13 +136,14 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
     // sits behind the near one instead of crossing it. Bays count from the inboard end, so port mirrors starboard.
     //   S1/P1 (GLB node 67): diamonds on the full-height aft face, a zigzag deck and underside; the covered forward band has none.
     //   S3/P3 (node 65): a Λ on each vertical face, peaking at the middle frame; parallel braces on the deck and underside.
-    //   S5/P5 (node 59): a single brace into the middle frame's mid-height node, then a K from the outer frame; a V on the
-    //   deck and underside, and one diagonal across the middle frame.
+    //   S5/P5 (node 59) hold the inner beta-gimbal frame, as on NASA's model: the mast canisters pass the faces between
+    //   their posts, so each face takes only a K from the outer frame into the outboard canister post's mid-height node;
+    //   a V on the deck and underside meets the BGA crossmember, the middle frame.
     //   S4/P4 and S6/P6 (nodes 60, 58): a continuous Warren zigzag whose faces share their corner nodes. Underside braces
     //   cross the IEA bays forward of the radiator roots.
     for (let section = 0; section < trussEnds.length - 1; section++) {
         const start=trussEnds[section],end=trussEnds[section+1],middle=Math.abs((start+end)/2);
-        if (middle>22.7 && middle<24.3) continue; // moving bearing gap
+        if (middle>s3End && middle<s4Start) continue; // moving bearing gap
         if(start<0&&end>0) continue; // S0 has its own source-measured five-bay frame below.
         const bayFrames=referenceBayFrames(start,end),bayCount=bayFrames.length-1;
         const segment = segmentOf(middle), sections = trussSections[segment];
@@ -146,7 +160,7 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
         }
         for (let bay = 0; bay <= bayCount; bay++) {
             const across = bayFrames[bay];
-            if ((section === 0 || bay > 0 || Math.abs(Math.abs(start)-24.3)<1e-5 || Math.abs(Math.abs(start)-22.7)<1e-5) && Math.abs(Math.abs(across)-7)>1e-5) {
+            if ((section === 0 || bay > 0 || Math.abs(Math.abs(start)-s4Start)<1e-5 || Math.abs(Math.abs(start)-s3End)<1e-5) && Math.abs(Math.abs(across)-7)>1e-5) {
                 latticeFrames.push(across);
                 // A frame takes the fuller of the sections meeting at it; a narrow neighbour adds a short frame
                 // for its sloped chords.
@@ -161,9 +175,12 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
                 // Fittings seat on the deepest chord or post at the corner, from either side of a full interface.
                 const fullSides = [across - 1e-3, across + 1e-3].filter(x => profile(x).aftZ >= full.aftZ - 1e-6).map(segmentOf);
                 const seat = key => Math.max((Array.isArray(frame) ? frame[1] : frame) / 2, ...fullSides.map(side => chordHalf(side, key)));
+                // At the beta-gimbal frame the mast canisters pass the forward face's lower half and the aft face's
+                // upper half; those corners keep no fittings.
+                const pocket = inSolarPocket(across);
                 for (const upper of [false, true]) {
-                    if (full.top > 8.39) cornerFittings(across, upper ? 8.4 : 5.3, forwardZ, -1, upper, seat('f'));
-                    cornerFittings(across, upper ? full.aftTop : full.aftBottom, full.aftZ, 1, upper, seat('a'));
+                    if (full.top > 8.39 && !(pocket && !upper)) cornerFittings(across, upper ? 8.4 : 5.3, forwardZ, -1, upper, seat('f'));
+                    if (!(pocket && upper)) cornerFittings(across, upper ? full.aftTop : full.aftBottom, full.aftZ, 1, upper, seat('a'));
                 }
             }
         }
@@ -180,19 +197,20 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
                 for (const [low, high] of [['fb', 'ft'], ['ab', 'at']]) even ? brace(a[low], b[high]) : brace(a[high], b[low]);
                 brace(b.ft, a.at); brace(b.fb, a.ab);
             } else if (segment === 'S5') {
-                if (even) { brace(a.fb, b.fm); brace(a.at, b.am); brace(a.at, b.ft); brace(a.ab, b.fb); }
+                if (even) { brace(a.at, b.ft); brace(a.ab, b.fb); }
                 else {
-                    for (const key of ['ft', 'fb']) brace(b[key], a.fm);
-                    for (const key of ['at', 'ab']) brace(b[key], a.am);
-                    brace(b.at, a.ft); brace(b.ab, a.fb); brace(a.ft, a.ab);
+                    const post = sign * (innerSolarStation + .98);
+                    for (const key of ['ft', 'fb']) brace(b[key], [post, 6.8, forwardZ]);
+                    for (const key of ['at', 'ab']) brace(b[key], [post, 6.8, fullAftZ]);
+                    brace(b.at, a.ft); brace(b.ab, a.fb);
                 }
             } else {
                 // The faces skip the bays the inner mast canisters pass through; the bay holding a beta-gimbal
                 // crossmember breaks its deck and underside braces at that crossmember.
-                const pocket = solarStations.some(root=>Math.abs(root)===32 && Math.max(inner,outer)>root-solarPocketHalf && Math.min(inner,outer)<root+solarPocketHalf);
+                const pocket = solarStations.some(root=>Math.abs(root)===innerSolarStation && Math.max(inner,outer)>root-solarPocketHalf && Math.min(inner,outer)<root+solarPocketHalf);
                 if (!pocket) for (const [low, high] of [['fb', 'ft'], ['ab', 'at']]) even ? brace(a[low], b[high]) : brace(a[high], b[low]);
-                if (Math.abs(inner) < 32 && Math.abs(outer) > 32) {
-                    const g = corners(sign * 32);
+                if (Math.abs(inner) < innerSolarStation && Math.abs(outer) > innerSolarStation) {
+                    const g = corners(sign * innerSolarStation);
                     brace(a.at, g.ft); brace(g.ft, b.at); brace(a.ab, g.fb); brace(g.fb, b.ab);
                 } else for (const [fore, aft] of [['ft', 'at'], ['fb', 'ab']]) even ? brace(a[fore], b[aft]) : brace(a[aft], b[fore]);
             }
@@ -211,37 +229,40 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
     // full-depth top/bottom crossmembers. Four explicit splice seats
     // mark these load paths without changing either attachment plane.
     for(const side of [-1,1]) for(const [y,z] of [[narrowTop,forwardZ],[narrowBottom,forwardZ],[8.4,narrowAftZ],[5.3,narrowAftZ]]) {
-        const x=side*16;
+        const x=side*trussS1End;
         kit.box([x,y,z],[.25,.20,.20],palette.silver,[0,0,0],false);
         for(const dz of [-.057,.057]) trussFastener([x+side*.136,y,z+dz],.027,.035,[0,0,Math.PI/2],palette.dark);
     }
+    // Covered bays. S0's covers follow its measured sloping faces (below). S1/P1 take bays on a 2.7 m pitch from the
+    // centreline (2.1 + 2.7 k), trimmed at the S0 chamfer and at S3/P3; S3/P3 take one bay either side of their middle
+    // frame, and the bay around each solar rotary joint stays open. The bay number sets the tones, as first drawn
+    // (S3/P3's two bays were numbers 6 and 7).
+    const s3Middle = Math.abs(referenceBayFrames(trussS1End, s3End)[1]);
+    const coverBays = [];
+    for (let bay = 2; 2.1 + bay * 2.7 - 1.24 < narrowTo; bay++) {
+        const across = 2.1 + bay * 2.7;
+        coverBays.push({ bay, narrow: true, from: Math.max(narrowFrom + .03, across - 1.24), to: Math.min(narrowTo - .03, across + 1.24) });
+    }
+    coverBays.push({ bay: 6, narrow: false, from: trussS1End + .06, to: s3Middle - .06 }, { bay: 7, narrow: false, from: s3Middle + .06, to: s3End - .06, jumper: true });
     for (const side of [-1, 1]) {
-        // Omit the final covered bay around each solar rotary joint: side plates, deck,
-        // cable-tray cover, fasteners and gold handholds in the marked region.
-        for (let bay = 0; bay < 8; bay++) {
-            if(bay<2)continue; // S0 covers follow its measured sloping faces below.
-            const across = side * (2.1 + bay * 2.7);
-            // Bays 0-1 lie on S0 (its chamfers, aft face and deck are built with S0 below), 2-5 on the narrow S1/P1 and
-            // 6-7 on S3/P3.
-            const narrow = bay >= 2 && bay <= 5, fullAft = bay >= 6;
+        for (const { bay, narrow, from, to, jumper } of coverBays) {
             const cover = (x, y, depth, face, width, height, tone) => {
                 kit.box([x, y, depth], [width, height, .12], tone);
                 kit.box([x, y, depth + face * .07], [width - .3, height - .29, .035], palette.hull, [0, 0, 0], false);
                 for (const dx of [-(width / 2 - .18), width / 2 - .18]) for (const dy of [-(height / 2 - .17), height / 2 - .17]) trussFastener([x + dx, y + dy, depth + face * .10], .031, .05);
             };
             const tone = bay % 3 === 1 ? palette.hull : palette.white;
-            // Full-height faces carry the upper-band covers, jumper boxes and gold handholds; S0's stop at its chamfer.
-            for (const face of narrow ? [] : fullAft ? [-1, 1] : [-1]) {
-                const depth = face < 0 ? forwardZ - .07 : fullAftZ + .07;
-                const from = Math.abs(across) - 1.24, to = bay === 1 ? chamferStart - .05 : Math.abs(across) + 1.24;
-                const x = side * (from + to) / 2, width = to - from, reach = Math.min(1.03, width / 2 - .2);
+            const x = side * (from + to) / 2, width = to - from;
+            // S3/P3's full-height faces carry the upper-band covers, jumper boxes and gold handholds.
+            for (const face of narrow ? [] : [-1, 1]) {
+                const depth = face < 0 ? forwardZ - .07 : fullAftZ + .07, reach = Math.min(1.03, width / 2 - .2);
                 // Upper equipment covers leave the lower triangular bays exposed.
                 cover(x, 7.73, depth, face, width, 1.12, tone);
-                // Covered jumper boxes interrupt the panel rhythm at selected upper bays, hung under the cover
-                // in the outboard corner clear of S3/P3's descending Λ brace.
-                if (bay % 3 === 1) {
-                    const jumperX = across + side * .96;
-                    kit.box([jumperX, 6.945, depth - face * .25], [1.10, .45, .53], palette.silver);
+                // A covered jumper box interrupts the panel rhythm in the outer bay, hung under the cover in the
+                // outboard corner clear of S3/P3's descending Λ brace (it passes 5 cm below its inboard edge).
+                if (jumper) {
+                    const jumperX = side * (s3End - .2 - .375);
+                    kit.box([jumperX, 6.945, depth - face * .25], [.75, .45, .53], palette.silver);
                     kit.rod([jumperX, 7.15, depth - face * .20], [jumperX, 7.47, depth - face * .20], .04, palette.dark);
                 }
                 const railDepth = depth + face * .20;
@@ -253,28 +274,28 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
             }
             if (narrow) {
                 // S1/P1: the narrow forward face toward Harmony, the full-height aft face toward the radiators and the
-                // deck rising between them, trimmed at the S0 chamfer and at S3/P3.
-                const from = bay === 2 ? narrowFrom + .03 : Math.abs(across) - 1.24, to = bay === 5 ? narrowTo - .03 : Math.abs(across) + 1.24;
-                const x = side * (from + to) / 2, width = to - from, rise = Math.atan2(8.4 - narrowTop, narrowAftZ - forwardZ);
+                // deck rising between them.
+                const rise = Math.atan2(8.4 - narrowTop, narrowAftZ - forwardZ);
                 cover(x, (narrowTop + narrowBottom) / 2, forwardZ - .07, -1, width, 1.1, tone);
                 cover(x, 7.73, narrowAftZ + .07, 1, width, 1.12, tone);
                 kit.box([x, (8.4 + narrowTop) / 2 + .05 * Math.cos(rise), (forwardZ + narrowAftZ) / 2 - .05 * Math.sin(rise)], [width - .04, .08, Math.hypot(8.4 - narrowTop, narrowAftZ - forwardZ) - .04], bay % 2 ? palette.white : palette.hull, [-rise, 0, 0]);
-            }
-            if (fullAft) {
+            } else {
                 // Separate removable deck covers, folded edges and captive fasteners.
+                const edge = width / 2 - .11;
                 for (const depth of [3.14, 4.86]) {
-                    kit.box([across, 8.51, depth], [2.46, .11, 1.50], bay % 4 === 0 ? palette.hull : palette.white);
-                    for (const dx of [-1.13, 1.13]) {
-                        kit.box([across + dx, 8.47, depth], [.055, .16, 1.48], palette.silver, [0, 0, 0], false);
-                        for (const dz of [-.61, .61]) trussFastener([across + dx, 8.585, depth + dz], .027, .035, [0, 0, 0]);
+                    kit.box([x, 8.51, depth], [width - .02, .11, 1.50], bay % 4 === 0 ? palette.hull : palette.white);
+                    for (const dx of [-edge, edge]) {
+                        kit.box([x + dx, 8.47, depth], [.055, .16, 1.48], palette.silver, [0, 0, 0], false);
+                        for (const dz of [-.61, .61]) trussFastener([x + dx, 8.585, depth + dz], .027, .035, [0, 0, 0]);
                     }
                 }
                 // A narrow covered cable tray occupies the center seam.
-                kit.box([across, 8.50, 4], [2.46, .13, .16], palette.silver, [0, 0, 0], false);
+                kit.box([x, 8.50, 4], [width - .02, .13, .16], palette.silver, [0, 0, 0], false);
             }
         }
-        // Equipment boxes inside the truss; those in the narrow S1/P1 sit in its deeper aft half, just ahead of the aft-face braces.
-        for (const across of [9, 13, 18]) {
+        // Equipment boxes inside the truss; those in the narrow S1/P1 sit in its deeper aft half, just ahead of the
+        // aft-face braces, and S3/P3's in its inner bay.
+        for (const across of [9, 13, 17, (trussS1End + s3Middle) / 2]) {
             if (across < narrowTo) { kit.box([across * side, 6.85, 3.44], [2.1, 1.8, .9], palette.hull); continue; }
             kit.box([across * side, 7.6, 4], [2.1, 1.9, 2.6], palette.hull);
             for (const seam of [-.7, 0, .7]) kit.line([[across * side + seam, 8.58, 2.75], [across * side + seam, 8.58, 5.25]]);
@@ -326,13 +347,13 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
             boreRadius,ringDepth:sourceRing.depth,ringCenters:sourceRing.centers,
             openSpan:[Math.abs(jointX)-.80,Math.abs(jointX)+.80],source:sourceRing,
             spokes:sourceSpokes.length*2,sourceSpokeAngles:sourceSpokes});
-        for (const across of [32, 48]) {
+        for (const across of [innerSolarStation, outerSolarStation]) {
             const rootX = solarRootX(side * across);
-            const equipmentX = side * (across === 32 ? 27.55 : across - 3.3);
-            const terminal = across === 48, terminalX = side * 47.30;
+            const terminal = across === outerSolarStation, terminalX = side * outerEnd;
+            const equipmentX = side * (terminal ? across - 3.3 : innerEquipmentCenter);
             // The module's two wings sit one above the other (solarWingY): each mast canister runs into one shared
             // beta-gimbal frame through its own face, in its own half, and turns on a BGA near mid-depth. Inboard the
-            // frame is a pocket in the continuous truss; at the tip it is an open box beyond the IEA end face.
+            // frame is the middle of S5/P5, just outboard of the IEA; at the tip it is an open box beyond the IEA end face.
             const frameOuter = rootX + side * 1.4;
             if (terminal) {
                 // A central end-face spine closes the IEA; the open BGA frame continues outboard of it.
@@ -355,9 +376,9 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
                 const axisY = solarWingY(direction), upper = direction > 0, outward = side * direction, face = 4 + direction * 1.7;
                 const chordY = upper ? 8.4 : 5.3, edgeY = upper ? 8.33 : 5.37, toward = upper ? 1 : -1;
                 const jointDepth = 4 + direction * .01, plateDepth = 4 - direction * .16;
-                // Posts and a mid-height bar frame the canister where it passes through its face, in its own half,
-                // in the frame and brace tubes of the segment around it.
-                const { frame: canisterPost, brace: canisterBar } = trussSections[segmentOf(rootX)];
+                // Posts and a mid-height bar frame the canister where it passes through its face, in its own half, in
+                // the module's own frame and brace tubes (S4/P4's for the inner module, though it sits in S5/P5).
+                const { frame: canisterPost, brace: canisterBar } = trussSections[terminal ? 'S6' : 'S4'];
                 for (const dx of [-.98, .98]) {
                     const x = rootX + dx;
                     const standing = latticeFrames.some(frame => Math.abs(frame - x) < .15 && !inSolarPocket(frame)) || (terminal && Math.abs(x - frameOuter) < .15);
@@ -423,10 +444,10 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
             kit.add(webGeometry, material(palette.white), [equipmentX, roofTop, 4], [1, 1.10, 1], [Math.PI / 2, 0, 0], false);
             if (!terminal) {
                 // The canister cage after the reference: two bronze grapple fixtures on top and a keel plate carrying
-                // two more below. Its top and bottom bracing is the lattice's own V through the beta-gimbal crossmember.
-                // Fixture bases and the keel plate sit on the forward box chords' outer faces.
-                const chordRise = trussSections.S4.fore[1] / 2;
-                for (const x of [side * 32.35, side * 33.45]) {
+                // two more below. Its top and bottom bracing is S5/P5's own V into the beta-gimbal crossmember.
+                // Fixture bases and the keel plate sit on S5/P5's round forward chords where they swell.
+                const chordRise = trussSections.S5.strut[1] / 2;
+                for (const x of [side * (across + .35), side * (across + 1.45)]) {
                     kit.box([x, 8.45 + chordRise, 2.3], [.34, .1, .42], palette.silver);
                     kit.add(cap, bronze, [x, 8.5 + chordRise, 2.3], [1, 1, 1], [0, 0, 0], false);
                     kit.cylinder([x, 8.7 + chordRise, 2.3], .015, .12, palette.silver, [0, 0, 0]);
@@ -434,25 +455,27 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
                     kit.add(cap, bronze, [x, 5.2 - chordRise, 2.3], [1, 1, 1], [Math.PI, 0, 0], false);
                     kit.cylinder([x, 5.0 - chordRise, 2.3], .015, .12, palette.silver, [0, 0, 0]);
                 }
-                kit.box([side * 32.9, 5.275 - chordRise, 2.3], [1.35, .05, .3], palette.silver, [0, 0, 0], false);
-                // S5/P5 spacer after the reference: a darker plate on the lower half of the forward face, a pale
-                // plate across the aft face, a bronze grapple fixture on a braced post and two blanketed boxes
-                // at its outboard end.
-                const spacerMid = side * 35.475, postX = side * 35.75;
-                kit.box([spacerMid, 6.05, 2.06], [3.28, 1.45, .05], 0x9aa1a4);
-                kit.box([spacerMid, 6.85, 5.94], [3.28, 2.95, .05], 0xc3c7c5);
+                kit.box([side * (across + .9), 5.275 - chordRise, 2.3], [1.35, .05, .3], palette.silver, [0, 0, 0], false);
+                // S5/P5 dressing after the reference, in the bay outboard of the canister posts: a darker plate on the
+                // lower half of the forward face, a pale plate on the aft face, a bronze grapple fixture on a braced
+                // post and two blanketed boxes at its outboard end.
+                const plateFrom = across + 1.08, plateTo = s6Start - .06, plateWidth = plateTo - plateFrom;
+                const spacerMid = side * (plateFrom + plateTo) / 2, postX = spacerMid;
+                kit.box([spacerMid, 6.05, 2.06], [plateWidth, 1.45, .05], 0x9aa1a4);
+                kit.box([spacerMid, 6.85, 5.94], [plateWidth, 2.95, .05], 0xc3c7c5);
                 kit.rod([postX, 6.8, 2.0], [postX, 7.72, 2.0], .05, palette.silver);
                 kit.box([postX, 7.72, 2.0], [.3, .08, .3], palette.silver, [0, 0, 0], false);
                 kit.add(cap, bronze, [postX, 7.76, 2.0], [1, 1, 1], [0, 0, 0], false);
                 kit.cylinder([postX, 7.97, 2.0], .015, .12, palette.silver, [0, 0, 0]);
-                kit.rod([side * 34.05, 8.3, 2.0], [postX, 6.95, 2.0], .045, palette.silver);
-                for (const x of [side * 36.15, side * 36.95]) {
+                kit.rod([side * plateFrom, 8.3, 2.0], [postX, 6.95, 2.0], .045, palette.silver);
+                for (const x of [side * (s6Start - 1.1), side * (s6Start - .3)]) {
                     kit.box([x, 5.42, 1.72], [.75, .85, .65], palette.white);
                     kit.box([x, 5.86, 1.72], [.66, .03, .56], palette.hull, [0, 0, 0], false);
                 }
                 // Two utility runs cross the forward face from the rotary joint to the spacer, stepping around
                 // the canister barrel, on stand-off brackets.
-                for (const [y, runs] of [[6.72, [[23.9, 31.25], [32.9, 40.0]]], [5.42, [[23.9, 39.9]]]]) {
+                const jointOut = solarRotaryJointX + .4;
+                for (const [y, runs] of [[6.72, [[jointOut, across - .75], [across + .9, s6Start + 2.75]]], [5.42, [[jointOut, s6Start + 2.65]]]]) {
                     for (const [a, b] of runs) {
                         kit.rod([side * a, y, 2.0], [side * b, y, 2.0], .045, palette.silver);
                         for (let x = a + .4; x < b; x += 2.5) kit.box([side * x, y, 2.1], [.1, .1, .2], palette.silver, [0, 0, 0], false);
@@ -490,28 +513,39 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
                 kit.rod([x - .25, roofTop + .10, 3.0], [x + .25, roofTop + .10, 3.0], .028, palette.gold);
                 for (const dx of [-.25, .25]) kit.rod([x + dx, roofTop - .05, 3.0], [x + dx, roofTop + .10, 3.0], .028, palette.gold);
             }
-            const foldX = equipmentX + side * .5, foldZ = 5.8;
-            kit.rod([foldX, 5.4, 4], [foldX, 5.4, foldZ], .12, palette.silver);
-            let upperHeight = 5.5, upperDepth = foldZ;
-            for (let fold = 0; fold < 7; fold++) {
-                const verticalStep = 1.77, depthStep = .267;
-                const lowerHeight = upperHeight - verticalStep, lowerDepth = upperDepth + (fold % 2 === 0 ? depthStep : -depthStep);
-                const pitch = Math.atan2(lowerDepth - upperDepth, verticalStep);
-                kit.box([foldX, (upperHeight + lowerHeight) / 2, (upperDepth + lowerDepth) / 2], [3.12, 1.79, .085], palette.white, [-pitch, 0, 0]);
-                kit.rod([foldX - 1.56, upperHeight, upperDepth], [foldX + 1.56, upperHeight, upperDepth], .045, palette.silver);
-                for (const rib of [-1.2, -.8, -.4, 0, .4, .8, 1.2]) kit.line([[foldX + rib, upperHeight - .05, upperDepth + .055], [foldX + rib, lowerHeight + .05, lowerDepth + .055]]);
-                for (const edge of [-1, 1]) kit.rod([foldX + edge * 1.6, upperHeight, upperDepth + .10], [foldX + edge * 1.6, lowerHeight, lowerDepth + .10], .033, palette.silver);
-                upperHeight = lowerHeight; upperDepth = lowerDepth;
+            // Photovoltaic radiator after NASA's model (ISS_stationary, the same on S4 and S6): seven panels, 3.52 m wide
+            // and 12.97 m long, hang away from the truss at right angles to the masts, in the truss's mid-plane between
+            // the module's two wings, centred 0.29 m inboard of the IEA. The panels fold 0.5 m deep, swinging aft from
+            // the mid-plane and back, and a scissor member runs down each side edge against the fold, so from the side
+            // the stack reads as a chain of diamonds as on NASA's model. A root fitting under the ORU trays narrows to
+            // the first hinge. Until 7 November 2026 the stack was 3.12 m wide, 12.4 m long and folded 0.27 m deep,
+            // and hung just aft of the aft face, 0.5 m outboard of the IEA centre.
+            const foldX = equipmentX - side * .29, foldWidth = 3.52, foldHalf = foldWidth / 2, panelCount = 7, panelStep = 12.97 / panelCount;
+            const foldDepth = .5, rootTop = 4.68, rootHinge = 4.25, rootDepth = 1.52;
+            kit.box([foldX, rootTop - .06, 4], [foldWidth + .1, .12, rootDepth], palette.silver);
+            for (const edge of [-1, 1]) for (const end of [-1, 1]) {
+                kit.rod([foldX + edge * (foldHalf - .1), rootTop - .12, 4 + end * (rootDepth / 2 - .08)], [foldX + edge * (foldHalf - .1), rootHinge, 4], .04, palette.silver);
             }
-            kit.rod([foldX - 1.56, upperHeight, upperDepth], [foldX + 1.56, upperHeight, upperDepth], .045, palette.silver);
+            let upperHeight = rootHinge, upperDepth = 4, upperMember = 4 + foldDepth / 2;
+            for (let fold = 0; fold < panelCount; fold++) {
+                const lowerHeight = upperHeight - panelStep, lowerDepth = fold % 2 === 0 ? 4 + foldDepth : 4, lowerMember = 8 + foldDepth - lowerDepth;
+                const pitch = Math.atan2(lowerDepth - upperDepth, panelStep);
+                kit.box([foldX, (upperHeight + lowerHeight) / 2, (upperDepth + lowerDepth) / 2], [foldWidth, panelStep / Math.cos(pitch) + .02, .06], palette.white, [-pitch, 0, 0]);
+                kit.rod([foldX - foldHalf, upperHeight, upperDepth], [foldX + foldHalf, upperHeight, upperDepth], .045, palette.silver);
+                for (const rib of [-1.35, -.9, -.45, 0, .45, .9, 1.35]) kit.line([[foldX + rib, upperHeight - .05, upperDepth + .04], [foldX + rib, lowerHeight + .05, lowerDepth + .04]]);
+                for (const edge of [-1, 1]) kit.rod([foldX + edge * (foldHalf + .04), upperHeight, upperMember], [foldX + edge * (foldHalf + .04), lowerHeight, lowerMember], .03, palette.silver);
+                upperHeight = lowerHeight; upperDepth = lowerDepth; upperMember = lowerMember;
+            }
+            kit.rod([foldX - foldHalf, upperHeight, upperDepth], [foldX + foldHalf, upperHeight, upperDepth], .045, palette.silver);
         }
     }
     // The mobile-transporter rails run along the forward face, inside S1/P1's narrow band, from P3 to S3 inboard of
     // the rotary joints; short standoffs tie them to the face, in front of its covers and fasteners.
-    const railZ = forwardZ - .32;
+    // They end 2.5 m inboard of each joint; the standoffs keep the 2.7 m pitch, the outermost at least 0.4 m from the ends.
+    const railZ = forwardZ - .32, railEnd = solarRotaryJointX - 2.5, lastStandoff = 1.35 + 2.7 * Math.floor((railEnd - .4 - 1.35) / 2.7);
     for (const height of [6.45, 7.25]) {
-        kit.box([0, height, railZ], [42, .15, .15], palette.silver, [0, 0, 0], false);
-        for (let across = -20.25; across <= 20.25; across += 2.7) kit.box([across, height, (railZ + forwardZ) / 2], [.21, .21, forwardZ - railZ], palette.hull, [0, 0, 0], false);
+        kit.box([0, height, railZ], [2 * railEnd, .15, .15], palette.silver, [0, 0, 0], false);
+        for (let step = 0; 1.35 + 2.7 * step <= lastStandoff + 1e-6; step++) for (const side of [-1, 1]) kit.box([side * (1.35 + 2.7 * step), height, (railZ + forwardZ) / 2], [.21, .21, forwardZ - railZ], palette.hull, [0, 0, 0], false);
     }
     // S0: source node 80 has five unequal bays and a six-sided core.
     // Source Z is reversed into station Z: its long narrow face faces
@@ -660,3 +694,5 @@ part('truss', 'Integrated truss structure', '01 / STRUCTURE', 'The segmented bac
         forwardFace:[narrowBottom,narrowTop],kneeFace:[5.3,8.4],aftFace:[s0AftBottom,s0AftTop],existingDestinySeats:s0Seats,
         descendingLegsOwnedBy:'destiny',sourceAxes:'native X and Z reversed; bounded adaptation retains S1 and Destiny anchors',upperORUs:2,lowerORUs:2};
 });
+// Everything outboard of the two SARJs (P4 to P6, S4 to S6, and each joint's outer race) turns with its joint.
+splitAtJoints(truss.group);
