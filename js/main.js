@@ -44,11 +44,12 @@ import { scheduleLineArt } from './ui/ghost.js';
 import { halveLargeMaps, releaseAfterUpload } from './core/release.js';
 import './ui/rendezvous-guide.js';
 import { live } from './orbit/live.js';
+import * as robotics from './robotics/index.js';
 import { adoptEvaFigure, advance, configuration, currentView, focusPart, labels, motion, notify, render, resize,
     restartApproach, selected, selectPart, setConfiguration, setView, stationBounds, getLaunchView, getOrbitView, getSky, setLive, showSunAt, startRealSun } from './ui/controller.js';
 
 const loading = document.getElementById('loading');
-window.issAtlas = { showSunAt, setLive, live, z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get sky() { return getSky(); }, get currentView() { return currentView; }, get orbitView() { return getOrbitView(); }, get launchView() { return getLaunchView(); } };
+window.issAtlas = { showSunAt, setLive, live, robotics, z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get sky() { return getSky(); }, get currentView() { return currentView; }, get orbitView() { return getOrbitView(); }, get launchView() { return getLaunchView(); } };
 if (quality.ceiling !== 'high') halveLargeMaps(station);   // both before the first frame uploads anything
 releaseAfterUpload(station);
 applyQuality(quality.tier); setConfiguration('modern');

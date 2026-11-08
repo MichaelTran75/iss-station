@@ -18,6 +18,9 @@ const items = {
     USLAB000018: 'q0', USLAB000019: 'q1', USLAB000020: 'q2', USLAB000021: 'q3', USLAB000040: 'beta'
 };
 export const live = { state: 'off', values: {}, aos: false, stationTime: 0, received: 0, convention: null };
+// More items to follow (js/robotics/telemetry.js: Canadarm2, Dextre, the Mobile Transporter), named as `items` names
+// them; taken up at the next connection.
+export const watchItems = more => Object.assign(items, more);
 let client = null, loading = null;
 function loadClient() {
     return loading ||= new Promise((resolve, reject) => {

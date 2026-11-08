@@ -15,6 +15,9 @@ import { attitude, attitudeName, datedTurn, inStation, setAttitude } from '../or
 import '../orbit/theme.js';   // the Orbit view's background switch, set before that view first opens
 import { ghostMaterial } from './ghost.js';
 import { updateRendezvousGuide } from './rendezvous-guide.js';
+import { setRoboticsLive, updateRobotics } from '../robotics/index.js';
+import { refresh as refreshRoboticsTools } from './robotics-tools.js';
+import { updateRoboticsMenu } from './robotics-menu.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 export let motion = !reducedMotion.matches, labelsEnabled = false, selected = null, currentView = 'reverse', configuration = 'modern', orbital = false, elapsed = 0;
@@ -66,7 +69,9 @@ export function notify(message) { const toast = document.getElementById('toast')
 // keeps PMA-3).
 function applyGhost() {
     markShadowsDirty();
-    const solid = selected ? new Set(selected === 'dragon' ? dragonDetail === 'cabin' ? ['dragon'] : ['dragon', 'harmony'] : selected === 'cargo-dragon' ? ['cargo-dragon', 'pma3'] : [selected]) : null;
+    // Some parts are shown with what they work with: Dragon with the node it docks to, Canadarm2 and Dextre together.
+    const companions = { 'cargo-dragon': ['pma3'], robotics: ['dextre'], dextre: ['robotics'] };
+    const solid = selected ? new Set(selected === 'dragon' ? dragonDetail === 'cabin' ? ['dragon'] : ['dragon', 'harmony'] : [selected, ...(companions[selected] || [])]) : null;
     for (const entry of parts.values()) {
         const ghost = solid !== null && !solid.has(entry.id);
         if (!!entry.ghost === ghost) continue;
@@ -124,6 +129,8 @@ export function selectPart(id) {
     document.getElementById('columbus-asset-credit').hidden = id !== 'columbus';
     document.getElementById('destiny-tools').hidden = id !== 'destiny';
     document.getElementById('dragon-tools').hidden = id !== 'dragon';
+    document.getElementById('robotics-tools').hidden = id !== 'robotics' && id !== 'dextre';
+    refreshRoboticsTools(true);
     setPressed('dragon-approach', dragonDetail === 'approach');
     setPressed('dragon-cabin', dragonDetail === 'cabin');
     document.getElementById('shutter-controls').hidden = destinyDetail !== 'window';
@@ -285,12 +292,12 @@ const sunReach = new THREE.Vector3(...studioLight.sun).length(), sunShown = new 
 const { radiatorBanks, parkedTrrj, trrjClear } = parts.get('thermal').group.userData;
 // Joints and attitude as drawn glide to the pose asked for (Real Sun, ISS Live, telemetry carried forward, the
 // schematic pose) instead of jumping: switching ISS Live on turns the arrays and radiators to their telemetered angles,
-// and the Sun and Earth round to the attitude flown, over about two seconds. Each follows its goal on a critically
+// and the Sun and Earth round to the attitude flown, over about five seconds. Each follows its goal on a critically
 // damped spring. A goal that keeps moving (the arrays tracking the Sun, fast while time runs fast) is followed without
 // lag, at the rate between its last two samples, so only a change of source or a jump eases in. SARJs and BGAs turn
 // the short way round; a TRRJ stays within the turn its wing has clear. Without motion (Motion off, or reduced motion
 // asked for) the pose is set at once.
-const glideRate = 3;   // per second: a large turn is 99% done in about 2.2 s
+const glideRate = 4 / 3;   // per second: a large turn is 99% done in about 5 s
 const glideJoints = new Map(), turnGoal = datedTurn.slice();
 let glideClock = 0, glideSource = '', turnSpeed = 0;
 const wrapAngle = angle => angle - 2 * Math.PI * Math.round(angle / (2 * Math.PI));
@@ -398,7 +405,7 @@ function updateSun(delta) {
     sunLine.textContent = 'ISS LIVE / ' + why + ' / COMPUTED SUN / ' + name + ' / ' + light + next;
 }
 function setLive(on) {
-    liveMode = on; setPressed('live-toggle', on); sunClock = 0;
+    liveMode = on; setPressed('live-toggle', on); sunClock = 0; setRoboticsLive(on);
     if (on) { if (!realSun) setRealSun(true); startLive(); } else { stopLive(); aimTurn(datedTurn); }
 }
 function setRealSun(on) {
@@ -483,6 +490,8 @@ export function focusPart(id) {
         : cabinDetail ? new THREE.Box3(new THREE.Vector3(-2.05, -2.05, -4.3), new THREE.Vector3(2.05, 2.05, .2)).applyMatrix4(dragon.group.matrixWorld)
         : id === 'dragon' ? dragonApproachBounds().clone() : new THREE.Box3().setFromObject(parts.get(id).group);
     if (id === 'dragon' && !cabinDetail) bounds.union(new THREE.Box3().setFromObject(parts.get('harmony').group));
+    // Canadarm2's frame takes in Dextre, which it may be carrying.
+    if (id === 'robotics') bounds.union(new THREE.Box3().setFromObject(parts.get('dextre').group));
     controls.autoRotate = false; setPressed('rotate-toggle', false);
     const detailDirections = { 'soyuz-ms29': [-160, -100, 140], 'progress-aft': [-160, 120, 160], 'progress-poisk': [-160, 120, 100], pma3: [-150, 110, -140], 'cargo-dragon': [-160, 90, -150], dextre: [140, 80, -160], aces: [150, -95, -140], destiny: [-110, 68, -145], poisk: [-155, 85, -140], rassvet: [-145, -85, -135], prichal: [-140, 20, -180], soyuz: [-160, 120, 160], beam: [-120, 80, 150], bishop: [-155, 100, -140], z1: [-85, 58, -165], s3payloads: [125, 70, -160], p3payloads: [-125, 70, -160], tranquility: [-100, -120, -155], robotics: [-40, 120, 150], thermal: [-155, 80, -100], irosa: [-100, 160, -130] };
     const direction = windowDetail ? new THREE.Vector3(65, -180, -105) : cabinDetail ? new THREE.Vector3(-100, -20, 35) : id === 'dragon' ? new THREE.Vector3(-165, 70, 75) : detailDirections[id] ? new THREE.Vector3(...detailDirections[id]) : cameraDirection('reverse');
@@ -672,12 +681,14 @@ function updateLabels(hidden) {
 const scaleSteps = Array.from({ length: 33 }, (_, k) => [1, 2, 5][k % 3] * 10 ** (Math.floor(k / 3) - 2));
 const scaleText = metres => metres >= 1000 ? (metres / 1000).toLocaleString('en-US') + ' km' : +metres.toPrecision(1) + ' m';
 export function render() {
-    if (globeViews.has(currentView)) { globeView()?.render(); return; }
+    if (globeViews.has(currentView)) { updateRoboticsMenu(false); globeView()?.render(); return; }
     camera.updateMatrixWorld(true); if (inspectionLight.visible) inspectionLight.position.copy(camera.position);
     // Zoomed far out over Earth the station is a few pixels or less: its overlays stand down, and below 14 pixels the
     // backdrop's ISS marker shows where it is.
     const pixelsPerMetre = camera.zoom * viewport.clientWidth / (camera.right - camera.left), stationPixels = stationSpan * pixelsPerMetre;
     updateApproachDistance(stationPixels < 40); updateLabels(stationPixels < 40); updateCrewThought(); updateShutterControls();
+    // Canadarm2's operations beside the arm, while it or Dextre is selected.
+    updateRoboticsMenu((selected === 'robotics' || selected === 'dextre') && currentView !== 'interior' && stationPixels >= 40);
     const approachState = approach.time >= approach.duration ? 'DOCKED' : motion ? approachPhase() : 'PAUSED';
     const readout = rangeLabel(approach.range) + ' / ' + approachState;
     updateRendezvousGuide(currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach');
@@ -791,6 +802,10 @@ export function advance(delta) {
         }
     }
     updateSun(delta); glide(delta);
+    // Canadarm2, the base and Dextre (js/robotics/): parked, live or a sequence. With motion the shadows refresh on their
+    // own schedule; a jump needs them redrawn.
+    if (updateRobotics(delta, motion) && !motion) markShadowsDirty();
+    refreshRoboticsTools(false, delta);
     if (flight && !globeViews.has(currentView)) updateFlight(delta);
     else if (dragonFollow && currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach') followDragon(delta);
     if (globeViews.has(currentView)) globeView()?.update(delta);

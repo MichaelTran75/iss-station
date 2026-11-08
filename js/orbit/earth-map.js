@@ -1,4 +1,4 @@
-// Minimal Earth for the Orbit view ("Map" in its panel; ?earth=map opens with it): a plain globe with only coastlines
+// Minimal Earth for the Orbit view (always, in place of the photographed Earth): a plain globe with only coastlines
 // and country borders, no clouds and no text; the surface wind at the shown time, as a colour for its speed and as
 // streaks drifting with it; and the tropical cyclones now active, each a swirl mark with its track so far (solid) and
 // its forecast (dashed), coloured by strength, inside a faint cone of uncertainty. It has two looks, for the Orbit
@@ -282,7 +282,10 @@ export function createEarthMap(earth) {
         const radius = focal * Math.tan(seen), half = Math.min(radius, width / 2);
         let area = 0;
         for (let s = 0; s < 24; s++) { const x = -half + (s + .5) * half / 12; area += 2 * Math.min(height / 2, Math.sqrt(Math.max(0, radius * radius - x * x))) * half / 12; }
-        const wanted = Math.max(200, Math.min(count, Math.round(area / spacing)));
+        // Close up (the globe overfilling the frame) half as many: from the disc just filling the frame's diagonal to
+        // 2.2 times it (about the closest zoom).
+        const fill = Math.min(1, Math.max(0, (radius / Math.hypot(width / 2, height / 2) - 1) / 1.2)), closeUp = 1 - .5 * fill * fill * (3 - 2 * fill);
+        const wanted = Math.max(200, Math.round(Math.min(count, area / spacing) * closeUp));
         for (let i = wanted; i < active; i++) life[i] = -1;
         active = wanted;
         // Radians of the globe per second per m/s, from the pixels a radian spans below the camera.

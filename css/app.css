@@ -1554,6 +1554,253 @@
             color: var(--muted);
         }
 
+        .robotics-line {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 9px;
+        }
+
+        #robotics-state {
+            font: 500 9px/1.5 'IBM Plex Mono', monospace;
+            color: var(--muted);
+        }
+
+        .robotics-line .detail-action {
+            margin-top: 0;
+            flex: none;
+        }
+
+        #robotics-joints {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px 2px;
+            margin: 9px 0 0;
+            border-top: 1px solid var(--line);
+            padding-top: 7px;
+        }
+
+        #robotics-joints div {
+            text-align: center;
+        }
+
+        #robotics-joints dt {
+            color: var(--muted);
+            font: 600 8px 'Manrope', sans-serif;
+        }
+
+        #robotics-joints dd {
+            margin: 2px 0 0;
+            font: 500 9px 'IBM Plex Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Canadarm2's operations beside the arm (js/ui/robotics-menu.js): a small card on a leader line from the elbow,
+            in the labels' type, placed and eased each frame. */
+        #robotics-leader {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 4;
+        }
+
+        #robotics-leader path {
+            stroke: var(--accent);
+            stroke-width: .9;
+            fill: none;
+            opacity: .75;
+        }
+
+        #robotics-leader circle {
+            fill: var(--accent);
+        }
+
+        /* It stands over the station by design, so it is more opaque than the side panels: the modules behind it
+            would otherwise blur into dark patches under the text. */
+        .robotics-menu {
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 5;
+            width: 212px;
+            padding: 10px 12px 9px;
+            background: color-mix(in srgb, var(--paper) 72%, transparent);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            box-shadow: 0 6px 20px #15241d14;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            will-change: transform;
+        }
+
+        /* Where the inspector covers most of the view (a phone): at the top of its robotics panel. */
+        .robotics-menu.in-panel {
+            position: static;
+            width: auto;
+            margin: 0 0 12px;
+            padding: 0;
+            background: none;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            will-change: auto;
+        }
+
+        .robotics-menu.in-panel header span,
+        .robotics-menu.in-panel .robotics-menu-state {
+            display: none;
+        }
+
+        .robotics-menu[hidden] {
+            display: none;
+        }
+
+        .robotics-menu header span {
+            display: block;
+            font: 500 9px/1.5 'IBM Plex Mono', monospace;
+            color: var(--accent);
+        }
+
+        .robotics-menu header b {
+            display: block;
+            font: 600 13px/1.4 'Manrope', sans-serif;
+            color: var(--ink);
+        }
+
+        .robotics-menu-list {
+            margin-top: 6px;
+            border-top: 1px solid var(--line);
+        }
+
+        .robotics-menu-list button {
+            position: relative;
+            display: block;
+            width: 100%;
+            padding: 7px 0 8px 14px;
+            border: 0;
+            border-bottom: 1px solid var(--line);
+            background: transparent;
+            color: var(--ink);
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .robotics-menu-list button::before {
+            content: '';
+            position: absolute;
+            left: 1px;
+            top: 12px;
+            width: 5px;
+            height: 5px;
+            border: 1px solid var(--accent);
+            border-radius: 50%;
+        }
+
+        .robotics-menu-list button[aria-pressed="true"]::before {
+            background: var(--accent);
+        }
+
+        .robotics-menu-list button:hover:not(:disabled) b,
+        .robotics-menu-list button[aria-pressed="true"] b {
+            color: var(--accent);
+        }
+
+        .robotics-menu-list button:disabled {
+            cursor: default;
+            opacity: .45;
+        }
+
+        .robotics-menu-list b {
+            display: block;
+            font: 600 11px/1.5 'Manrope', sans-serif;
+        }
+
+        .robotics-menu-list small {
+            display: block;
+            font: 500 9px/1.45 'IBM Plex Mono', monospace;
+            color: var(--muted);
+        }
+
+        .robotics-menu-bar {
+            display: block;
+            height: 2px;
+            margin-top: 5px;
+            background: color-mix(in srgb, var(--line) 60%, transparent);
+        }
+
+        .robotics-menu-list button[aria-pressed="false"] .robotics-menu-bar {
+            display: none;
+        }
+
+        .robotics-menu-bar i {
+            display: block;
+            height: 100%;
+            background: var(--accent);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform .25s linear;
+        }
+
+        .robotics-menu-state {
+            margin: 7px 0 0;
+            font: 500 9px/1.5 'IBM Plex Mono', monospace;
+            color: var(--muted);
+        }
+
+        .robotics-menu-stop {
+            margin-top: 7px;
+            padding: 6px 12px;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            color: var(--accent);
+            background: transparent;
+            font: 600 10px 'Manrope', sans-serif;
+            cursor: pointer;
+        }
+
+        .robotics-menu-stop:hover:not(:disabled) {
+            color: var(--paper);
+            background: var(--accent);
+        }
+
+        .robotics-menu-stop[hidden] {
+            display: none;
+        }
+
+        .robotics-menu-memory {
+            display: block;
+            margin-top: 6px;
+            font: 500 8px/1.5 'IBM Plex Mono', monospace;
+            color: var(--muted);
+            opacity: .85;
+        }
+
+        @media (max-width: 600px) {
+            .robotics-menu {
+                width: 178px;
+                padding: 8px 10px 7px;
+            }
+
+            .robotics-menu-list button {
+                padding: 5px 0 6px 13px;
+            }
+
+            .robotics-menu-list small {
+                display: none;
+            }
+
+            .robotics-menu-list button[aria-pressed="true"] small,
+            .robotics-menu.in-panel .robotics-menu-list small {
+                display: block;
+            }
+        }
+
+        #robotics-tools > small,
         #shutter-controls small {
             display: block;
             margin-top: 7px;
@@ -1790,10 +2037,6 @@
 
         .orbit-frame {
             margin: 0;
-        }
-
-        .orbit-earth {
-            margin-top: 8px;
         }
 
         .orbit-panel #orbit-map-source {

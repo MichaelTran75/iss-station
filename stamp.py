@@ -6,7 +6,9 @@ Tham chiếu có dạng 'css/app.css?v=…', 'data/pma-2.json?v=…', '../worker
 (fetch() và TextureLoader đều đọc đường dẫn theo trang). Chạy lặp đến khi ổn định vì dữ liệu chứa đường dẫn ảnh,
 module chứa đường dẫn dữ liệu và worker.
 
-Các module import nhau bằng đường dẫn thường ('../core/kit.js'), không có dấu. Khối <!-- modules … /modules -->
+Các module import nhau bằng đường dẫn thường ('../core/kit.js'), không có dấu; riêng các module worker robotics nạp
+(js/robotics/: kinematics, layout, fixtures, pose, motion, field, collision, planner) import nhau có dấu, vì worker không
+có import map (cùng một dấu nên trang vẫn chỉ nạp mỗi module một lần). Khối <!-- modules … /modules -->
 trong index.html do tệp này viết: import map trỏ mỗi module tới bản có dấu, modulepreload tải trước mọi module theo
 thứ tự dựng (thứ tự import trong js/main.js). Sửa một module thì chỉ tệp đó và index.html đổi dấu.
 Worker (js/workers/*.js, js/sim/worker.js) không qua import map: trang gọi chúng bằng new URL('…?v=…').
@@ -18,7 +20,7 @@ INDEX = HERE / 'index.html'
 MAIN = HERE / 'js' / 'main.js'
 # Chỉ khớp chuỗi trong dấu nháy: quét tuyến tính cả trên dòng base64 dài hàng MB.
 REF = re.compile(r'''(?P<quote>["'])(?P<path>(?:\.{1,2}/)?[\w\-./]{1,160}?\.(?:js|mjs|css|json|png|jpe?g|webp|bin))\?v=(?P<hash>[0-9a-f]{10})''')
-IMPORT = re.compile(r'''^import\s+(?:[^'";]*?\s+from\s+)?['"](?P<spec>\.{1,2}/[^'"]+\.js)['"];''', re.M)
+IMPORT = re.compile(r'''^import\s+(?:[^'";]*?\s+from\s+)?['"](?P<spec>\.{1,2}/[^'"?]+\.js)(?:\?v=[0-9a-f]{10})?['"];''', re.M)
 BLOCK = re.compile(r'(?P<indent>[ \t]*)<!-- modules\b.*?<!-- /modules -->', re.S)
 SOURCES = ['index.html', *sorted(str(p.relative_to(HERE)) for p in HERE.glob('css/*.css')),
            *sorted(str(p.relative_to(HERE)) for p in HERE.glob('js/**/*.js')),

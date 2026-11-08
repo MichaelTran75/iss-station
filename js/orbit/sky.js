@@ -98,11 +98,8 @@ export function createSky() {
     }));
     scene.add(earth);
     const earthMap = createEarthMap(earth);
-    // The Orbit view's Earth: ?earth=map (or photo) picks it; otherwise the one last picked in this browser.
-    let earthStyle = 'photo', lastDelta = 0;
-    try { earthStyle = localStorage.getItem('iss.orbit.earth') === 'map' ? 'map' : 'photo'; } catch (error) { /* no storage: photo */ }
-    const askedStyle = new URLSearchParams(location.search).get('earth');
-    if (askedStyle) earthStyle = askedStyle === 'map' ? 'map' : 'photo';
+    // The Orbit view's Earth is always the wind map; the photographed Earth stays behind the station and in Launch.
+    let lastDelta = 0;
     // Atmosphere: a rim glow, brighter on the day side; dimmer and greyer round the map. On paper (the light Orbit view)
     // a thin blue rim laid over the page instead (added light would only bleach it), and none round the map.
     const photoGlow = new THREE.Vector3(.35, .62, 1), mapGlow = new THREE.Vector3(.1, .14, .2), paperGlow = new THREE.Vector3(.36, .55, .78);
@@ -318,7 +315,7 @@ export function createSky() {
             body.marker.visible = body.radius / cameraDistance.subVectors(camera.position, body.object.position).length() * pixelsPerRadian < 2.5;
         }
         // The map (Orbit view only): its own Earth, a quieter rim, no labels.
-        const mapOn = orbitView && earthStyle === 'map', light = theme === 'light';
+        const mapOn = orbitView, light = theme === 'light';
         uniforms.mapStyle.value = mapOn ? 1 : 0;
         atmosphere.visible = !(light && mapOn); atmosphere.material.uniforms.glow.value.copy(light ? paperGlow : mapOn ? mapGlow : photoGlow);
         earthMap.show(mapOn); viewport.classList.toggle('earth-map', mapOn);
@@ -419,8 +416,5 @@ export function createSky() {
         });
     }
     return { scene, earth, moon, sun, iss, orbiters, addOrbiter, time, update, prepare, placeLabels, hideLabels, resize, renderBehind, release, moonLit: () => Math.round(lit * 100), ready: iss.ready,
-        get earthStyle() { return earthStyle; }, setEarthStyle(name) {
-            earthStyle = name === 'map' ? 'map' : 'photo';
-            try { localStorage.setItem('iss.orbit.earth', earthStyle); } catch (error) { /* not kept */ }
-        }, mapStatus: () => earthMap.status(), mapLegend: () => earthMap.legend() };
+        mapStatus: () => earthMap.status(), mapLegend: () => earthMap.legend() };
 }

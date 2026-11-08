@@ -11,7 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="css/app.css?v=e38709b54a">
+    <link rel="stylesheet" href="css/app.css?v=1571137683">
     <!-- modules: viết bởi stamp.py. Import map trỏ mỗi module tới bản có dấu nội dung; modulepreload tải
          trước mọi module theo thứ tự dựng. -->
     <script type="importmap">
@@ -52,8 +52,15 @@
         "./js/parts/dragon.js": "./js/parts/dragon.js?v=6bbf2ba2ef",
         "./js/parts/cargo-dragon.js": "./js/parts/cargo-dragon.js?v=64d8bad2d8",
         "./js/parts/soyuz.js": "./js/parts/soyuz.js?v=eb08b87749",
-        "./js/parts/robotics.js": "./js/parts/robotics.js?v=485d7e028e",
-        "./js/parts/dextre.js": "./js/parts/dextre.js?v=0eb293c173",
+        "./js/robotics/hardware.js": "./js/robotics/hardware.js?v=a6261643a1",
+        "./js/robotics/layout.js": "./js/robotics/layout.js?v=b4fe2c8612",
+        "./js/robotics/mobile-base.js": "./js/robotics/mobile-base.js?v=d166efc854",
+        "./js/robotics/kinematics.js": "./js/robotics/kinematics.js?v=44ee3feec6",
+        "./js/robotics/ssrms.js": "./js/robotics/ssrms.js?v=49cc3dd6fc",
+        "./js/robotics/fixtures.js": "./js/robotics/fixtures.js?v=e8c0b95aaf",
+        "./js/robotics/pose.js": "./js/robotics/pose.js?v=8d51479503",
+        "./js/parts/robotics.js": "./js/parts/robotics.js?v=e30e0f29fa",
+        "./js/parts/dextre.js": "./js/parts/dextre.js?v=ed68f01299",
         "./js/parts/beam.js": "./js/parts/beam.js?v=c2c04d76ab",
         "./js/parts/bishop.js": "./js/parts/bishop.js?v=afad66eaf0",
         "./js/parts/poisk.js": "./js/parts/poisk.js?v=4a665d5ce5",
@@ -65,13 +72,23 @@
         "./js/figures/eva.js": "./js/figures/eva.js?v=370b179983",
         "./js/ui/ghost.js": "./js/ui/ghost.js?v=c91db6d918",
         "./js/ui/rendezvous-guide.js": "./js/ui/rendezvous-guide.js?v=c2e18df47a",
-        "./js/orbit/live.js": "./js/orbit/live.js?v=d045c76416",
+        "./js/orbit/live.js": "./js/orbit/live.js?v=40c2004d5d",
+        "./js/robotics/motion.js": "./js/robotics/motion.js?v=9a2f0b5c59",
+        "./js/robotics/sequences.js": "./js/robotics/sequences.js?v=28a949284e",
+        "./js/robotics/telemetry.js": "./js/robotics/telemetry.js?v=532610fe08",
+        "./js/robotics/field.js": "./js/robotics/field.js?v=180c067b77",
+        "./js/robotics/collision.js": "./js/robotics/collision.js?v=6f3c17fd88",
+        "./js/robotics/planner.js": "./js/robotics/planner.js?v=ba03aa124f",
+        "./js/robotics/map.js": "./js/robotics/map.js?v=c92591fcd2",
+        "./js/robotics/index.js": "./js/robotics/index.js?v=b7ab4c717a",
         "./js/orbit/elements.js": "./js/orbit/elements.js?v=6169072553",
         "./js/orbit/attitude.js": "./js/orbit/attitude.js?v=3eda245424",
         "./js/orbit/sun-track.js": "./js/orbit/sun-track.js?v=1817ef2aa2",
         "./js/orbit/theme.js": "./js/orbit/theme.js?v=25eabfe924",
-        "./js/ui/controller.js": "./js/ui/controller.js?v=c5e9cd2798",
-        "./js/main.js": "./js/main.js?v=894c8c5834",
+        "./js/ui/robotics-tools.js": "./js/ui/robotics-tools.js?v=b473ce46c0",
+        "./js/ui/robotics-menu.js": "./js/ui/robotics-menu.js?v=65df284d0e",
+        "./js/ui/controller.js": "./js/ui/controller.js?v=92f670b2b7",
+        "./js/main.js": "./js/main.js?v=258717a43e",
         "./js/launch/complex.js": "./js/launch/complex.js?v=4268723774",
         "./js/launch/droneship.js": "./js/launch/droneship.js?v=8f75ee397c",
         "./js/launch/engine-audio.js": "./js/launch/engine-audio.js?v=17f242600f",
@@ -82,10 +99,10 @@
         "./js/launch/site.js": "./js/launch/site.js?v=aa952daf74",
         "./js/launch/vehicle.js": "./js/launch/vehicle.js?v=282d264bcb",
         "./js/launch/view.js": "./js/launch/view.js?v=31692c47e0",
-        "./js/orbit/earth-map.js": "./js/orbit/earth-map.js?v=81a1f5b043",
-        "./js/orbit/sky.js": "./js/orbit/sky.js?v=313bafd45f",
+        "./js/orbit/earth-map.js": "./js/orbit/earth-map.js?v=13453b26fa",
+        "./js/orbit/sky.js": "./js/orbit/sky.js?v=ef7d267158",
         "./js/orbit/storm-ensemble.js": "./js/orbit/storm-ensemble.js?v=f9f3ea4217",
-        "./js/orbit/view.js": "./js/orbit/view.js?v=0f82f19a83",
+        "./js/orbit/view.js": "./js/orbit/view.js?v=9c09e6bc52",
         "./js/sim/ascent.js": "./js/sim/ascent.js?v=b2912a5ad4",
         "./js/sim/eva.js": "./js/sim/eva.js?v=b34f9efc09",
         "./js/sim/orbit.js": "./js/sim/orbit.js?v=f44737761f",
@@ -127,8 +144,15 @@
     <link rel="modulepreload" href="js/parts/dragon.js?v=6bbf2ba2ef">
     <link rel="modulepreload" href="js/parts/cargo-dragon.js?v=64d8bad2d8">
     <link rel="modulepreload" href="js/parts/soyuz.js?v=eb08b87749">
-    <link rel="modulepreload" href="js/parts/robotics.js?v=485d7e028e">
-    <link rel="modulepreload" href="js/parts/dextre.js?v=0eb293c173">
+    <link rel="modulepreload" href="js/robotics/hardware.js?v=a6261643a1">
+    <link rel="modulepreload" href="js/robotics/layout.js?v=b4fe2c8612">
+    <link rel="modulepreload" href="js/robotics/mobile-base.js?v=d166efc854">
+    <link rel="modulepreload" href="js/robotics/kinematics.js?v=44ee3feec6">
+    <link rel="modulepreload" href="js/robotics/ssrms.js?v=49cc3dd6fc">
+    <link rel="modulepreload" href="js/robotics/fixtures.js?v=e8c0b95aaf">
+    <link rel="modulepreload" href="js/robotics/pose.js?v=8d51479503">
+    <link rel="modulepreload" href="js/parts/robotics.js?v=e30e0f29fa">
+    <link rel="modulepreload" href="js/parts/dextre.js?v=ed68f01299">
     <link rel="modulepreload" href="js/parts/beam.js?v=c2c04d76ab">
     <link rel="modulepreload" href="js/parts/bishop.js?v=afad66eaf0">
     <link rel="modulepreload" href="js/parts/poisk.js?v=4a665d5ce5">
@@ -140,13 +164,23 @@
     <link rel="modulepreload" href="js/figures/eva.js?v=370b179983">
     <link rel="modulepreload" href="js/ui/ghost.js?v=c91db6d918">
     <link rel="modulepreload" href="js/ui/rendezvous-guide.js?v=c2e18df47a">
-    <link rel="modulepreload" href="js/orbit/live.js?v=d045c76416">
+    <link rel="modulepreload" href="js/orbit/live.js?v=40c2004d5d">
+    <link rel="modulepreload" href="js/robotics/motion.js?v=9a2f0b5c59">
+    <link rel="modulepreload" href="js/robotics/sequences.js?v=28a949284e">
+    <link rel="modulepreload" href="js/robotics/telemetry.js?v=532610fe08">
+    <link rel="modulepreload" href="js/robotics/field.js?v=180c067b77">
+    <link rel="modulepreload" href="js/robotics/collision.js?v=6f3c17fd88">
+    <link rel="modulepreload" href="js/robotics/planner.js?v=ba03aa124f">
+    <link rel="modulepreload" href="js/robotics/map.js?v=c92591fcd2">
+    <link rel="modulepreload" href="js/robotics/index.js?v=b7ab4c717a">
     <link rel="modulepreload" href="js/orbit/elements.js?v=6169072553">
     <link rel="modulepreload" href="js/orbit/attitude.js?v=3eda245424">
     <link rel="modulepreload" href="js/orbit/sun-track.js?v=1817ef2aa2">
     <link rel="modulepreload" href="js/orbit/theme.js?v=25eabfe924">
-    <link rel="modulepreload" href="js/ui/controller.js?v=c5e9cd2798">
-    <link rel="modulepreload" href="js/main.js?v=894c8c5834">
+    <link rel="modulepreload" href="js/ui/robotics-tools.js?v=b473ce46c0">
+    <link rel="modulepreload" href="js/ui/robotics-menu.js?v=65df284d0e">
+    <link rel="modulepreload" href="js/ui/controller.js?v=92f670b2b7">
+    <link rel="modulepreload" href="js/main.js?v=258717a43e">
     <!-- /modules -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
 </head>
@@ -196,6 +230,14 @@
         <section id="viewport" aria-label="Interactive three-dimensional International Space Station">
             <div id="scene"></div><svg id="leaders" aria-hidden="true"></svg>
             <div id="labels"></div>
+            <svg id="robotics-leader" aria-hidden="true"><path></path><circle r="2.5"></circle></svg>
+            <section id="robotics-menu" class="robotics-menu" aria-label="Canadarm2 operations" hidden>
+                <header><span>19 / CANADARM2</span><b>Operations</b></header>
+                <div class="robotics-menu-list" role="group" aria-label="Pre-built operations"></div>
+                <p class="robotics-menu-state" role="status"></p>
+                <button type="button" class="robotics-menu-stop" hidden>Stop</button>
+                <small class="robotics-menu-memory"></small>
+            </section>
             <svg id="approach-hud" aria-hidden="true">
                 <line id="approach-dist-line"></line>
                 <circle id="approach-port-dot" r="2.5"></circle>
@@ -250,11 +292,8 @@
                             aria-pressed="true">ISS</button><button type="button" data-frame="moon"
                             aria-pressed="false">Earth &amp; Moon</button><button type="button" data-frame="sun"
                             aria-pressed="false">Sun</button></div>
-                    <div class="orbit-frame orbit-earth" role="group" aria-label="Earth"><button type="button" data-earth="photo"
-                            aria-pressed="true">Photo</button><button type="button" data-earth="map" aria-pressed="false"
-                            title="Coastlines and borders only, with the surface wind and the storms now">Wind map</button></div>
                     <small id="orbit-source">Loading orbital elements…</small>
-                    <small id="orbit-map-source" hidden></small>
+                    <small id="orbit-map-source"></small>
                     <div class="wind-legend" id="orbit-wind-legend" hidden aria-label="Wind speed, metres per second"><i></i><span>0</span><span>10</span><span>20</span><span>30+ m/s</span></div>
                 </section>
                 <section class="orbit-panel launch-panel" id="launch-panel" aria-label="Falcon 9 launch" hidden>
@@ -304,6 +343,13 @@
                     <span id="shutter-state" role="status">Open</span>
                     <small>Illustrative mechanism &middot; use Scene animation to pause.</small>
                 </div>
+            </div>
+            <div id="robotics-tools" class="detail-tools" hidden>
+                <div class="robotics-line">
+                    <span id="robotics-state" role="status">PARKED</span>
+                </div>
+                <dl id="robotics-joints" aria-label="Canadarm2 joint angles"></dl>
+                <small>Pick an operation beside the arm (on a narrow screen, above). Every move is planned around the station, the turning arrays and radiators, and the arm itself, and the arm watches two seconds ahead as it goes. Joint angles as ISS Live reads them, base end first; their zero and sign, and every fixture but the base&rsquo;s, are inferred, and the operations are illustrative. ISS Live (dock) moves the arm, base and Dextre to the telemetry.</small>
             </div>
             <div id="dragon-tools" class="detail-tools" hidden>
                 <div class="detail-tabs" role="group" aria-label="Crew Dragon view">
