@@ -9,6 +9,17 @@ function tubeModule(kit, length, radius, options = {}) {
     // The quilted skin sits 45 mm proud of the pressure shell, where fittings met the flat panels' faces.
     const half = length / 2, quilted = options.skin === 'quilted' && !options.profile, skinLift = .045;
     const profile = options.profile || [[0, 1], [1, 1]];
+    // A see-through section, `window: { a0, a1, z0, z1 }` (angles from +x toward +y, depths along the axis): the shell,
+    // its skin and its fittings stop at the opening, which the module then glazes and furnishes itself.
+    const cut = !options.profile && !options.hollow && options.window || null, turnAround = Math.PI * 2;
+    const inCut = (angle, depth) => cut && depth > cut.z0 && depth < cut.z1 && (((angle - cut.a0) % turnAround) + turnAround) % turnAround < cut.a1 - cut.a0;
+    function band(r, z0, z1, a0, a1, surface) {
+        const steps = Math.max(2, Math.ceil((a1 - a0) / (Math.PI / 32))), positions = [], indices = [];
+        for (const z of [z0, z1]) for (let i = 0; i <= steps; i++) { const a = a0 + (a1 - a0) * i / steps; positions.push(Math.cos(a) * r, Math.sin(a) * r, z); }
+        for (let i = 0; i < steps; i++) { const j = i + steps + 1; indices.push(i, i + 1, j, j, i + 1, j + 1); }
+        const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setIndex(indices); geometry.computeVertexNormals(); kit.add(geometry, surface, [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
+    }
     function bodyRadius(depth) {
         const fraction = THREE.MathUtils.clamp((depth + half) / length, 0, 1);
         let end = profile.findIndex(point => point[0] >= fraction);
@@ -24,7 +35,11 @@ function tubeModule(kit, length, radius, options = {}) {
         material(options.color || palette.hull), [0, 0, 0], [1, 1, 1], [Math.PI / 2, 0, 0]);
     // A hollow module keeps no end discs; its end hardware closes the shell, so the interior stays empty.
     else if (options.hollow) kit.add(new THREE.CylinderGeometry(1, 1, 1, 24, 1, true), material(options.color || palette.hull), [0, 0, 0], [radius, length, radius], [Math.PI / 2, 0, 0]);
-    else kit.cylinder([0, 0, 0], radius, length, options.color || palette.hull);
+    else if (cut) {
+        kit.cylinder([0, 0, (cut.z0 - half) / 2], radius, cut.z0 + half, options.color || palette.hull);
+        if (cut.z1 < half - .01) kit.cylinder([0, 0, (cut.z1 + half) / 2], radius, half - cut.z1, options.color || palette.hull);
+        band(radius, cut.z0, cut.z1, cut.a1, cut.a0 + turnAround, material(options.color || palette.hull));
+    } else kit.cylinder([0, 0, 0], radius, length, options.color || palette.hull);
     // Modules with measured CBMs supply their own end interfaces.
     for (const side of [-1, 1]) {
         if (options.endInterfaceSides && !options.endInterfaceSides.includes(side)) continue;
@@ -44,9 +59,13 @@ function tubeModule(kit, length, radius, options = {}) {
     }
     if (quilted) {
         // Kibo-style skin: sixteen columns of quilted panels in every bay, over dark seams.
-        kit.add(new THREE.CylinderGeometry(radius + skinLift - .005, radius + skinLift - .005, length, 64, 1, true), quiltSeam, [0, 0, 0], [1, 1, 1], [Math.PI / 2, 0, 0], false);
+        if (cut) {
+            band(radius + skinLift - .005, -half, cut.z0, 0, turnAround, quiltSeam); band(radius + skinLift - .005, cut.z0, cut.z1, cut.a1, cut.a0 + turnAround, quiltSeam);
+            if (cut.z1 < half - .01) band(radius + skinLift - .005, cut.z1, half, 0, turnAround, quiltSeam);
+        } else kit.add(new THREE.CylinderGeometry(radius + skinLift - .005, radius + skinLift - .005, length, 64, 1, true), quiltSeam, [0, 0, 0], [1, 1, 1], [Math.PI / 2, 0, 0], false);
         for (let bay = 0; bay < bays; bay++) for (let column = 0; column < 16; column++) {
             const z0 = -half + bay * length / bays, a0 = column * Math.PI / 8;
+            if (inCut(a0 + Math.PI / 16, z0 + length / bays / 2)) continue;
             quiltPanel(kit, radius + skinLift, z0 + .016, z0 + length / bays - .016, a0 + .005, a0 + Math.PI / 8 - .005, quiltPanels[(bay + column) % 2]);
         }
     } else if (!options.profile) for (let belt = 0; belt < 8; belt++) {
@@ -68,6 +87,7 @@ function tubeModule(kit, length, radius, options = {}) {
     for (const angle of [Math.PI / 4, Math.PI * 3 / 4, Math.PI * 1.5]) {
         for (let handle = 0; handle < handles; handle++) {
             const depth = -half + (handle + .5) * length / handles;
+            if (inCut(angle, depth)) continue;
             const railHalf = Math.min(options.handholdHalfLength ?? .34, length / handles * .27);
             const a = surfacePoint(angle, depth - railHalf, .16), b = surfacePoint(angle, depth + railHalf, .16);
             kit.rod(a, b, .033, palette.gold);
@@ -87,14 +107,17 @@ function tubeModule(kit, length, radius, options = {}) {
     // Parallel service conduits and occasional covered junction boxes.
     for (const angle of [.08 * Math.PI, 1.08 * Math.PI]) {
         const depths = [-half + .24, ...profile.slice(1, -1).map(point => length * (point[0] - .5)), half - .24].sort((a, b) => a - b);
+        // Across a see-through section the conduits stop short of the opening.
+        if (cut && inCut(angle, (cut.z0 + cut.z1) / 2)) depths[depths.length - 1] = cut.z0 - .06;
         for (const delta of [-.035, .035]) {
             for (let segment = 1; segment < depths.length; segment++) kit.rod(servicePoint(angle + delta, depths[segment - 1], .045), servicePoint(angle + delta, depths[segment], .045), .028, delta < 0 ? palette.silver : palette.rail);
         }
         for (let clamp = 1; clamp < bays; clamp++) {
             const depth = -half + clamp * length / bays;
+            if (cut && inCut(angle, depth + .1)) continue;
             kit.box(servicePoint(angle, depth, .035), [.24, .085, .18], palette.hull, [0, 0, angle - Math.PI / 2], false);
         }
-        if (length > 3) {
+        if (length > 3 && !inCut(angle, half * .45)) {
             kit.box(servicePoint(angle, half * .45, .025), [.42, .06, .52], palette.silver, [0, 0, angle - Math.PI / 2]);
             kit.box(servicePoint(angle, half * .45, .12), [.38, .20, .48], palette.white, [0, 0, angle - Math.PI / 2]);
         }

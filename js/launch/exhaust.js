@@ -44,7 +44,7 @@ const puffFragment = `uniform sampler2D map; uniform vec3 sunView; uniform vec3 
         float sun = .12 + .88 * max(0., dot(n, sunView));
         vec3 light = skyColour * (.55 + .45 * n.y) + sunColour * sun;
         float d = length(vWorld - glowAt) / glowRange;
-        light += glowColour / (1. + d * d);
+        light += glowColour / pow(1. + d * d, 1.6);
         float a = vAlpha * smoothstep(0., .9, tex.a * 1.6 - r2 * .55) * smoothstep(1., .3, sqrt(r2));
         gl_FragColor = vec4(vTint * light * (.8 + .2 * tex.r), a);
         #include <tonemapping_fragment>
@@ -150,9 +150,9 @@ function puffCloud(capacity, floorAt) {
             const thin = Math.pow(P.r0[k] / P.r[k], .55) * Math.min(1, age * 3) * (1 - THREE.MathUtils.smoothstep(age, life * .55, life));
             if (thin < .01) continue;
             out.x[count] = P.x[k]; out.y[count] = P.y[k]; out.z[count] = P.z[k]; out.r[count] = P.r[k];
-            out.a[count] = (P.steam[k] ? .62 : .72) * thin; out.s[count] = P.seed[k];
-            const shade = P.steam[k] ? .97 : .9 - .1 * Math.exp(-age / 6) - soot * Math.exp(-age / 14);
-            out.c[count * 3] = shade; out.c[count * 3 + 1] = shade * (P.steam[k] ? 1 : .975); out.c[count * 3 + 2] = shade * (P.steam[k] ? 1.01 : .94);
+            out.a[count] = (P.steam[k] ? .8 : .78) * thin; out.s[count] = P.seed[k];
+            const shade = P.steam[k] ? .98 : .93 - .1 * Math.exp(-age / 6) - soot * Math.exp(-age / 14);
+            out.c[count * 3] = shade; out.c[count * 3 + 1] = shade * (P.steam[k] ? 1 : .975); out.c[count * 3 + 2] = shade * (P.steam[k] ? 1.01 : .965);
             count++;
         }
         return count;
@@ -177,7 +177,7 @@ export function createExhaust() {
     const wind = [0, 0];
 
     // The cloud at the pad.
-    const cloudCapacity = 1100, cloudBatch = puffBatch(cloudCapacity, map, 4), cloudOut = columns(cloudCapacity);
+    const cloudCapacity = 1500, cloudBatch = puffBatch(cloudCapacity, map, 4), cloudOut = columns(cloudCapacity);
     group.add(cloudBatch.mesh);
     const pad = puffCloud(cloudCapacity, terrainHeight), { random, gauss, emit } = pad;
     let simTime = null, carry = { trench: 0, deck: 0, steam: 0 };
@@ -192,9 +192,9 @@ export function createExhaust() {
     function step(time, dt) {
         const { height, thrust } = engineState(time), above = height + mount;   // engines' height over the deck
         // Sources: [puffs a second].
-        const trench = thrust * 46 * (1 - THREE.MathUtils.smoothstep(above, 30, 110));
-        const deck = thrust * 32 * THREE.MathUtils.smoothstep(above, 10, 28) * (1 - THREE.MathUtils.smoothstep(above, 90, 220));
-        const steam = time > -3 && time < 16 ? 16 * Math.min(1, (time + 3) / 2) * (time > 8 ? (16 - time) / 8 : 1) : 0;
+        const trench = thrust * 58 * (1 - THREE.MathUtils.smoothstep(above, 30, 110));
+        const deck = thrust * 40 * THREE.MathUtils.smoothstep(above, 10, 28) * (1 - THREE.MathUtils.smoothstep(above, 90, 220));
+        const steam = time > -3 && time < 16 ? 26 * Math.min(1, (time + 3) / 1.5) * (time > 8 ? (16 - time) / 8 : 1) : 0;
         carry.trench += trench * dt; carry.deck += deck * dt; carry.steam += steam * dt;
         while (carry.trench >= 1) {
             carry.trench--;
@@ -209,7 +209,7 @@ export function createExhaust() {
         while (carry.steam >= 1) {
             carry.steam--;
             const angle = random() * Math.PI * 2, at = 4 + random() * 14;
-            emit(Math.cos(angle) * at, deckLevel + 1 + random() * 3, Math.sin(angle) * at, Math.cos(angle) * (4 + random() * 8), 1 + random() * 3, Math.sin(angle) * (4 + random() * 8), 3 + random() * 3, 50 + random() * 40, .1, true);
+            emit(Math.cos(angle) * at, deckLevel + 1 + random() * 3, Math.sin(angle) * at, Math.cos(angle) * (4 + random() * 8), 1 + random() * 3, Math.sin(angle) * (4 + random() * 8), 4 + random() * 4, 50 + random() * 40, .16, true);
         }
         pad.move(dt);
     }
@@ -282,6 +282,69 @@ export function createExhaust() {
     group.add(trailBatch.mesh);
     const trailLift = terrainHeight(0, 0) + mount;
 
+    // Round the standing rocket, each a function of the time alone. Before ignition: oxygen boiling off, vented at
+    // the top of each stage's LOX tank and from the lines at the mount, cold enough to sink as the wind takes it. From
+    // T−7 s: the deluge water's jets across the mount. From ignition: frost shaken off the two LOX tanks.
+    const vents = [   // x, height over the engines, z, the jet's heading x and z, its speed, first radius, puffs, seconds each lives, sinking
+        [1.9, 37.5, 0, 1, 0, 8, 1.1, 18, 6.5, 1.1], [-1.9, 52, .3, -.9, .4, 6, .9, 12, 5.5, 1],
+        [3, -1.5, 5, .5, .85, 3, 2, 18, 9, .5], [-4, -2, -3, -.8, -.6, 2.5, 1.8, 14, 10, .5]
+    ];
+    const jets = 8, jetDrops = 12, flakes = [];
+    const hash = n => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+    for (let k = 0; k < 180; k++) {
+        const at = -2.6 + 11.6 * hash(k) ** 2, state = vehicleState(Math.max(0, at)), upper = hash(k + .31) < .3;
+        const along = upper ? 47 + 7 * hash(k + .5) : 17 + 21 * hash(k + .5), angle = hash(k + .7) * Math.PI * 2;
+        flakes.push({ at, x: state.position[0] + Math.cos(angle) * 1.85, y: state.position[1] + along, z: state.position[2] + Math.sin(angle) * 1.85,
+            rise: at > 0 ? state.speed : 0, out: [Math.cos(angle), Math.sin(angle)], drift: 1.2 + 2.4 * hash(k + .9), fall: 7 + 6 * hash(k + 1.3), r: .15 + .27 * hash(k + 1.7), seed: hash(k + 2.1) });
+    }
+    const wispCapacity = vents.reduce((sum, vent) => sum + vent[7], 0) + jets * jetDrops + flakes.length;
+    const wispBatch = puffBatch(wispCapacity, map, 4), wispOut = columns(wispCapacity);
+    group.add(wispBatch.mesh);
+    let ventClock = 0, lastMission = null;
+    function wisps(mission) {
+        const smooth = THREE.MathUtils.smoothstep, base = deckLevel + mount;
+        let count = 0;
+        const put = (x, y, z, r, a, seed, red, green, blue) => {
+            wispOut.x[count] = x; wispOut.y[count] = y; wispOut.z[count] = z; wispOut.r[count] = r; wispOut.a[count] = a; wispOut.s[count] = seed;
+            wispOut.c[count * 3] = red; wispOut.c[count * 3 + 1] = green; wispOut.c[count * 3 + 2] = blue; count++;
+        };
+        // The venting keeps its own clock, so the count's fast stretch does not make it flicker; it stops with a pause.
+        if (lastMission !== null && mission > lastMission) ventClock += Math.min(mission - lastMission, .05);
+        lastMission = mission;
+        const venting = (.3 + .7 * (1 - smooth(mission, -75, -45))) * (1 - smooth(mission, -8, -3.2));
+        if (venting > .01) vents.forEach(([sx, sy, sz, hx, hz, speed, r0, puffs, period, sink], v) => {
+            windAt(Math.max(0, mount + sy), wind);
+            for (let j = 0; j < puffs; j++) {
+                const h = hash(v * 31 + j), age = ((ventClock / period + j / puffs + h * .4) % 1) * period, eased = 1.2 * (1 - Math.exp(-age / 1.2)), coast = age - eased;
+                const r = r0 + (.8 + .4 * h) * age, floor = deckLevel + r * .4;
+                const y = Math.max(floor, base + sy - sink * coast + .5 * Math.sin(age * 1.7 + h * 6.28));
+                const sway = (hash(v * 17 + j + .5) - .5) * 1.6 * eased;
+                put(sx + hx * speed * eased + wind[0] * coast - hz * sway, y, sz + hz * speed * eased + wind[1] * coast + hx * sway, r,
+                    venting * .78 * Math.min(1, age * 2.5) * Math.pow(1 - age / period, 1.2), h, .97, .98, 1);
+            }
+        });
+        const water = smooth(mission, -7, -5.5) * (1 - smooth(mission, 9, 13));
+        if (water > .01) for (let n = 0; n < jets; n++) {
+            const angle = (n + .5) / jets * Math.PI * 2, cx = Math.cos(angle), cz = Math.sin(angle);
+            for (let j = 0; j < jetDrops; j++) {
+                const h = hash(n * 13 + j + 50), age = ((mission * .57 + j / jetDrops + h * .3) % 1 + 1) % 1 * 1.74;
+                put(cx * (10.5 - 6.4 * age) + (h - .5) * .7, deckLevel + 1 + 8 * age - 4.9 * age * age, cz * (10.5 - 6.4 * age) + (hash(n * 13 + j + 90) - .5) * .7,
+                    .5 + .9 * age, water * .85 * Math.min(1, age * 8) * (1 - smooth(age, 1.4, 1.74)), h, .95, .97, 1);
+            }
+        }
+        if (mission > -2.6 && mission < 17) for (const flake of flakes) {
+            const age = mission - flake.at;
+            if (age <= 0 || age > 7) continue;
+            const lag = flake.fall / 9.8, eased = lag * (1 - Math.exp(-age / lag)), coast = age - eased;
+            const y = base + flake.y - flake.fall * age + (flake.rise + flake.fall) * eased;
+            if (y < deckLevel + 1) continue;
+            windAt(Math.max(0, y - deckLevel), wind);
+            put(flake.x + flake.out[0] * flake.drift * eased + wind[0] * coast, y, flake.z + flake.out[1] * flake.drift * eased + wind[1] * coast,
+                flake.r, .95 * Math.min(1, age * 6) * (1 - smooth(age, 5, 7)), flake.seed, 1, 1, 1);
+        }
+        return count;
+    }
+
     const sunView = new THREE.Vector3(), glow = new THREE.Vector3();
     // Update for a mission time: `sun` the Sun's direction in the pad's frame, `light` 0-1 daylight, `flame` the
     // first stage's plume (world position of its middle, thrust share) for the glow on the cloud.
@@ -326,18 +389,20 @@ export function createExhaust() {
             laid++;
         }
         trailBatch.write(laid, trailOut, camera);
+        const wispCount = mission < 17 ? wisps(mission) : 0;
+        wispBatch.write(wispCount, wispOut, camera);
         // Light: the Sun and sky, and the flame's orange glow on the cloud.
         sunView.copy(sun).transformDirection(camera.matrixWorldInverse);
-        for (const batch of [cloudBatch, trailBatch, deckBatch]) {
+        for (const batch of [cloudBatch, trailBatch, deckBatch, wispBatch]) {
             const u = batch.material.uniforms;
             u.sunView.value.copy(sunView);
             u.sunColour.value.setRGB(1, .97, .92).multiplyScalar(.95 * light);
             u.skyColour.value.setRGB(.42, .47, .55).multiplyScalar(.35 + .65 * light);
             u.glowAt.value.copy(flame.position);
-            u.glowColour.value.setRGB(1.6, .75, .3).multiplyScalar(flame.strength);
+            u.glowColour.value.setRGB(1.6, .75, .3).multiplyScalar(flame.strength * (1 - .8 * light));   // weaker against full daylight
             u.glowRange.value = flame.range;
         }
-        cloudBatch.mesh.visible = count > 0; trailBatch.mesh.visible = laid > 0; deckBatch.mesh.visible = deckCount > 0;
+        wispBatch.mesh.visible = wispCount > 0; cloudBatch.mesh.visible = count > 0; trailBatch.mesh.visible = laid > 0; deckBatch.mesh.visible = deckCount > 0;
         return glow;
     }
     return { group, update };

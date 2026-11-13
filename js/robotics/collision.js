@@ -5,17 +5,21 @@
 // A world holds the fields and where each body stands: the fixed station (in station coordinates), the bodies the
 // scene turns or moves (SARJs, solar wings, radiators, antennas, Dragon, the window shutter: each in its own frame,
 // placed by placeBodies), and the robotics' own: the base's carriage (station coordinates with the base at home,
-// slid along x), Dextre's base and its turning body (their frames follow the state). The arm stands as spheres along
-// its eight bodies, Dextre as spheres up its body, shoulders and folded arms; tools/robotics/clearance.js measures
-// the same spheres against the triangles themselves.
-import { ARM_LENGTH, JOINTS, invert, multiply } from './kinematics.js?v=44ee3feec6';
-import { fixtures } from './fixtures.js?v=e8c0b95aaf';
+// slid along x), Dextre's base and its turning body, and the visiting cargo vehicle (their frames follow the state:
+// the vehicle counts while it is berthed or flying within CARGO_NEAR of its capture point, not while the arm carries
+// it). The arm stands as spheres along
+// its eight bodies, Dextre as spheres up its body, shoulders and folded arms, the spacewalker on the foot restraint
+// as spheres from the soles to the helmet; tools/robotics/clearance.js measures the same spheres against the
+// triangles themselves.
+import { ARM_LENGTH, FLIP, JOINTS, apply, invert, multiply } from './kinematics.js?v=44ee3feec6';
+import { fixtures } from './fixtures.js?v=00abdcef15';
 import { MBS_HOME } from './layout.js?v=b4fe2c8612';
-import { baseFrame, bodyRoll, dextreBody, fixtureFrame } from './pose.js?v=8d51479503';
+import { CREW_HIP, baseFrame, bodyRoll, cargoBody, dextreBody, fixtureFrame } from './pose.js?v=f186b91cd6';
 import { fieldDistance } from './field.js?v=180c067b77';
 
 // A field reads up to 7.5 cm long next to thin edges (field.js): every reading loses this much first.
 export const MARGIN = .08;
+const CARGO_NEAR = 30;
 // The arm's spheres [x, y, z, radius] in the arm frame at zero, LEE A's half (bodies 0 to 3; 4 to 7 by the half turn
 // that swaps the ends): end effector, roll, yaw and pitch housings, then boom 1 with its end fittings, camera and
 // electronics boxes.
@@ -67,17 +71,32 @@ export const CARRY_REACH = REACH.map((reach, j) => {
     return Math.max(reach, length);
 });
 const MAX_SPHERES = SETS.A.count;
+// The spacewalker on the foot restraint, [x, y, z, radius] in the body's frame (pose.js `crewFrame`: hips at the
+// origin, x left, y to the head, z forward): the foot plate with the boots, legs, hips, torso with the backpack, helmet,
+// elbows, then the post and handle of the restraint in front and the tool on the left hip. They count whenever the
+// restraint is fitted, with or without its rider.
+export const CREW_SPHERES = [[0, -.98, .03, .32], [0, -.66, .02, .25], [0, -.32, .02, .30], [0, 0, -.02, .33], [0, .30, -.06, .42], [0, .52, -.05, .38], [.03, .64, 0, .27], [.31, .27, .03, .21], [-.31, .27, .03, .21], [0, -.70, .31, .08], [0, -.40, .32, .08], [0, -.10, .33, .08], [.11, .24, .33, .12], [-.11, .24, .33, .12], [.17, -.17, .26, .19]];
+// The same in chain body 7's frame, and the arm bodies they are checked against (the far half; the near ones carry
+// them).
+const crewLocal = CREW_SPHERES.map(([x, y, z, r]) => [...apply(FLIP, [-CREW_HIP - y, x, z]), r]), CREW_LINKS = 4;
+// REACH with the restraint fitted: the helmet is about 2.5 m from the tip's mouth.
+export const CREW_REACH = REACH.map((reach, j) => {
+    const point = JOINTS.map(joint => joint.point);
+    let length = Math.hypot(ARM_LENGTH - point[6][0], point[6][1], point[6][2]) + 2.5;
+    for (let k = j; k < 6; k++) length += Math.hypot(point[k + 1][0] - point[k][0], point[k + 1][1] - point[k][1], point[k + 1][2] - point[k][2]);
+    return Math.max(reach, length);
+});
 
 // A world from built fields: [{ id, kind: 'station' | 'scene' | 'carriage' | 'dextre-base' | 'dextre-body', what,
 // field, center, radius, frame }], `center` and `radius` bounding the body's triangles in its own frame, `frame` (scene
 // bodies) where it stood when built.
 export function createWorld(bodies) {
-    const world = { station: null, carriage: null, dextreBase: null, dextreBody: null, scene: [], ready: true };
+    const world = { station: null, carriage: null, dextreBase: null, dextreBody: null, cargo: null, scene: [], ready: true };
     for (const body of bodies) {
         const entry = { ...body, at: body.center.slice(), frame: new Float64Array(body.frame || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]), inverse: new Float64Array(16) };
         entry.inverse.set(invert(Array.from(entry.frame)));
         if (body.kind === 'scene') world.scene.push(entry);
-        else world[{ station: 'station', carriage: 'carriage', 'dextre-base': 'dextreBase', 'dextre-body': 'dextreBody' }[body.kind]] = entry;
+        else world[{ station: 'station', carriage: 'carriage', 'dextre-base': 'dextreBase', 'dextre-body': 'dextreBody', cargo: 'cargo' }[body.kind]] = entry;
     }
     placeBodies(world, {});
     return world;
@@ -130,7 +149,8 @@ let dextreBaseInverse = null, dextreBodyInverse = null, dextreBaseAt = null, dex
 export const tightest = { clearance: Infinity, what: '', body: null, at: [0, 0, 0] };
 
 // The smallest gap (m) between the arm and everything else in `state`: the fixed station, the scene's bodies as
-// placed, the base's carriage, Dextre and the arm itself (bodies three or more apart). Readings lose `margin`; scene
+// placed, the base's carriage, Dextre and the arm itself (bodies three or more apart); with the foot restraint fitted
+// (`crew.seat` above 0) the spacewalker's spheres too, against all of those. Readings lose `margin`; scene
 // bodies (which move on their own) lose `moving` more. Options: `seats` 'own' (spheres near the base's seat, the held
 // fixture's and Dextre's are not counted) or 'all' (near every fixture's, as the pre-built sequences were checked:
 // their approaches meet fixtures), `dextre` (also Dextre's own spheres against the station, base and scene),
@@ -167,6 +187,9 @@ export function clearance(world, state, { margin = MARGIN, moving = 0, seats: se
         dextreBodyInverse = invert(dBody); dextreBaseInverse = invert(dBase);
         if (world.dextreBase) { dextreBaseAt = transform(dBase, world.dextreBase.center); dextreBodyAt = transform(dBody, world.dextreBody.center); }
     }
+    const cargo = state.cargo, ship = fixed && world.cargo && cargo && (cargo.on === 'berth' || cargo.on === 'free' && cargo.range < CARGO_NEAR) ? world.cargo : null;
+    let cargoInverse = null, cargoAt = null;
+    if (ship) { const m = cargoBody(state); cargoInverse = invert(m); cargoAt = transform(m, ship.center); }
     let worst = Infinity;
     const note = (value, what, body, x, y, z) => {
         worst = value;
@@ -184,6 +207,7 @@ export function clearance(world, state, { margin = MARGIN, moving = 0, seats: se
                 d = Math.min(bodyDistance(world.dextreBase, dextreBaseInverse, dextreBaseAt, x, y, z, r), bodyDistance(world.dextreBody, dextreBodyInverse, dextreBodyAt, x, y, z, r)) - r;
                 if (d < worst) note(d, 'dextre', set.link[i], x, y, z);
             }
+            if (ship) { d = bodyDistance(ship, cargoInverse, cargoAt, x, y, z, r) - r; if (d < worst) note(d, 'cargo', set.link[i], x, y, z); }
         }
         if (scene) for (const b of world.scene) {
             const d = bodyDistance(b, b.inverse, b.at, x, y, z, r + moving) - r - moving;
@@ -202,6 +226,33 @@ export function clearance(world, state, { margin = MARGIN, moving = 0, seats: se
         }
         if (worst < stop) return worst;
     }
+    // The spacewalker on the restraint against the station, the base, Dextre, the vehicle, the scene and the arm's
+    // far half.
+    if (state.crew && state.crew.seat > 0) for (const [x0, y0, z0, r0] of crewLocal) {
+        const t = 112, x = F[t] * x0 + F[t + 4] * y0 + F[t + 8] * z0 + F[t + 12], y = F[t + 1] * x0 + F[t + 5] * y0 + F[t + 9] * z0 + F[t + 13], z = F[t + 2] * x0 + F[t + 6] * y0 + F[t + 10] * z0 + F[t + 14], r = r0 + margin;
+        if (fixed) {
+            let d = fieldDistance(world.station.field, x, y, z) - r;
+            if (d < worst) note(d, 'crew-out', 'crew', x, y, z);
+            if (carriage) { d = bodyDistance(carriage, carriageInverse, carriageAt, x, y, z, r) - r; if (d < worst) note(d, 'crew-base', 'crew', x, y, z); }
+            if (needDextre) {
+                d = Math.min(bodyDistance(world.dextreBase, dextreBaseInverse, dextreBaseAt, x, y, z, r), bodyDistance(world.dextreBody, dextreBodyInverse, dextreBodyAt, x, y, z, r)) - r;
+                if (d < worst) note(d, 'crew-dextre', 'crew', x, y, z);
+            }
+            if (ship) { d = bodyDistance(ship, cargoInverse, cargoAt, x, y, z, r) - r; if (d < worst) note(d, 'crew-cargo', 'crew', x, y, z); }
+        }
+        if (scene) for (const b of world.scene) {
+            const d = bodyDistance(b, b.inverse, b.at, x, y, z, r + moving) - r - moving;
+            if (d < worst) note(d, 'crew-' + b.what, 'crew', x, y, z);
+        }
+        if (self) for (let i = 0; i < n; i++) {
+            if (set.link[i] > CREW_LINKS) continue;
+            const dx = placed[i * 3] - x, dy = placed[i * 3 + 1] - y, dz = placed[i * 3 + 2] - z, reach = set.radius[i] + r0 + worst;
+            if (reach <= 0 || dx * dx + dy * dy + dz * dz >= reach * reach) continue;
+            const d = Math.sqrt(dx * dx + dy * dy + dz * dz) - set.radius[i] - r0;
+            if (d < worst) note(d, 'crew-self', 'crew/' + set.link[i], x, y, z);
+        }
+        if (worst < stop) return worst;
+    }
     // Dextre against the station, the base and the scene (it does not meet the arm here: the arm's spheres meet its
     // fields above).
     if (dextre) for (const [x0, y0, z0, r0, onBase] of DEXTRE_SPHERES) {
@@ -213,7 +264,7 @@ export function clearance(world, state, { margin = MARGIN, moving = 0, seats: se
         if (dextreSeat) near ||= (x - dextreSeat[0]) ** 2 + (y - dextreSeat[1]) ** 2 + (z - dextreSeat[2]) ** 2 < DEXTRE_SEAT_ZONE * DEXTRE_SEAT_ZONE;
         if (near) continue;
         if (fixed) {
-            const d = Math.min(fieldDistance(world.station.field, x, y, z), carriage ? bodyDistance(carriage, carriageInverse, carriageAt, x, y, z, r) : Infinity) - r;
+            const d = Math.min(fieldDistance(world.station.field, x, y, z), carriage ? bodyDistance(carriage, carriageInverse, carriageAt, x, y, z, r) : Infinity, ship ? bodyDistance(ship, cargoInverse, cargoAt, x, y, z, r) : Infinity) - r;
             if (d < worst) note(d, 'dextre-out', 'dextre', x, y, z);
         }
         if (scene) for (const b of world.scene) {

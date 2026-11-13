@@ -1,5 +1,8 @@
-// Robotics in the scene: Canadarm2's eight bodies, the Mobile Base System's carriage and Dextre, set each frame from a
-// state (pose.js). The state comes from the parked pose (REST), ISS Live telemetry (telemetry.js), or an operation
+// Robotics in the scene: Canadarm2's eight bodies, the Mobile Base System's carriage, Dextre and the cargo vehicle the
+// arm captures (js/parts/cygnus.js), set each frame from a state (pose.js). The vehicle's place is part of the state and
+// only operations change it: the parked and live poses keep it where it is. So are the foot restraint an operation fits
+// to the free end and the spacewalker on it (js/figures/rider.js draws the figure from `crewView`). The state comes
+// from the parked pose (REST), ISS Live telemetry (telemetry.js), or an operation
 // (sequences.js) playing.
 //
 // Nothing cuts. A small change of the parked or live pose glides (critically damped, as the solar arrays do when ISS
@@ -21,11 +24,11 @@ import * as THREE from 'three';
 import { parts } from '../core/station.js';
 import { live, watchItems } from '../orbit/live.js';
 import { closeSnare } from './hardware.js';
-import { JOINTS, LIMIT, apply, bodyFrames, multiply } from './kinematics.js';
+import { JOINTS, LIMIT, TIP, apply, bodyFrames, multiply } from './kinematics.js';
 import { MBS_REACH } from './layout.js';
 import { setCarriage } from './mobile-base.js';
 import { compile, sample } from './motion.js';
-import { REST, baseFrame, bodyRoll, copyState, dextreBody } from './pose.js';
+import { REST, baseFrame, bodyRoll, cargoBody, copyState, crewFrame, dextreBody, tipFrame } from './pose.js';
 import { sequences } from './sequences.js';
 import { liveRobotics, roboticsItems } from './telemetry.js';
 import { clearance, tightest } from './collision.js';
@@ -33,8 +36,14 @@ import { buildMap, currentWorld, map, requestPlan } from './map.js';
 import { REQUIRED } from './planner.js';
 
 watchItems(roboticsItems);
-const { carriage, bodies, snares } = parts.get('robotics').group.userData.robotics;
+const { carriage, bodies, snares, seat } = parts.get('robotics').group.userData.robotics;
 const roboticsEntry = parts.get('robotics'), dextreGroup = parts.get('dextre').group, dextreBodyGroup = dextreGroup.userData.body;
+const cargoEntry = parts.get('cygnus'), cargoGroup = cargoEntry.group.userData.body;
+// The vehicle's silhouette for the operations menu, in its own frame: four lines along the hull and each array's rim.
+const CARGO_OUTLINE = [...[[1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]].map(([x, z]) => [[x, 0, z], [x, -7.9, z]]), ...[-3.6, 3.6].map(x => [[x - 1.85, -7, 0], [x, -5.15, 0], [x + 1.85, -7, 0], [x, -8.85, 0], [x - 1.85, -7, 0]])];
+// The spacewalker the arm carries, for js/figures/rider.js: where the foot restraint holds the hips (`at`, a station
+// matrix: x to the left, y to the head, z ahead), whether the rider is on it, and the act under way with its progress.
+export const crewView = { seat: 0, on: 'inside', act: '', u: 0, at: new Array(16).fill(0) };
 let shown = copyState(REST), speed = { theta: new Array(7).fill(0), mbs: 0, roll: 0, snare: 0 }, followLive = false, applied = '';
 // What plays: a compiled plan (motion.js), its clock and a time scale that eases to 0 to stop it. `run.kind` is
 // 'route' or 'sequence'; `run.stop` why it is stopping ('user', 'goal', 'conflict', 'action').
@@ -50,7 +59,7 @@ const matrix = new THREE.Matrix4(), scale = new THREE.Vector3();
 const place = (object, m) => matrix.fromArray(m).decompose(object.position, object.quaternion, scale);
 // Sets the scene from a state; false when nothing changed.
 function show(state) {
-    const key = [state.base, state.end, state.tip, state.dextre.on, state.mbs.toFixed(4), state.tipSnare.toFixed(3), state.dextre.roll.toFixed(4), ...state.theta.map(value => value.toFixed(5))].join('|');
+    const key = [state.base, state.end, state.tip, state.dextre.on, state.cargo.on, state.cargo.range.toFixed(3), state.crew.seat.toFixed(3), state.crew.on, state.crew.act || '', (state.crew.u || 0).toFixed(4), state.mbs.toFixed(4), state.tipSnare.toFixed(3), state.dextre.roll.toFixed(4), ...state.theta.map(value => value.toFixed(5))].join('|');
     if (key === applied) return false;
     applied = key;
     setCarriage(carriage, state.mbs);
@@ -62,6 +71,21 @@ function show(state) {
     dextreBodyGroup.rotation.y = state.dextre.roll;
     // The label (and the operations menu) points at the elbow.
     roboticsEntry.anchor.fromArray(apply(frames[3], JOINTS[3].point));
+    // What the operations menu keeps clear of: the arm from joint to joint and Dextre's body, in station coordinates.
+    const dextreAt = dextreBody(state);
+    roboticsEntry.outline = [[apply(frames[0], [0, 0, 0]), ...JOINTS.map((joint, k) => apply(frames[k], joint.point)), apply(frames[7], TIP)], [apply(dextreAt, [0, 0, 0]), apply(dextreAt, [0, 3.5, 0])]];
+    // The foot restraint grows out of the free end as it is fitted; its rider stands along the outline while aboard.
+    const crewAt = crewFrame(state);
+    seat.visible = state.crew.seat > .001;
+    if (seat.visible) { place(seat, tipFrame(state)); seat.scale.setScalar(state.crew.seat); }
+    Object.assign(crewView, { seat: state.crew.seat, on: state.crew.on, act: state.crew.act || '', u: state.crew.u || 0 });
+    for (let i = 0; i < 16; i++) crewView.at[i] = crewAt[i];
+    if (state.crew.on === 'tip' || state.crew.act) roboticsEntry.outline.push([apply(crewAt, [0, -1.0, 0]), apply(crewAt, [0, .8, 0])]);
+    // The cargo vehicle: away it is not drawn (nor picked, labelled or offered in the component list).
+    const cargoAt = cargoBody(state), away = state.cargo.on === 'away';
+    place(cargoGroup, cargoAt); cargoGroup.visible = !away; cargoEntry.absent = away;
+    cargoEntry.anchor.fromArray(apply(cargoAt, [0, -3.6, 0]));
+    if (!away && state.cargo.range < 20) for (const polyline of CARGO_OUTLINE) roboticsEntry.outline.push(polyline.map(point => apply(cargoAt, point)));
     return true;
 }
 show(shown);
@@ -99,8 +123,14 @@ function glideTo(goal, dt) {
     [shown.dextre.roll, speed.roll] = step(shown.dextre.roll, goal.dextre.roll, speed.roll);
     [shown.tipSnare, speed.snare] = step(shown.tipSnare, goal.tipSnare, speed.snare);
     shown.tip = goal.tip;
+    // A foot restraint left on the free end (an operation stopped before its rider boarded) comes off here.
+    if (shown.crew.seat > 0) shown.crew.seat = Math.max(0, shown.crew.seat - dt / 2);
 }
-const cut = goal => { shown = copyState(goal); still(); };
+// A vehicle neither berthed nor away belongs to an operation under way: a cut sends it away. The foot restraint and
+// its rider belong to one too: a cut takes them off.
+const cut = goal => { shown = copyState(goal); if (shown.cargo.on !== 'berth') shown.cargo = { on: 'away', range: 0 }; shown.crew = { ...REST.crew }; still(); };
+// The parked and live poses say nothing of the vehicle or of the foot restraint: a goal keeps them as they are.
+const withCargo = goal => ({ ...goal, cargo: { ...shown.cargo }, crew: { seat: shown.crew.seat, on: shown.crew.on } });
 
 // What the routes learn: poses they went through, kept in this browser (at most 30, the latest first) and offered to
 // the planner as places worth trying.
@@ -112,8 +142,8 @@ function learn(result) {
     const now = Date.now();
     for (const entry of result.learned) {
         const theta = entry.theta.map(value => Math.round(value * 1e4) / 1e4);
-        const known = memory.find(m => m.base === entry.base && m.end === entry.end && m.dextre === entry.dextre && !!m.ride === !!entry.ride && m.theta.every((value, j) => Math.abs(value - theta[j]) < .02));
-        if (known) known.at = now; else memory.push({ theta, ride: !!entry.ride, base: entry.base, end: entry.end, dextre: entry.dextre, at: now });
+        const known = memory.find(m => m.base === entry.base && m.end === entry.end && m.dextre === entry.dextre && !!m.ride === !!entry.ride && !!m.crew === !!entry.crew && m.theta.every((value, j) => Math.abs(value - theta[j]) < .02));
+        if (known) known.at = now; else memory.push({ theta, ride: !!entry.ride, base: entry.base, end: entry.end, dextre: entry.dextre, crew: !!entry.crew, at: now });
     }
     memory = memory.sort((a, b) => b.at - a.at).slice(0, 30);
     try { localStorage.setItem(MEMORY, JSON.stringify(memory)); } catch { /* private browsing: kept for this visit */ }
@@ -146,7 +176,9 @@ function routeTo(goal, replans = 0) {
 // Dextre on another fixture: its pre-built steps start there.
 function planSequence(sequence, first = 0, home = null, replans = 0) {
     still();
-    if (first === 0 && (!sameParts(shown, REST) || shown.tip)) cut(REST);
+    if (first === 0 && (!sameParts(shown, REST) || shown.tip)) cut(withCargo(REST));
+    // A foot restraint an earlier operation left fitted stays only for an operation that uses it.
+    if (first === 0 && !sequence.steps.some(step => 'seat' in step)) shown.crew = { ...REST.crew };
     const from = planFrom(), steps = sequence.steps.slice(first);
     home ||= { base: from.base, end: from.end, dextre: { on: from.dextre.on } };
     const job = requestPlan({ from, steps, memory });
@@ -191,9 +223,9 @@ function conflictAhead() {
     return null;
 }
 const FREE = new Set(['move', 'path', 'ride', 'standoff']);
-const named = what => ({ array: 'Solar array', radiator: 'Radiator', antenna: 'Antenna', dragon: 'Dragon', station: 'Window shutter' })[what.replace(/^dextre-/, '')] || 'Moving part';
-// The arm back on its own base with nothing in hand: an operation may stop here.
-const settled = state => run && sameParts(state, run.home) && !state.tip;
+const named = what => ({ array: 'Solar array', radiator: 'Radiator', antenna: 'Antenna', dragon: 'Dragon', station: 'Window shutter' })[what.replace(/^(dextre|crew)-/, '')] || 'Moving part';
+// The arm back on its own base with nothing in hand and nobody on the foot restraint: an operation may stop here.
+const settled = state => run && sameParts(state, run.home) && !state.tip && state.crew.on === 'inside' && !state.crew.act;
 
 function advanceRun(dt, goal) {
     // The time scale eases to its target in about half a second.
@@ -244,13 +276,13 @@ function resume(stopped, goal) {
 }
 function idle(goal, dt) {
     if (sameParts(goal, shown) && !far(goal, shown)) { glideTo(goal, dt); return; }
-    if (!sameParts(goal, shown) || (shown.tip && shown.tip !== 'dextre-pdgf')) { cut(goal); return; }
+    if (!sameParts(goal, shown) || (shown.tip && shown.tip !== 'dextre-pdgf') || shown.crew.on === 'tip') { cut(goal); return; }
     routeTo(goal);
 }
 
 // Every frame (js/ui/controller.js advance): true while something moved.
 export function updateRobotics(delta, motion) {
-    const dt = Math.min(delta, .1), goal = followLive ? liveGoal().goal : REST;
+    const dt = Math.min(delta, .1), goal = withCargo(followLive ? liveGoal().goal : REST);
     if (!motion) {
         // Operations and routes pause where they are; with nothing playing the pose is set at once.
         if (!run) { if (request?.kind === 'route') forgetRequest(); if (!request) cut(goal); }
@@ -263,10 +295,11 @@ export function updateRobotics(delta, motion) {
     } else idle(goal, dt);
     return show(shown);
 }
-// Pre-built operations, planned from where the arm stands for the station as it stands; one at a time.
+// Pre-built operations, planned from where the arm stands for the station as it stands; one at a time. One that names
+// where the cargo vehicle must be (`cargo`) plays only then.
 export function playSequence(id) {
     const sequence = sequences.find(entry => entry.id === id);
-    if (!sequence || (run?.kind === 'sequence') || request?.kind === 'sequence') return null;
+    if (!sequence || (run?.kind === 'sequence') || request?.kind === 'sequence' || (sequence.cargo && sequence.cargo !== shown.cargo.on)) return null;
     note = ''; stopLater = false;
     if (run) { queued = sequence; stopRun('action'); return sequence; }
     forgetRequest();

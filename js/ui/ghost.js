@@ -10,8 +10,8 @@ import { ghostOpacity, parts } from '../core/station.js';
 import { releaseLines } from '../core/release.js';
 
 const lineArtDegrees = 50, lineArtLayer = 1;
-const lineArtMaterial = new THREE.LineBasicMaterial({ color: 0x43544e, transparent: true, opacity: .42, depthWrite: false });
-const ghostMaterials = new Map();
+const lineArtMaterial = new THREE.LineBasicMaterial({ color: 0x43544e, transparent: true, opacity: .103, depthWrite: false });
+const ghostMaterials = new Map(), crewMaterials = new Map(), crewOpacity = .9;
 camera.layers.enable(lineArtLayer);
 export function ghostMaterial(source) {
     let ghost = ghostMaterials.get(source);
@@ -23,6 +23,25 @@ export function ghostMaterial(source) {
     }
     return ghost;
 }
+// People stay in view through the ghost context: 90% opaque, not the parts' 10%. A figure is marked with
+// `userData.astronaut` on its group or on its own materials (the Dragon crew, merged into the seat kits).
+export function isCrew(object) {
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    if (materials.some(material => material?.userData.astronaut)) return true;
+    for (let node = object; node; node = node.parent) if (node.userData.astronaut) return true;
+    return false;
+}
+export function crewMaterial(source) {
+    let crew = crewMaterials.get(source);
+    if (!crew) {
+        crew = source.clone();
+        Object.assign(crew, { transparent: true, opacity: (source.transparent ? source.opacity : 1) * crewOpacity });
+        crew.needsUpdate = true; crewMaterials.set(source, crew);
+    }
+    return crew;
+}
+// The material a mesh takes in the ghost context.
+export const ghostFor = (mesh, source) => isCrew(mesh) ? crewMaterial(source) : ghostMaterial(source);
 // Crease and boundary edges, as THREE.EdgesGeometry finds them, but on typed-array hashes rather than string
 // keys: corners weld on a 0.1 mm grid, and an edge shared by two faces is kept when their normals part by more
 // than the threshold. Returns segment end points.

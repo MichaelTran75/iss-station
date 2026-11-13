@@ -21,10 +21,10 @@
 // the nearest clear pose instead (an operation's pose that a solar wing has turned into). The planners are generators
 // that yield often, so the worker can take a cancel between slices.
 import { LIMIT } from './kinematics.js?v=44ee3feec6';
-import { compile } from './motion.js?v=9a2f0b5c59';
-import { REST, copyState } from './pose.js?v=8d51479503';
-import { CARRY_REACH, DEXTRE_REACH, REACH, clearance } from './collision.js?v=6f3c17fd88';
-import { RIDE_POSES, sequences } from './sequences.js?v=28a949284e';
+import { compile } from './motion.js?v=501d8e686f';
+import { REST, copyState } from './pose.js?v=f186b91cd6';
+import { CARRY_REACH, CREW_REACH, DEXTRE_REACH, REACH, clearance } from './collision.js?v=ee93b5170b';
+import { RIDE_POSES, sequences } from './sequences.js?v=479abf2149';
 
 export const REQUIRED = .05, MOVING = .25;
 const TURN = 2 * Math.PI, PITCH = new Set([2, 3, 4]), toRadians = Math.PI / 180;
@@ -57,7 +57,7 @@ const seedOf = states => Math.round(1e6 * states.reduce((sum, s) => sum * 1.3 + 
 const STRICT = { required: REQUIRED, moving: MOVING }, RELAXED = { required: 0, moving: 0 };
 // Everything one route needs: the gap in a pose, continuous checks along moves, rides and rolls.
 function planning(world, context, rand, { required, moving } = STRICT) {
-    const carrying = context.dextre.on === 'tip', reach = carrying ? CARRY_REACH : REACH, metric = distanceWith(reach);
+    const carrying = context.dextre.on === 'tip', reach = carrying ? CARRY_REACH : context.crew.seat > 0 ? CREW_REACH : REACH, metric = distanceWith(reach);
     const probe = copyState(context), options = { moving, dextre: carrying };
     // `limit`: the readings this route may take, lowered for a while to keep part of them for what comes after.
     const p = { evaluations: 0, limit: BUDGET, letOff: [], metric, rand, spent: () => p.evaluations > p.limit };
@@ -207,12 +207,13 @@ function* finish(p, path, mbs, roll) {
 }
 
 // Plans `from` → `to`; returns { ok, steps, learned, end, adapted, relaxed, reason, evaluations }. `memory`: poses
-// earlier routes went through ([{ theta, ride, base, end, dextre }], radians; those for another base, end or Dextre
-// stand are left out); `adapt`: move a goal that is not clear to the nearest clear pose; `stay`: a ride or roll ends in
+// earlier routes went through ([{ theta, ride, base, end, dextre, crew }], radians; those for another base, end, Dextre
+// stand or foot restraint are left out); `adapt`: move a goal that is not clear to the nearest clear pose; `stay`: a ride or roll ends in
 // the pose it was made in (whatever the goal's joints); `labels` for the steps. When no route keeps the clearance asked
 // for, one that only keeps clear is looked for (`relaxed`).
 export function* route(world, from, to, options = {}) {
     if (from.base !== to.base || from.end !== to.end || from.tip !== to.tip || from.dextre.on !== to.dextre.on) return { ok: false, reason: 'base, end, held fixture or Dextre differ' };
+    if (from.crew.seat !== to.crew.seat || from.crew.on !== to.crew.on) return { ok: false, reason: 'the foot restraint or its rider differ' };
     if (from.tip && from.tip !== 'dextre-pdgf') return { ok: false, reason: 'the tip holds a fixture' };
     const strict = yield* attempt(world, from, to, options, STRICT);
     if (strict.ok) return strict;
@@ -221,9 +222,10 @@ export function* route(world, from, to, options = {}) {
 }
 function* attempt(world, from, to, { memory = [], adapt = false, labels = {}, stay = false }, margins) {
     const p = planning(world, from, random(seedOf([from, to])), margins);
-    // Memory from routes with the same base, end and Dextre stand; what this one learns is kept with those.
-    const context = { base: from.base, end: from.end, dextre: from.dextre.on };
-    memory = memory.filter(entry => entry.base === undefined || (entry.base === context.base && entry.end === context.end && entry.dextre === context.dextre));
+    // Memory from routes with the same base, end, Dextre stand and foot restraint; what this one learns is kept with
+    // those.
+    const context = { base: from.base, end: from.end, dextre: from.dextre.on, crew: from.crew.seat > 0 };
+    memory = memory.filter(entry => entry.base === undefined || (entry.base === context.base && entry.end === context.end && entry.dextre === context.dextre && !!entry.crew === context.crew));
     let goal = to.theta, adapted = false;
     const rides = to.mbs !== from.mbs, rolls = to.dextre.roll !== from.dextre.roll, keep = stay && (rides || rolls);
     if (adapt && !keep && p.gap(goal, to.mbs, to.dextre.roll) < 0) {
@@ -322,7 +324,7 @@ function* attempt(world, from, to, { memory = [], adapt = false, labels = {}, st
 
 // A pre-built operation (sequences.js) planned for the station as it stands: each free move (home, move, ride, and the
 // move to a reach's or a stow's stand-off pose) becomes a route, a home or move pose moved clear if a solar wing or a
-// radiator has turned into it; approaches, latching, walking, Dextre's roll and waits keep their pre-built form.
+// radiator has turned into it (not a move marked `exact`: the spacewalker boards and works at that very pose); approaches, latching, walking, Dextre's roll and waits keep their pre-built form.
 // Returns { ok, steps, learned, adapted, rough, relaxed, log } with `steps` for motion.js from `from`, each tagged with
 // the operation's step it comes from (`source`); `relaxed` counts the moves only a relaxed route was found for,
 // `rough` those no route was found for at all (kept as built), `log` each route's outcome.
@@ -349,7 +351,7 @@ export function* planSteps(world, from, steps, { memory = [] } = {}) {
         const target = free.target ? { ...copyState(state), theta: free.target } : compile([free], state).end;
         const labels = { out: step.label, roll: step.label, ride: step.label, in: step.label };
         // A ride step keeps the arm in the pose it rides in; the next move unfolds it.
-        const result = yield* route(world, state, target, { memory: memory.concat(learned), adapt: !approach, stay: step.ride !== undefined, labels });
+        const result = yield* route(world, state, target, { memory: memory.concat(learned), adapt: !approach && !step.exact, stay: step.ride !== undefined, labels });
         evaluations += result.evaluations || 0;
         log.push({ step: k, ok: result.ok, adapted: !!result.adapted, relaxed: !!result.relaxed, evaluations: result.evaluations || 0, reason: result.reason || '' });
         if (result.ok) {

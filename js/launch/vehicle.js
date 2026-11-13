@@ -23,6 +23,12 @@ const plumeVertex = `varying vec2 vUv; varying float vFacing;
 const plumeFragment = `uniform vec3 hot; uniform vec3 warm; uniform vec3 cool; uniform float time; uniform float strength; uniform float len; uniform float core; uniform float flame;
     uniform float cell; uniform float diamonds; uniform float green; uniform float rimPower; uniform float cover; varying vec2 vUv; varying float vFacing;
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    // Smooth noise, wrapping every \`round\` cells across (the plume's surface closes on itself).
+    float noise(vec2 p, float round) {
+        vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+        float x0 = mod(i.x, round), x1 = mod(i.x + 1., round);
+        return mix(mix(hash(vec2(x0, i.y)), hash(vec2(x1, i.y)), f.x), mix(hash(vec2(x0, i.y + 1.)), hash(vec2(x1, i.y + 1.)), f.x), f.y);
+    }
     void main() {
         float s = (1. - vUv.y) * len;                  // metres from the nozzle
         float flicker = .86 + .14 * hash(vec2(floor(s / len * 22. - time * 38.), floor(time * 30.)));
@@ -33,7 +39,12 @@ const plumeFragment = `uniform vec3 hot; uniform vec3 warm; uniform vec3 cool; u
         vec3 colour = mix(hot, warm, smoothstep(0., .3, heat));
         colour = mix(colour, cool, smoothstep(.3, 1., heat));
         colour = mix(colour, vec3(.3, 1., .42), green);
-        float glow = body * bands * pow(vFacing, rimPower) * flicker * strength;
+        // Turbulence carried down the flame: fine streaks off the nozzles, eddies that grow further out; none in the core.
+        float streaks = noise(vec2(vUv.x * 30., s * .14 - time * 14.), 30.);
+        float eddies = .6 * noise(vec2(vUv.x * 9., s * .1 - time * 8.), 9.) + .4 * noise(vec2(vUv.x * 20., s * .28 - time * 15.), 20.);
+        float grain = smoothstep(.22, .78, mix(streaks, eddies, smoothstep(.08, .55, heat))), rough = mix(1., .45 + 1.1 * grain, smoothstep(.02, .2, heat));
+        colour = mix(colour, cool, (1. - grain) * .35 * smoothstep(.05, .3, heat));   // the dimmer streaks are the cooler, sootier gas
+        float glow = body * bands * pow(vFacing, rimPower) * flicker * rough * strength;
         // Premultiplied: dense flame covers the sky behind it, the thin edges and tail only add light.
         gl_FragColor = vec4(colour * glow, clamp(glow * cover, 0., .92));
     }`;
@@ -153,15 +164,26 @@ export async function createVehicle(url) {
     data.gridFins.forEach((hinge, index) => {
         const pivot = new THREE.Group(), fin = part('gridFin' + index), at = new THREE.Vector3(...hinge.at), radial = new THREE.Vector3(...hinge.radial);
         pivot.position.copy(at); fin.position.copy(at).negate(); pivot.add(fin); firstStage.add(pivot);
-        fins.push({ pivot, axis: new THREE.Vector3(0, -1, 0).cross(radial).normalize() });
+        fins.push({ pivot, radial, axis: new THREE.Vector3(0, -1, 0).cross(radial).normalize() });
     });
+    const legOpen = 2.09;
     // Landing legs on their foot hinges (stowed up the side, they swing out and down 120° to land), and the hydraulic
     // struts, hidden once the legs open (they would have to telescope).
     const legs = data.legs.map((hinge, index) => {
         const pivot = new THREE.Group(), leg = part('leg' + index), at = new THREE.Vector3(...hinge.at), radial = new THREE.Vector3(...hinge.radial);
         pivot.position.copy(at); leg.position.copy(at).negate(); pivot.add(leg); firstStage.add(pivot);
-        return { pivot, axis: new THREE.Vector3(0, 1, 0).cross(radial).normalize() };
+        // Its foot: the lowest point of the open leg, kept as it lies from the hinge with the leg stowed.
+        const axis = new THREE.Vector3(0, 1, 0).cross(radial).normalize(), foot = new THREE.Vector3(0, Infinity, 0), spot = new THREE.Vector3();
+        pivot.quaternion.setFromAxisAngle(axis, legOpen); pivot.updateMatrixWorld(true);
+        leg.traverse(mesh => {
+            const points = mesh.geometry?.attributes.position;
+            for (let i = 0; points && i < points.count; i++) if (spot.fromBufferAttribute(points, i).applyMatrix4(mesh.matrixWorld).y < foot.y) foot.copy(spot);
+        });
+        const reach = -foot.y;
+        foot.sub(at).applyAxisAngle(axis, -legOpen); pivot.quaternion.identity();
+        return { pivot, axis, at, foot, reach };
     });
+    const legReach = Math.max(...legs.map(leg => leg.reach));   // the feet below the engines' bottom, legs open
     const struts = part('pistons'); firstStage.add(struts);
     const secondStage = part('secondStage', secondMaterials);
     // Crew Dragon on top: its trunk sits on the second stage's cylinder, nose up.
@@ -200,7 +222,7 @@ export async function createVehicle(url) {
     glow.position.y = -1.5; glow.renderOrder = 6; glow.material.opacity = .7; firstStage.add(glow);
     // Light from the first stage's plume on the pad, the smoke and the rocket.
     const fireLight = new THREE.PointLight(0xffb070, 0, 600, 1.4); fireLight.position.y = -6; firstStage.add(fireLight);
-    const firstState = { flame: 0, core: 0, strength: 0 };
+    const firstState = { flame: 0, core: 0, strength: 0, daylight: 0 };   // daylight: 0 night to 1 full day, set by the view
 
     // Booster burn: `lit` engines burning (9, 3 or 1) with `engines` of thrust (in engines at full thrust: throttle, and
     // the spool as they start and stop, sim/ascent.js) at `altitude` metres and `airspeed` m/s; `retro` when the burn
@@ -212,7 +234,7 @@ export async function createVehicle(url) {
         const on = count > 0 && share > .004, throttle = Math.max(.4, share), weak = Math.min(1, share / .4);
         firstPlume.visible = firstHaze.visible = glow.visible = on; retroShell.visible = false;
         for (const jet of jets) jet.visible = false;
-        fireLight.intensity = on ? 6e4 * (engines / 9) * Math.exp(-altitude / 1500) : 0;
+        fireLight.intensity = on ? 6e4 * (engines / 9) * Math.exp(-altitude / 1500) * (1 - .97 * firstState.daylight) : 0;   // against daylight the flame lights the pad about as the Sun does at 60 m
         firstState.strength = on ? engines / 9 : 0;
         if (!on) return;
         // Burning into the air stream the jets meet the air brought to rest behind its shock, not the open air: they leave
@@ -288,8 +310,50 @@ export async function createVehicle(url) {
         u.strength.value = .42 * level;
     }
     function setFins(open) { for (const { pivot, axis } of fins) pivot.quaternion.setFromAxisAngle(axis, open * Math.PI / 2); }
+    // Steering as the simulation spends it (sim/ascent.js), each a vector in its stage's frame or null; call after
+    // setFins. `gimbal` (first stage) and `vacuum` (second): across the axis, as long as the sine of the engines'
+    // swing: the plumes lean with it (the nozzles are part of each stage's one mesh and stay put). `fins` and `gas`:
+    // the axis of the torque asked of the grid fins and of the nitrogen thrusters, as long as the share of their
+    // most (0…1): each fin turns on its own shaft by up to `finSwing`, and a jet of cold gas blows from the
+    // interstage, away from the push it gives.
+    const finSwing = 20 * Math.PI / 180, gasLength = 7, straight = new THREE.Quaternion(), leaned = new THREE.Quaternion(), twist = new THREE.Quaternion();
+    const along = new THREE.Vector3(), blow = new THREE.Vector3(), nozzleUp = new THREE.Vector3(0, 1, 0), tailDown = new THREE.Vector3(0, -1, 0);
+    const gasJet = plume(0xffffff, 0xe4ecf4, 0xa8b6c6, 12);
+    shapePlume(gasJet, s => .03 + .22 * s, 1); gasJet.visible = false; gasJet.material.uniforms.cover.value = 0; firstStage.add(gasJet);
+    Object.assign(gasJet.material.uniforms, { len: { value: gasLength }, flame: { value: gasLength * .85 }, core: { value: .8 }, cell: { value: 1e4 } });
+    const leanOf = gimbal => gimbal ? leaned.setFromUnitVectors(nozzleUp, along.set(gimbal.x, Math.sqrt(Math.max(0, 1 - gimbal.lengthSq())), gimbal.z).normalize()) : straight;
+    function setSteer({ gimbal = null, fins: finTorque = null, gas = null, vacuum = null }, time) {
+        const first = leanOf(gimbal);
+        firstPlume.quaternion.copy(first); firstHaze.quaternion.copy(first);
+        for (const jet of jets) jet.quaternion.copy(first);
+        secondPlume.quaternion.copy(leanOf(vacuum));
+        // A fin turned on its shaft sends the air through it sideways, across the shaft: the four share the push.
+        if (finTorque) for (const { pivot, radial } of fins) pivot.quaternion.premultiply(twist.setFromAxisAngle(radial, -finTorque.dot(radial) * finSwing));
+        const share = gas ? gas.length() : 0;
+        gasJet.visible = share > .08;
+        if (!gasJet.visible) return;
+        blow.crossVectors(nozzleUp, gas).normalize();
+        gasJet.position.copy(blow).multiplyScalar(1.83).setY(data.separationY - 1.5);
+        gasJet.quaternion.setFromUnitVectors(tailDown, blow); gasJet.scale.setScalar(gasLength * (.45 + .55 * Math.min(1, share)));
+        gasJet.material.uniforms.time.value = time; gasJet.material.uniforms.strength.value = .3 * Math.min(1, share);
+    }
     function setNose(open) { noseCone.rotation.x = openAngle * open; }
-    function setLegs(open) { for (const { pivot, axis } of legs) pivot.quaternion.setFromAxisAngle(axis, open * 2.09); struts.visible = open < .02; }
+    // `deck`: a plane ({ point, normal }, in the first stage's frame) the feet stand on. A leg whose foot would be under
+    // it folds back up until the foot is on it (the leg's stroke); one that cannot reach it stays locked open.
+    const footNow = new THREE.Vector3(), footWay = new THREE.Vector3();
+    function setLegs(open, deck) {
+        for (const { pivot, axis, at, foot } of legs) {
+            let angle = open * legOpen;
+            for (let pass = 0; deck && pass < 3; pass++) {
+                footNow.copy(foot).applyAxisAngle(axis, angle);
+                const height = deck.normal.dot(footWay.copy(footNow).add(at).sub(deck.point));
+                if (pass === 0 && height >= 0) break;
+                angle = Math.min(open * legOpen, angle - height / deck.normal.dot(footWay.crossVectors(axis, footNow)));
+            }
+            pivot.quaternion.setFromAxisAngle(axis, angle);
+        }
+        struts.visible = open < .02;
+    }
     setFirstPlume({ engines: 0, altitude: 0 }, 0); setSecondPlume(0, 0);
 
     // The cutaway (js/launch/internals.js): each stage's skin cut through its axis, square to the camera, showing the
@@ -354,7 +418,7 @@ export async function createVehicle(url) {
     const xrayContrast = space => lineMaterial.color.lerpColors(lineDark, lineLight, space);
 
     return {
-        firstStage, secondStage, dragon, setFirstPlume, setSecondPlume, setFins, setNose, setLegs, firstState, setDracos: dracos.update, setCutaway, updateCutaway,
+        firstStage, secondStage, dragon, setFirstPlume, setSecondPlume, setFins, setSteer, setNose, setLegs, legReach, firstState, setDracos: dracos.update, setCutaway, updateCutaway,
         setXray, xrayContrast, pickable: skin,
         // Heights on the stack: the joint between the stages, the second stage's top, Dragon's top.
         separationY: data.separationY, secondStageTop: data.secondStageTop, dragonTop, source: data.source,

@@ -70,7 +70,7 @@
 
         /* Dark page: the station against its Earth backdrop, the Launch view, and the Orbit view when its switch says Dark
             (js/orbit/theme.js); on paper otherwise. */
-        #app:is([data-backdrop="orbit"]:not([data-scene-view="orbit"]), [data-scene-view="orbit"][data-orbit-background="dark"], [data-scene-view="launch"]) {
+        #app:is([data-backdrop="orbit"]:not([data-scene-view="orbit"]), [data-scene-view="orbit"][data-orbit-background="dark"], [data-scene-view="launch"], [data-scene-view="cupola"]) {
             color-scheme: dark;
             --paper: #000000;
             --ink: #e6ece7;
@@ -96,7 +96,7 @@
             text-shadow: 0 1px 2px rgba(226, 214, 192, .85);
         }
 
-        #app:is([data-backdrop="orbit"]:not([data-scene-view="orbit"]), [data-scene-view="orbit"][data-orbit-background="dark"], [data-scene-view="launch"]) :is(.header, .timeline, .metric, .colophon) {
+        #app:is([data-backdrop="orbit"]:not([data-scene-view="orbit"]), [data-scene-view="orbit"][data-orbit-background="dark"], [data-scene-view="launch"], [data-scene-view="cupola"]) :is(.header, .timeline, .metric, .colophon) {
             text-shadow: 0 1px 3px rgba(0, 0, 0, .95);
         }
 
@@ -234,7 +234,7 @@
             text-transform: uppercase;
         }
 
-        #app:is([data-backdrop="orbit"]:not([data-scene-view="orbit"]), [data-scene-view="orbit"][data-orbit-background="dark"], [data-scene-view="launch"]) .view-switch button[aria-pressed="true"] {
+        #app:is([data-backdrop="orbit"]:not([data-scene-view="orbit"]), [data-scene-view="orbit"][data-orbit-background="dark"], [data-scene-view="launch"], [data-scene-view="cupola"]) .view-switch button[aria-pressed="true"] {
             color: #15231d;
         }
 
@@ -344,7 +344,7 @@
             mask-image: radial-gradient(ellipse at center, black, transparent 68%);
         }
 
-        #app:is([data-backdrop="space"], [data-backdrop="orbit"], [data-scene-view="orbit"], [data-scene-view="launch"]) #viewport::before {
+        #app:is([data-backdrop="space"], [data-backdrop="orbit"], [data-scene-view="orbit"], [data-scene-view="launch"], [data-scene-view="cupola"]) #viewport::before {
             display: none;
         }
 
@@ -512,6 +512,13 @@
             opacity: .65;
         }
 
+        /* The Cupola's leader crosses the station: in the accent, to stay visible over it. */
+        #leaders path.cupola-leader {
+            stroke: var(--accent);
+            stroke-width: 1.2;
+            opacity: .95;
+        }
+
         #leaders circle {
             fill: var(--accent);
         }
@@ -639,6 +646,20 @@
             font-size: 11px;
             line-height: 1.6;
             font-weight: 700;
+        }
+
+        /* The Cupola's label is a button: a chip on the page's surface, over whatever lies behind it. */
+        .annotation.cupola-label {
+            padding: 4px 10px 5px;
+            border: 1px solid var(--line);
+            border-radius: 3px;
+            background: color-mix(in srgb, var(--paper) 92%, transparent);   /* it sits over the station: near opaque */
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .annotation.cupola-label:hover {
+            border-color: var(--accent);
         }
 
         .annotation:hover b {
@@ -1103,7 +1124,7 @@
                 font-size: 10px;
             }
 
-            /* Six names, two icons and two dividers in the 354 px row of a 390 px phone (and 324 px at 360). */
+            /* Seven names, three icons and two dividers in one row. */
             .view-switch {
                 gap: 0;
             }
@@ -1115,14 +1136,27 @@
             }
 
             .view-switch .orbit-button,
-            .view-switch .launch-tab {
+            .view-switch :is(.launch-tab, .cupola-tab) {
                 gap: 4px;
             }
 
             .view-switch .earth-icon,
-            .view-switch .launch-tab svg {
+            .view-switch :is(.launch-tab, .cupola-tab) svg {
                 width: 12px;
                 height: 12px;
+            }
+
+            /* Seven names: under 450 px the row has no room for the three icons beside them (names 237 px, dividers
+               18 px, 354 px of row on a 390 px phone, 324 px at 360). */
+            @media (max-width: 449px) {
+                .view-switch button {
+                    padding: 0 clamp(3px, calc((100vw - 330px) / 12), 6px);
+                }
+
+                .view-switch .earth-icon,
+                .view-switch :is(.launch-tab, .cupola-tab) svg {
+                    display: none;
+                }
             }
 
             .edition {
@@ -1940,7 +1974,7 @@
         }
 
         /* Orbit view: the globe replaces the station; station overlays and station-only tools step aside. */
-        #app:is([data-scene-view="orbit"], [data-scene-view="launch"]) :is(#labels, #leaders, #approach-hud, .approach-dist-badge, .crew-thought, .guide-label, .approach-status,
+        #app:is([data-scene-view="orbit"], [data-scene-view="launch"], [data-scene-view="cupola"]) :is(#labels, #leaders, #approach-hud, .approach-dist-badge, .crew-thought, .guide-label, .approach-status,
             .interior-focus, .component-picker, .scale, .drawing-note, #labels-toggle, #rotate-toggle, #motion-toggle, #configuration-toggle,
             #backdrop-toggle, .dock .divider) {
             display: none !important;
@@ -2039,6 +2073,10 @@
             margin: 0;
         }
 
+        .orbit-frame.orbit-layers {
+            margin-top: 6px;
+        }
+
         .orbit-panel #orbit-map-source {
             margin-top: 4px;
         }
@@ -2070,22 +2108,36 @@
 
         /* Launch view: a daylight sky behind the page's light-on-dark text, so the header, footer and panel get dark
            veils. */
-        #app[data-scene-view="launch"]::before {
+        #app:is([data-scene-view="launch"], [data-scene-view="cupola"])::before {
             background: rgba(3, 6, 12, .52);
         }
 
-        #app[data-scene-view="launch"] .footer {
+        #app:is([data-scene-view="launch"], [data-scene-view="cupola"]) .footer {
             left: 0;
             right: 0;
             padding: 0 30px;
             background: rgba(3, 6, 12, .52);
         }
 
-        #app[data-scene-view="launch"] :is(.viewport-meta, .orientation) {
+        #app:is([data-scene-view="launch"], [data-scene-view="cupola"]) :is(.viewport-meta, .orientation) {
             text-shadow: 0 0 6px rgba(0, 0, 0, .9), 0 1px 2px rgba(0, 0, 0, .9);
         }
 
-        .launch-panel {
+        /* Cupola view: day-side cloud is near white behind the dock and the caption lines. */
+        #app[data-scene-view="cupola"] .dock {
+            border-color: rgba(255, 255, 255, .12);
+            background: rgba(3, 6, 12, .62);
+        }
+
+        #app[data-scene-view="cupola"] :is(.viewport-meta, .orientation) {
+            margin: -6px -9px;
+            padding: 6px 9px;
+            border-radius: 5px;
+            background: rgba(3, 6, 12, .46);
+        }
+
+        .launch-panel,
+        .cupola-panel {
             padding: 10px 12px;
             border: 1px solid rgba(255, 255, 255, .12);
             border-radius: 6px;
@@ -2181,9 +2233,34 @@
             will-change: transform, opacity;
         }
 
+        /* The count's clock in the sky beside the rocket, until the last ten seconds take over. */
+        .launch-tminus {
+            position: absolute;
+            top: 27%;
+            right: 3.2%;
+            z-index: 2;
+            display: grid;
+            justify-items: end;
+            gap: 4px;
+            pointer-events: none;
+            font-family: 'IBM Plex Mono', monospace;
+            color: #f4f8fb;
+            text-shadow: 0 0 14px rgba(0, 0, 0, .55), 0 1px 4px rgba(0, 0, 0, .8);
+        }
+
+        .launch-tminus span { font-size: 11px; font-weight: 600; letter-spacing: .22em; opacity: .8; }
+        .launch-tminus b { font-size: 56px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+        .launch-tminus i { font-size: 12px; font-style: normal; font-weight: 600; letter-spacing: .08em; }
+
         .launch-count.word {
             font-size: 46px;
             letter-spacing: .14em;
+        }
+
+        @media (max-width: 720px) {
+            .launch-tminus b { font-size: 34px; }
+            .launch-count { font-size: 60px; }
+            .launch-count.word { font-size: 26px; letter-spacing: .1em; }
         }
 
         .launch-event {
@@ -2196,7 +2273,8 @@
         .launch-events {
             display: grid;
             gap: 1px;
-            max-height: 118px;
+            /* Full on a tall window; on a shorter one it gives its rows up, so the panel ends where it did with six facts. */
+            max-height: clamp(66px, calc(100vh - 825px), 118px);
             margin: 0 0 8px;
             padding: 0 4px 0 0;
             overflow-y: auto;
@@ -2338,6 +2416,15 @@
             transform: none;
         }
 
+        /* 0.1, 1, 5 and 20+ mm/h: a log scale. */
+        .rain-legend span:nth-of-type(2) {
+            left: 43.46%;
+        }
+
+        .rain-legend span:nth-of-type(3) {
+            left: 73.84%;
+        }
+
         .wind-legend i {
             position: absolute;
             top: 0;
@@ -2366,6 +2453,12 @@
                 background: rgba(0, 0, 0, .55);
             }
 
+            /* Light text over a daylight sky or day-side cloud: these two keep their dark veil. */
+            :is(.launch-panel, .cupola-panel) {
+                border-color: rgba(255, 255, 255, .12);
+                background: rgba(3, 6, 12, .62);
+            }
+
             .orbit-time {
                 display: flex;
                 align-items: baseline;
@@ -2385,16 +2478,39 @@
                 margin: 8px 0;
             }
 
+            /* Frames and map layers side by side: one row fewer over the globe. */
+            #orbit-panel .orbit-frame {
+                display: inline-flex;
+                vertical-align: top;
+            }
+
+            #orbit-panel .orbit-frame.orbit-layers {
+                margin: 0 0 0 6px;
+            }
+
             .orbit-readout dd {
                 font-size: 10px;
             }
 
-            .orbit-readout :is(.period, .inclination) {
+            .orbit-readout :is(.period, .inclination, .mass) {
                 display: none;
             }
 
             .orbit-panel small {
                 margin-top: 6px;
+            }
+
+            /* The Cupola's readout in three rows: the windows keep the screen above it. */
+            .cupola-panel .orbit-readout {
+                grid-auto-flow: dense;
+            }
+
+            .cupola-panel .orbit-readout .wide {
+                grid-column: span 2;
+            }
+
+            .cupola-panel .orbit-readout .speed {
+                display: none;
             }
 
             .launch-events {
@@ -2422,7 +2538,7 @@
         }
 
 /* The rocket beside Launch on the view bar. */
-.launch-tab { display: inline-flex; align-items: center; gap: 6px; }
+.launch-tab, .cupola-tab { display: inline-flex; align-items: center; gap: 6px; }
 /* Orbit: a turning globe beside the name. Each meridian circle narrows and widens as |cos| of the turn (one cycle a
    half turn, the second a quarter turn behind), its stroke kept at the icon's width while it is squeezed. */
 .orbit-button { display: inline-flex; align-items: center; gap: 6px; }
@@ -2438,4 +2554,4 @@
     .earth-icon .meridian { animation: none; }
     .earth-icon .late { transform: scaleX(.5); }
 }
-.launch-tab svg { width: 14px; height: 14px; }
+.launch-tab svg, .cupola-tab svg { width: 14px; height: 14px; }

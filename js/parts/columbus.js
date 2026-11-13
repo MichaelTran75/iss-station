@@ -314,7 +314,7 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
         const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.wrapS = texture.wrapT = THREE.RepeatWrapping; return texture;
     }
     const humanAxis = list => new THREE.Vector3(...list);
-    function crewMember(name, pose, look, place) {
+    function crewMember(name, pose, look, place, home) {
         const geometry = new THREE.BufferGeometry();
         for (const key of ['position', 'normal', 'skinIndex', 'skinWeight']) geometry.setAttribute(key, humanBody.attributes[key]);
         geometry.setAttribute('color', humanBody.attributes.color); if (look.stripes) geometry.setAttribute('uv', humanHeightUv);
@@ -330,12 +330,17 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
         human.bones.forEach(([, parent, x, y, z, qx, qy, qz, qw], i) => { bones[i].position.set(x, y, z); bones[i].quaternion.set(qx, qy, qz, qw); if (parent >= 0) bones[parent].add(bones[i]); });
         const body = new THREE.SkinnedMesh(geometry, materials); body.name = name + ' / body'; body.frustumCulled = false; body.add(bones[0]);
         body.updateMatrixWorld(true); body.bind(new THREE.Skeleton(bones));
+        const bind = bones.map(bone => bone.quaternion.clone());
         bones.forEach((bone, i) => bone.quaternion.fromArray(human.poses[pose], i * 4)); bones[0].position.fromArray(human.roots[pose]);
-        const person = new THREE.Group(); person.name = name; person.add(body);
+        const person = new THREE.Group(); person.name = name; person.userData.astronaut = true; person.add(body);
         person.position.fromArray(place.position); person.rotation.set(0, place.yaw, 0, 'YXZ');
         person.userData.bones = Object.fromEntries(bones.map(bone => [bone.name, bone])); person.userData.boneList = bones; person.userData.yaw = place.yaw;
         person.userData.rest = { position: person.position.clone(), quaternion: person.quaternion.clone(), root: bones[0].position.clone(), bones: Object.fromEntries(bones.map(bone => [bone.name, bone.quaternion.clone()])) };
-        interior.add(person); crew.push(person); return person;
+        person.userData.bind = bind;
+        // A figure for another module (js/figures/cabin-crew.js) goes to that module's group and poses itself.
+        if (home) { home.add(person); person.traverse(o => { o.userData.interior = true; if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } }); }
+        else { interior.add(person); crew.push(person); }
+        return person;
     }
     // At the laptop on the outboard rack, leaning in with the fingertips on the keys: green shirt, blue shorts.
     crewMember('Crew 1', 'typist', { skin: 0xc29270, shirt: 0x235f43, shorts: 0x2f5c8c, shoes: 0xe2e2dc, hair: 0x2b2420 }, { position: [-.2, -aisle, 1.39], yaw: -Math.PI / 2 });
@@ -429,7 +434,8 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
     group.userData.reconstruction = 'After the ESA cutaway illustration: MMOD shell with a see-through section, square rack aisle, crew and external payloads';
     group.userData.seeThrough = { angleStart: open.a0, angleEnd: open.a1, axialStart: open.z0, axialEnd: open.z1, opacity: .25 };
     group.userData.equipmentRacks = racks.length; group.userData.crewFigures = crew.length; group.userData.externalBrackets = 2;
-    group.userData.lab = { tube, shell, interior, framework, racks, crew, external, hover, motion, open };
+    group.userData.lab = { tube, shell, interior, framework, racks, crew, external, hover, motion, open,
+        addCrew: (name, look, home) => crewMember(name, 'floater', look, { position: [0, 0, 0], yaw: 0 }, home), axes: human.axes };
 });
 // Columbus crew at work. Crew 1 and Crew 3 play keyed work loops: between keys every bone follows a Catmull-Rom curve
 // in time, so the motion flows through the keys rather than stopping at each. On top come breathing, small irregular

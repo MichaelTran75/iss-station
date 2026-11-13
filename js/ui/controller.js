@@ -5,6 +5,7 @@ import { app, camera, controls, hemisphere, inspectionLight, renderer, rim, scen
 import { markShadowsDirty, updateShadows, updateStats, watchFrames } from '../core/quality.js';
 import { destinyShutter, ghostOpacity, modernParts, parts, referenceParts, shownIn, trackingDishes, wings } from '../core/station.js';
 import { crewThought, updateColumbusCrew } from '../parts/columbus.js';
+import { updateCabinCrew } from '../figures/cabin-crew.js';
 import { approach, approachPhase, approachStartTime, dragon, dragonBounds, dragonFlightBounds, lvlhToStation, rendezvous,
     setDragonShell, updateApproach, updateDragonCrew } from '../parts/dragon.js';
 import { evaWorkerState, z1EVA } from '../figures/eva.js';
@@ -13,7 +14,7 @@ import { bgaFor, orientSun, sarjFor, startSunTrack, sunTrack, updateSunTrack } f
 import { live, liveFresh, liveHeard, livePose, liveTurn, startLive, stopLive } from '../orbit/live.js';
 import { attitude, attitudeName, datedTurn, inStation, setAttitude } from '../orbit/attitude.js';
 import '../orbit/theme.js';   // the Orbit view's background switch, set before that view first opens
-import { ghostMaterial } from './ghost.js';
+import { ghostFor } from './ghost.js';
 import { updateRendezvousGuide } from './rendezvous-guide.js';
 import { setRoboticsLive, updateRobotics } from '../robotics/index.js';
 import { refresh as refreshRoboticsTools } from './robotics-tools.js';
@@ -27,6 +28,8 @@ const componentSelect = document.getElementById('component-select');
 for (const entry of parts.values()) {
     const option = document.createElement('option'); option.value = entry.id; option.textContent = entry.name; componentSelect.appendChild(option);
 }
+// The cargo vehicle's line, locked while the vehicle is away.
+const cargoOption = componentSelect.querySelector('option[value="cygnus"]');
 componentSelect.addEventListener('change', () => {
     if (componentSelect.value) { const id = componentSelect.value; selectPart(id); focusPart(id); }
     else { selectPart(null); setView('reverse'); }
@@ -61,6 +64,15 @@ export const labels = labelSpecs.map(([id, code, title, offsetX, offsetY]) => {
     const line = document.createElementNS(svgNamespace, 'path'), dot = document.createElementNS(svgNamespace, 'circle'); dot.setAttribute('r', '2'); leaders.append(line, dot);
     return { id, element, line, dot, offsetX, offsetY };
 });
+// The way into the Cupola view: a label below the station on screen, straight under the Cupola's nadir window, its
+// leader line running vertically down from the window.
+const cupolaLabel = (() => {
+    const element = document.createElement('button'); element.className = 'annotation cupola-label';
+    element.innerHTML = '<span>EARTH VIEW</span><b>Cupola</b>'; element.setAttribute('aria-label', 'Look at Earth from the Cupola');
+    element.addEventListener('click', () => { selectPart(null); setView('cupola'); }); labelLayer.appendChild(element);
+    const line = document.createElementNS(svgNamespace, 'path'), dot = document.createElementNS(svgNamespace, 'circle'); dot.setAttribute('r', '2.5'); line.classList.add('cupola-leader'); leaders.append(line, dot);
+    return { element, line, dot, corner: new THREE.Vector3() };
+})();
 function setPressed(id, value) { document.getElementById(id).setAttribute('aria-pressed', String(value)); }
 setPressed('motion-toggle', motion);
 let toastTimer;
@@ -70,7 +82,7 @@ export function notify(message) { const toast = document.getElementById('toast')
 function applyGhost() {
     markShadowsDirty();
     // Some parts are shown with what they work with: Dragon with the node it docks to, Canadarm2 and Dextre together.
-    const companions = { 'cargo-dragon': ['pma3'], robotics: ['dextre'], dextre: ['robotics'] };
+    const companions = { 'cargo-dragon': ['pma3'], robotics: ['dextre', 'cygnus'], dextre: ['robotics', 'cygnus'], cygnus: ['robotics', 'dextre'] };
     const solid = selected ? new Set(selected === 'dragon' ? dragonDetail === 'cabin' ? ['dragon'] : ['dragon', 'harmony'] : [selected, ...(companions[selected] || [])]) : null;
     for (const entry of parts.values()) {
         const ghost = solid !== null && !solid.has(entry.id);
@@ -81,7 +93,7 @@ function applyGhost() {
             if (!child.isMesh || child.userData.puff) return;
             if (ghost) {
                 child.userData.solidMaterial = child.material; child.userData.solidShadow = child.castShadow;
-                child.material = Array.isArray(child.material) ? child.material.map(ghostMaterial) : ghostMaterial(child.material); child.castShadow = false;
+                child.material = Array.isArray(child.material) ? child.material.map(m => ghostFor(child, m)) : ghostFor(child, child.material); child.castShadow = false;
             } else if (child.userData.solidMaterial) {
                 child.material = child.userData.solidMaterial; child.castShadow = child.userData.solidShadow;
                 delete child.userData.solidMaterial; delete child.userData.solidShadow;
@@ -94,7 +106,7 @@ export function adoptEvaFigure(figure) {
     if (parts.get('z1').ghost) figure.frame.traverse(child => {
         if (!child.isMesh) return;
         child.userData.solidMaterial = child.material; child.userData.solidShadow = child.castShadow;
-        child.material = Array.isArray(child.material) ? child.material.map(ghostMaterial) : ghostMaterial(child.material); child.castShadow = false;
+        child.material = Array.isArray(child.material) ? child.material.map(m => ghostFor(child, m)) : ghostFor(child, child.material); child.castShadow = false;
     });
     if (selected === 'z1') {
         figure.frame.traverse(child => { if (child.isMesh && child.material.emissive) { child.material.emissive.set(0x2e7c66); child.material.emissiveIntensity = .16; } });
@@ -102,6 +114,17 @@ export function adoptEvaFigure(figure) {
     }
     markShadowsDirty();
     render();
+}
+// So does the spacewalker Canadarm2 carries: it is drawn with the arm, and shares its ghost and highlight.
+let rider = null;
+export function adoptRider(figure) {
+    const entry = parts.get('robotics');
+    rider = figure; entry.group.add(figure.group);
+    figure.group.traverse(child => {
+        if (!child.isMesh) return;
+        if (entry.ghost) { child.userData.solidMaterial = child.material; child.userData.solidShadow = child.castShadow; child.material = ghostFor(child, child.material); child.castShadow = false; }
+        else if (selected === 'robotics' && !child.userData.interior && child.material.emissive) { child.material.emissive.set(0x2e7c66); child.material.emissiveIntensity = .16; }
+    });
 }
 export function selectPart(id) {
     setDragonShell(0);
@@ -162,15 +185,18 @@ function cameraDirection(name) {
     return new THREE.Vector3(-155, 185, -155);
 }
 export const stationBounds = new THREE.Box3();
+const stationOnly = new THREE.Box3();   // the station without Dragon's approach: the Cupola's label stands above it
 // The station's span across its arrays, for telling how large it is on screen.
 let stationSpan = 109;
 export function setConfiguration(name) {
     configuration = name; markShadowsDirty();
     for (const entry of parts.values()) entry.group.visible = shownIn(entry.id, name);
     stationBounds.makeEmpty();
-    // Dragon may be hundreds of metres out on its approach: the station's frame takes only its last leg.
-    for (const entry of parts.values()) if (entry.group.visible && entry.id !== 'dragon') stationBounds.expandByObject(entry.group);
+    // Dragon may be hundreds of metres out on its approach: the station's frame takes only its last leg. Cygnus is
+    // there only while Canadarm2 handles it.
+    for (const entry of parts.values()) if (entry.group.visible && entry.id !== 'dragon' && entry.id !== 'cygnus') stationBounds.expandByObject(entry.group);
     const size = stationBounds.getSize(new THREE.Vector3()); stationSpan = Math.max(size.x, size.z);
+    stationOnly.copy(stationBounds);
     stationBounds.union(dragonFlightBounds);
     setPressed('configuration-toggle', name === 'modern');
     document.getElementById('configuration-name').textContent = name === 'modern' ? '5 NOVEMBER 2026 / ILLUSTRATIVE CONFIGURATION' : 'CORE ELEMENTS / SIMPLIFIED COMPARISON';
@@ -270,12 +296,13 @@ controls.addEventListener('start', () => { dragonFollow = false; flight = null; 
 // first time it opens:
 // - Orbit (js/orbit/view.js): the globe with the ISS where it is now.
 // - Launch (js/launch/view.js): Falcon 9 lifting Crew Dragon off LC-39A, close up over the ground round the pad.
-const globeViews = new Set(['orbit', 'launch']);
-let orbitView = null, launchView = null, stationTexts = null;
+const globeViews = new Set(['orbit', 'launch', 'cupola']);
+let orbitView = null, launchView = null, cupolaView = null, stationTexts = null;
 const globeLoading = {};
 export const getOrbitView = () => orbitView;
 export const getLaunchView = () => launchView;
-const globeView = () => currentView === 'orbit' ? orbitView : currentView === 'launch' ? launchView : null;
+export const getCupolaView = () => cupolaView;
+const globeView = () => currentView === 'orbit' ? orbitView : currentView === 'launch' ? launchView : currentView === 'cupola' ? cupolaView : null;
 // The real sky (js/orbit/sky.js), shared by these views and the Earth backdrop; loaded the first time one opens.
 let sky = null, skyLoading = null;
 export const getSky = () => sky;
@@ -417,10 +444,12 @@ function setRealSun(on) {
 }
 const globeTexts = {
     orbit: ['06 / LOW EARTH ORBIT', 'SGP4 PREDICTION / NOT LIVE TELEMETRY', 'INERTIAL FRAME / NORTH UP'],
-    launch: ['07 / FALCON 9 LAUNCH', 'DEMO-2 PROFILE / 30 MAY 2020 / LC-39A', 'PAD FRAME / NORTH-EAST TRACK']
+    launch: ['07 / FALCON 9 LAUNCH', 'DEMO-2 PROFILE / 30 MAY 2020 / LC-39A', 'PAD FRAME / NORTH-EAST TRACK'],
+    cupola: ['08 / CUPOLA', 'EARTH BELOW / SGP4 PREDICTION', 'EYE IN THE CUPOLA / NADIR']
 };
 const globeLoaders = {
     orbit: () => Promise.all([import('../orbit/view.js'), loadSky()]).then(([module, loaded]) => (orbitView = module.createOrbitView(loaded))),
+    cupola: () => Promise.all([import('../orbit/cupola-view.js?v=eda2d80e58'), loadSky()]).then(([module, loaded]) => (cupolaView = module.createCupolaView(loaded))),
     launch: () => {
         const loading = Promise.all([import('../launch/view.js'), loadSky()]).then(([module, loaded]) => module.createLaunchView(loaded, launchResume)).then(view => {
             view.onStation = toStation; if (globeLoading.launch === loading) launchView = view; return view;
@@ -444,6 +473,8 @@ function enterGlobe(name) {
     currentView = name; app.dataset.sceneView = name; inspectionLight.visible = false; dragonFollow = false;
     // The Launch view draws the station itself for the docking: whole, not ghosted round a selected part.
     if (name === 'launch' && selected) selectPart(null);
+    // The Cupola view looks out from inside the station: every part of the configuration, none ghosted.
+    if (name === 'cupola') { if (selected) selectPart(null); for (const entry of parts.values()) entry.group.visible = shownIn(entry.id, configuration); applyGhost(); }
     controls.enabled = false; controls.autoRotate = false; setPressed('rotate-toggle', false);
     document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === name)));
     [document.getElementById('view-name').textContent, configurationName.textContent, orientation.textContent] = globeTexts[name];
@@ -580,6 +611,7 @@ function updateApproachDistance(hidden) {
     if (maxX < -60 || minX > width + 60 || maxY < -60 || minY > height + 60) {
         approachHud.style.display = 'none'; approachDistBadge.style.display = 'none'; return;
     }
+    if (!Number.isFinite(x1 + y1 + x2 + y2)) { approachHud.style.display = 'none'; approachDistBadge.style.display = 'none'; return; }
     approachHud.style.display = ''; approachDistBadge.style.display = '';
     approachDistLine.setAttribute('x1', x1.toFixed(1)); approachDistLine.setAttribute('y1', y1.toFixed(1));
     approachDistLine.setAttribute('x2', x2.toFixed(1)); approachDistLine.setAttribute('y2', y2.toFixed(1));
@@ -639,7 +671,8 @@ function updateLabels(hidden) {
     const chrome = document.querySelector('.viewport-chrome');
     const safeTop = chrome.offsetTop, safeBottom = safeTop + chrome.clientHeight;
     leaders.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
-    labelLayer.hidden = hidden || !labelsEnabled || !!selected || currentView === 'interior'; leaders.style.display = labelLayer.hidden ? 'none' : '';
+    // The Cupola's label stays while the part labels are switched off: it is the way into the Cupola view.
+    labelLayer.hidden = hidden || !!selected || currentView === 'interior'; leaders.style.display = labelLayer.hidden ? 'none' : '';
     if (labelLayer.hidden) return;
     const viewportBounds = viewport.getBoundingClientRect();
     for (const selector of ['.approach-status', '.interior-focus', '.component-picker']) {
@@ -650,12 +683,45 @@ function updateLabels(hidden) {
         const badgeBounds = approachDistBadge.getBoundingClientRect();
         occupied.push({ left: badgeBounds.left - viewportBounds.left, top: badgeBounds.top - viewportBounds.top, right: badgeBounds.right - viewportBounds.left, bottom: badgeBounds.bottom - viewportBounds.top });
     }
+    {
+        // Cupola: centred under its nadir window, part way down to the station's lower edge on screen, lowered further
+        // past the boxes already taken (or, short of room above the dock, raised past them), the line straight down.
+        const { element, line, dot, corner } = cupolaLabel, tranquility = parts.get('tranquility'), cupola = tranquility.group.userData.cupola;
+        const anchor = tranquility.group.localToWorld(new THREE.Vector3(cupola.center[0], cupola.yTop, cupola.center[1])).project(camera);
+        const anchorX = (anchor.x * .5 + .5) * width, anchorY = (-anchor.y * .5 + .5) * height;
+        let visible = tranquility.group.visible && Math.abs(anchor.x) < .97 && Math.abs(anchor.y) < .95 && anchor.z > -1 && anchor.z < 1;
+        if (visible) {
+            const labelWidth = element.offsetWidth || 70, labelHeight = element.offsetHeight || 34;
+            const maximumTop = Math.min(safeBottom, document.querySelector('.dock').getBoundingClientRect().top - viewportBounds.top) - labelHeight - 10;
+            const left = Math.max(16, Math.min(width - labelWidth - 16, anchorX - labelWidth / 2));
+            let stationBottom = anchorY + 60;
+            for (let k = 0; k < 8 && !stationOnly.isEmpty(); k++) {
+                corner.set(k & 1 ? stationOnly.max.x : stationOnly.min.x, k & 2 ? stationOnly.max.y : stationOnly.min.y, k & 4 ? stationOnly.max.z : stationOnly.min.z).project(camera);
+                if (corner.z < 1) stationBottom = Math.max(stationBottom, (-corner.y * .5 + .5) * height);
+            }
+            let top = anchorY + (stationBottom + 14 - anchorY) * .4;   // the leader 40 % of the way to the station's lower edge
+            const hits = () => occupied.some(box => left < box.right + 8 && left + labelWidth > box.left - 8 && top < box.bottom + 8 && top + labelHeight > box.top - 8);
+            for (let attempt = 0; attempt < 8 && hits() && top + labelHeight + 10 <= maximumTop; attempt++) top += labelHeight + 10;
+            top = Math.min(maximumTop, top);
+            // No room below (a phone, the dock, Dragon's badge): up over the station, the chip's own ground keeping it legible.
+            while (hits() && top > anchorY + 24) top -= 8;
+            visible = top > anchorY + 12 && !hits();
+            if (visible) {
+                occupied.push({ left, top, right: left + labelWidth, bottom: top + labelHeight });
+                element.style.transform = 'translate(' + left.toFixed(1) + 'px,' + top.toFixed(1) + 'px)';
+                const x = Math.max(left + 4, Math.min(left + labelWidth - 4, anchorX));
+                line.setAttribute('d', 'M ' + x.toFixed(1) + ' ' + anchorY.toFixed(1) + ' L ' + x.toFixed(1) + ' ' + top.toFixed(1));
+                dot.setAttribute('cx', x.toFixed(1)); dot.setAttribute('cy', anchorY.toFixed(1));
+            }
+        }
+        element.hidden = !visible; line.style.display = dot.style.display = visible ? '' : 'none';
+    }
     for (const label of labels) {
         const mobile = width < 600, eligible = !mobile || ['power', 'kibo', 'zvezda', 'dragon'].includes(label.id);
         const entry = parts.get(label.id);
         const anchor = entry.group.localToWorld(entry.anchor.clone()).project(camera);
         const anchorX = (anchor.x * .5 + .5) * width, anchorY = (-anchor.y * .5 + .5) * height;
-        const visible = parts.get(label.id).group.visible && eligible && Math.abs(anchor.x) < .97 && Math.abs(anchor.y) < .95 && anchor.z > -1 && anchor.z < 1;
+        const visible = labelsEnabled && entry.group.visible && !entry.absent && eligible && Math.abs(anchor.x) < .97 && Math.abs(anchor.y) < .95 && anchor.z > -1 && anchor.z < 1;
         label.element.hidden = !visible; label.line.style.display = label.dot.style.display = visible ? '' : 'none';
         if (!visible) continue;
         const labelWidth = label.element.offsetWidth, labelHeight = label.element.offsetHeight;
@@ -687,8 +753,12 @@ export function render() {
     // backdrop's ISS marker shows where it is.
     const pixelsPerMetre = camera.zoom * viewport.clientWidth / (camera.right - camera.left), stationPixels = stationSpan * pixelsPerMetre;
     updateApproachDistance(stationPixels < 40); updateLabels(stationPixels < 40); updateCrewThought(); updateShutterControls();
-    // Canadarm2's operations beside the arm, while it or Dextre is selected.
-    updateRoboticsMenu((selected === 'robotics' || selected === 'dextre') && currentView !== 'interior' && stationPixels >= 40);
+    // Canadarm2's operations beside the arm, while it, Dextre or the cargo vehicle is selected (a vehicle that has
+    // left hands the selection to the arm).
+    const cargoAway = !!parts.get('cygnus').absent;
+    if (cargoOption.disabled !== cargoAway) cargoOption.disabled = cargoAway;
+    if (selected === 'cygnus' && cargoAway) selectPart('robotics');
+    updateRoboticsMenu((selected === 'robotics' || selected === 'dextre' || selected === 'cygnus') && currentView !== 'interior' && stationPixels >= 40);
     const approachState = approach.time >= approach.duration ? 'DOCKED' : motion ? approachPhase() : 'PAUSED';
     const readout = rangeLabel(approach.range) + ' / ' + approachState;
     updateRendezvousGuide(currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach');
@@ -779,7 +849,7 @@ renderer.domElement.addEventListener('pointerup', event => {
     pointerStart = null;
     // On the globe a click on the ISS goes back to the station.
     if (currentView === 'orbit') { if (orbitView?.hitsStation(event.clientX, event.clientY)) setView('reverse'); return; }
-    if (currentView === 'launch') return;
+    if (currentView === 'launch' || currentView === 'cupola') return;
     const bounds = renderer.domElement.getBoundingClientRect(); pointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1); raycaster.setFromCamera(pointer, camera);
     // A solid part under the pointer wins over ghosted ones in front of it; a ghost alone selects its part.
     const hits = raycaster.intersectObjects(station.children.filter(group => group.visible), true).filter(intersection => intersection.object.isMesh);
@@ -793,7 +863,7 @@ export function advance(delta) {
     const started = performance.now();
     glideClock += delta;
     if (motion) {
-        elapsed += delta; updateApproach(delta); updateShutter(delta); z1EVA.update(delta); updateDragonCrew(elapsed); updateColumbusCrew(elapsed);
+        elapsed += delta; updateApproach(delta); updateShutter(delta); z1EVA.update(delta); updateDragonCrew(elapsed); updateColumbusCrew(elapsed); updateCabinCrew(elapsed);
         if (!realSun || sunTrack.state !== 'ready') for (const wing of wings) aim(wing, wing.base + Math.sin(elapsed * .07) * .035 * wing.direction, false);
         // A small illustrative prime-antenna tracking arc about its azimuth and elevation axes; the spare stays parked.
         for (const dish of trackingDishes) {
@@ -804,7 +874,8 @@ export function advance(delta) {
     updateSun(delta); glide(delta);
     // Canadarm2, the base and Dextre (js/robotics/): parked, live or a sequence. With motion the shadows refresh on their
     // own schedule; a jump needs them redrawn.
-    if (updateRobotics(delta, motion) && !motion) markShadowsDirty();
+    const armMoved = updateRobotics(delta, motion), riderMoved = !!rider && rider.update(delta, motion);
+    if ((armMoved || riderMoved) && !motion) markShadowsDirty();
     refreshRoboticsTools(false, delta);
     if (flight && !globeViews.has(currentView)) updateFlight(delta);
     else if (dragonFollow && currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach') followDragon(delta);

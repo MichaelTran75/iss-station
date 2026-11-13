@@ -3,10 +3,11 @@
 // page keeps another (collision.js) to watch the moving bodies ahead of the arm (index.js). Built once, a few seconds
 // after the page opens, in a second or two off the main thread (with ?worker=0, or where workers fail, on it).
 //
-// Rigid bodies: the fixed station (every part shown in the 2026 configuration but the robotics, Dextre and Dragon,
+// Rigid bodies: the fixed station (every part shown in the 2026 configuration but the robotics, Dextre, Cygnus and Dragon,
 // without interiors, exhaust puffs or skinned figures); what the scene turns or moves on its own, each in its own
 // frame (each side's SARJ, each solar wing with its iROSA, each radiator wing, each antenna's two axes, Dragon, the
-// window shutter); and the robotics' own: the base's carriage, Dextre's base and body.
+// window shutter); and the robotics' own: the base's carriage, Dextre's base and body, and the cargo vehicle the arm
+// handles (in its own frame, shown or not).
 import * as THREE from 'three';
 import { station } from '../core/stage.js';
 import { query } from '../core/quality.js';
@@ -43,7 +44,7 @@ function sceneRoots() {
     return list;
 }
 const usable = (mesh, top) => {
-    if (!mesh.isMesh || mesh.isSkinnedMesh || mesh.isInstancedMesh || mesh.userData.interior || mesh.userData.puff) return false;
+    if (!mesh.isMesh || mesh.isSkinnedMesh || mesh.isInstancedMesh || (mesh.userData.interior && !mesh.userData.shell) || mesh.userData.puff) return false;
     const position = mesh.geometry?.attributes?.position;
     if (!position || position.count < 3) return false;
     for (let o = mesh; o && o !== top; o = o.parent) if (!o.visible) return false;
@@ -76,7 +77,7 @@ function gather() {
     const identity = new THREE.Matrix4().elements.slice();
     const fixed = body('station', 'station', 'station', identity), moving = new Map(roots.map(root => [root, body(root.id, 'scene', root.what, root.frame)]));
     for (const entry of parts.values()) {
-        if (['robotics', 'dextre'].includes(entry.id) || !shownIn(entry.id, 'modern')) continue;
+        if (['robotics', 'dextre', 'cygnus'].includes(entry.id) || !shownIn(entry.id, 'modern')) continue;
         entry.group.traverse(mesh => {
             if (!usable(mesh, entry.group)) return;
             let root = null;
@@ -100,7 +101,10 @@ function gather() {
         let inBody = false; for (let o = mesh.parent; o && o !== dextre; o = o.parent) if (o === dextreBody) inBody = true;
         const into = inBody ? dBody : dBase; into.meshes.push(meshEntry(mesh, into.toBody, into.box));
     });
-    return [fixed, ...moving.values(), base, dBase, dBody].filter(b => b.meshes.length).map(({ id, kind, what, frame, meshes, box }) => ({ id, kind, what, frame, meshes, lo: box.min.toArray(), hi: box.max.toArray() }));
+    const ship = parts.get('cygnus').group.userData.body, cargo = body('cargo', 'cargo', 'cargo', identity);
+    ship.updateMatrixWorld(true); cargo.toBody = ship.matrixWorld.clone().invert();
+    ship.traverse(mesh => { if (usable(mesh, ship)) cargo.meshes.push(meshEntry(mesh, cargo.toBody, cargo.box)); });
+    return [fixed, ...moving.values(), base, dBase, dBody, cargo].filter(b => b.meshes.length).map(({ id, kind, what, frame, meshes, box }) => ({ id, kind, what, frame, meshes, lo: box.min.toArray(), hi: box.max.toArray() }));
 }
 // The same work as the worker's, on this thread, a few milliseconds at a time.
 function* buildHere(bodies) {
@@ -139,7 +143,7 @@ export function buildMap() {
             if (map.state === 'building') here();
         };
         if (query.get('worker') === '0' || typeof Worker === 'undefined') { here(); return; }
-        try { worker = new Worker(new URL('../workers/robotics.js?v=3f8d05d4eb', import.meta.url), { type: 'module' }); } catch { worker = null; here(); return; }
+        try { worker = new Worker(new URL('../workers/robotics.js?v=5ac26594ec', import.meta.url), { type: 'module' }); } catch { worker = null; here(); return; }
         worker.onmessage = ({ data }) => {
             if (data.type === 'progress') map.progress = data.done / data.total;
             else if (data.type === 'built') finish(data.bodies);

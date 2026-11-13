@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Chuyển model Falcon 9 (GLB) thành data/falcon-9.json và assets/falcon-9/first-stage.png cho góc nhìn Launch.
 
-    python3 falcon9.py ~/Downloads/falcon_9_-_spacex.glb
+    python3 falcon9.py <path>/falcon_9_-_spacex.glb
 
 Model: "Falcon 9 - SpaceX" của Stanley Creative (Sketchfab, CC BY 4.0). Đơn vị gốc là cm, tên lửa đứng theo +y.
 - Bỏ fairing (chuyến chở người dùng Dragon, không có fairing) và cụm khớp chân đáp ở đáy (51 nghìn tam giác cho

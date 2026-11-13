@@ -26,6 +26,54 @@ const rings = [{ zoom: 7, url: gibs, segments: 16, fade: true }, { zoom: 10, url
 export { padDeck };
 export const mountHeight = 4;   // the rocket stands on the launch mount, its engines 4 m above the pad deck (Dragon's hatch then meets the crew access arm, 217 ft up)
 
+// Grain for the imagery near the camera. The finest tiles are about 2 m a pixel, a blur from a camera by the pad; a
+// repeating noise map (red: speckle, green and blue: soft mottling at two sizes) varies the image's own colour by a
+// few percent, more over vegetation, at 9 cm, 0.6 m and 4 m a texel, fading out by 900 m. On the hardstand's deck
+// the concrete's slab joints are ruled every 7.5 m. No new colour: only the image's own, lighter and darker.
+const grainMap = (() => {
+    const size = 256, canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
+    const g = canvas.getContext('2d'), image = g.createImageData(size, size);
+    let seed = 7; const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const lattice = cells => {
+        const values = Float32Array.from({ length: cells * cells }, random), ease = t => t * t * (3 - 2 * t);
+        return (x, y) => {
+            const fx = x / size * cells, fy = y / size * cells, i = Math.floor(fx), j = Math.floor(fy), u = ease(fx - i), v = ease(fy - j);
+            const at = (a, b) => values[(b % cells) * cells + a % cells];
+            return (at(i, j) * (1 - u) + at(i + 1, j) * u) * (1 - v) + (at(i, j + 1) * (1 - u) + at(i + 1, j + 1) * u) * v;
+        };
+    };
+    const blobs = lattice(48), patches = lattice(12);
+    for (let y = 0, k = 0; y < size; y++) for (let x = 0; x < size; x++, k += 4) {
+        image.data[k] = 255 * random(); image.data[k + 1] = 255 * blobs(x, y); image.data[k + 2] = 255 * patches(x, y); image.data[k + 3] = 255;
+    }
+    g.putImageData(image, 0, 0);
+    const map = new THREE.CanvasTexture(canvas); map.wrapS = map.wrapT = THREE.RepeatWrapping; map.anisotropy = 4;
+    return map;
+})();
+function grainOn(material, deck) {
+    material.uniforms = { grain: { value: grainMap }, deck: { value: deck ? new THREE.Vector4(-deck.west, -deck.north, deck.east, deck.south) : new THREE.Vector4(0, 0, 0, 0) }, deckLevel: { value: deck ? deck.deck : 1e9 } };
+    material.onBeforeCompile = shader => {
+        Object.assign(shader.uniforms, material.uniforms);
+        shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGround; varying float vGroundDepth;')
+            .replace('#include <project_vertex>', '#include <project_vertex>\nvGround = position; vGroundDepth = -mvPosition.z;');
+        shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D grain; uniform vec4 deck; uniform float deckLevel; varying vec3 vGround; varying float vGroundDepth;')
+            .replace('#include <map_fragment>', `#include <map_fragment>
+            {
+                float nearBy = 1. - smoothstep(120., 900., vGroundDepth);
+                vec2 p = vGround.xz, turned = vec2(.8 * p.x - .6 * p.y, .6 * p.x + .8 * p.y);
+                float speckle = texture2D(grain, p / 23.).r - .5, mottle = texture2D(grain, turned / 151.).g - .5, patchy = texture2D(grain, p.yx / 1040.).b - .5;
+                vec3 c = diffuseColor.rgb;
+                float green = smoothstep(0., .05, c.g - max(c.r, c.b));
+                diffuseColor.rgb *= 1. + nearBy * (speckle * mix(.24, .42, green) + mottle * mix(.28, .36, green) + patchy * .18);
+                // Slab joints on the hardstand's deck.
+                vec2 cell = p / 7.5, q = abs(fract(cell) - .5);
+                float edge = max(fwidth(cell.x), fwidth(cell.y)), off = .5 - max(q.x, q.y);
+                float onDeck = step(deck.x, p.x) * step(p.x, deck.z) * step(deck.y, p.y) * step(p.y, deck.w) * step(deckLevel - .3, vGround.y);
+                diffuseColor.rgb *= 1. - .2 * onDeck * nearBy * (1. - smoothstep(0., edge + .006, off)) * min(1., .012 / edge);
+            }`);
+    };
+}
+
 // `site`: data/launch-site.json (see js/launch/site.js), or null.
 export function createGround(site) {
     const group = new THREE.Group(), pad = padFrame();
@@ -113,6 +161,7 @@ export function createGround(site) {
             const behind = rings.length - 1 - level;
             const material = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, polygonOffset: behind > 0, polygonOffsetFactor: 2 * behind, polygonOffsetUnits: 8 * behind,
                 vertexColors: fade || near.length > 0, ...(fade ? { transparent: true, depthWrite: false } : { alphaTest: .5 }) });
+            if (level >= 2) grainOn(material, level === drapedBy[0] ? pads[0] : null);
             const mesh = new THREE.Mesh(geometry, material); mesh.visible = false; mesh.renderOrder = -50 + level; mesh.frustumCulled = false;
             group.add(mesh);
             pending++;

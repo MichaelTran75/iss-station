@@ -300,4 +300,10 @@ part('quest', 'Quest airlock', '11 / EXTRAVEHICULAR ACTIVITY', 'A wide equipment
     esp2.userData.cornerTrunnions = 4;
     espKit.finish(esp2); group.add(esp2);
     group.userData.externalStowagePlatform = { name: 'ESP-2', equipmentBoxes: 6, grid: [9, 6], cornerTrunnions: 4, outerGrapple: true };
+    // The worksite of the spacewalker Canadarm2 carries (js/figures/rider.js): a cover plate under one of the boxes,
+    // held by two bolts. `bolts` are the heads the tool's bit meets; station coordinates.
+    const coverY = -1.4471, heads = [[6.38, coverY - .026, 7.4], [6.22, coverY - .026, 7.4]];
+    kit.box([6.3, coverY - .006, 7.4], [.32, .012, .17], 0xc9cec6);
+    for (const [x, , z] of heads) { kit.cylinder([x, coverY - .014, z], .026, .004, palette.silver, [0, 0, 0]); kit.cylinder([x, coverY - .021, z], .013, .012, 0x70777a, [0, 0, 0]); }
+    group.userData.evaWorksite = { bolts: heads, normal: [0, -1, 0] };
 });

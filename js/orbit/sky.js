@@ -13,6 +13,7 @@ import { quality } from '../core/quality.js';
 import { loadElements } from './elements.js';
 import { attitude } from './attitude.js';
 import { createEarthMap } from './earth-map.js';
+import { createEarthTiles } from './earth-tiles.js?v=7ac43c3344';
 import { orbitTheme } from './theme.js';
 import { earthPath, earthRadius, groundTrack, moonLit, moonPath, moonPosition, moonRadius, orbitPath, orbiter, siderealAngle, stateAt,
     sunPosition, sunRadius } from '../sim/orbit.js';
@@ -98,6 +99,7 @@ export function createSky() {
     }));
     scene.add(earth);
     const earthMap = createEarthMap(earth);
+    const earthTiles = createEarthTiles(earth, uniforms.sunDirection);   // the Cupola view's sharper ground (renderFrom)
     // The Orbit view's Earth is always the wind map; the photographed Earth stays behind the station and in Launch.
     let lastDelta = 0;
     // Atmosphere: a rim glow, brighter on the day side; dimmer and greyer round the map. On paper (the light Orbit view)
@@ -289,6 +291,7 @@ export function createSky() {
         earthMap.setTheme(theme);
     }
     function prepare(camera, mode, nearest = Infinity) {
+        earthTiles.group.visible = false;   // renderFrom alone shows them
         const orbitView = mode === 'orbit', fromEarth = camera.position.length();
         // The Orbit view's background (js/orbit/theme.js); the backdrop behind the station and the Launch view are dark.
         const theme = orbitView ? orbitTheme.name : 'dark';
@@ -369,14 +372,18 @@ export function createSky() {
     const zenith = new THREE.Vector3(), starboard = new THREE.Vector3(), aft = new THREE.Vector3(), frame = new THREE.Quaternion(), stationTurn = new THREE.Quaternion();
     const axes = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
     const look = new THREE.Vector3(), eye = new THREE.Vector3();
-    function renderBehind(stationCamera, target, width, height, marked) {
-        if (!iss.state) return false;
+    // The station's frame in the sky: `position` (km) and the turn `frame` from station axes to sky axes.
+    function stationFrame() {
         toScene(iss.state.position, position); toScene(iss.state.velocity, velocity);
         zenith.copy(position).normalize(); starboard.crossVectors(velocity, zenith).normalize(); aft.crossVectors(starboard, zenith);
         // The station's axes: row i of the attitude's turn gives axis i in the +XVV frame (starboard, zenith, aft).
         const turn = attitude.turn;
         axes.forEach((axis, i) => axis.set(0, 0, 0).addScaledVector(starboard, turn[3 * i]).addScaledVector(zenith, turn[3 * i + 1]).addScaledVector(aft, turn[3 * i + 2]));
         frame.setFromRotationMatrix(basis.makeBasis(axes[0], axes[1], axes[2]));
+    }
+    function renderBehind(stationCamera, target, width, height, marked) {
+        if (!iss.state) return false;
+        stationFrame();
         stationCamera.getWorldQuaternion(stationTurn);
         backdropCamera.quaternion.multiplyQuaternions(frame, stationTurn);
         // The station camera's frame at its target, in metres (OrthographicCamera keeps the frame's centre as it zooms).
@@ -404,6 +411,33 @@ export function createSky() {
         renderer.render(scene, backdropCamera);
         return true;
     }
+    // The sky as an eye aboard the station sees it (the Cupola view): `stationCamera` is a perspective camera in the
+    // station's scene (metres); the same eye, turned and placed by the station's frame, draws Earth here, with the
+    // day's picture in tiles over the ground it looks at (js/orbit/earth-tiles.js).
+    const insideCamera = new THREE.PerspectiveCamera(60, 1, 1, 1e9), lookEast = new THREE.Vector3(), lookNorth = new THREE.Vector3();
+    const inside = { bearing: 0, off: 0 };   // where that eye looks: compass bearing over the ground and angle off straight down, degrees
+    function renderFrom(stationCamera, width, height, delta) {
+        if (!iss.state) return false;
+        stationFrame();
+        stationCamera.getWorldQuaternion(stationTurn);
+        insideCamera.quaternion.multiplyQuaternions(frame, stationTurn);
+        stationCamera.getWorldPosition(eye);
+        insideCamera.position.copy(position).add(eye.multiplyScalar(.001).applyQuaternion(frame));
+        insideCamera.fov = stationCamera.fov; insideCamera.aspect = stationCamera.aspect;
+        const offset = stationCamera.view;
+        if (offset?.enabled) insideCamera.setViewOffset(offset.fullWidth, offset.fullHeight, offset.offsetX, offset.offsetY, offset.width, offset.height);
+        else insideCamera.clearViewOffset();
+        prepare(insideCamera, 'backdrop');
+        iss.marker.visible = false; hideLabels();
+        insideCamera.getWorldDirection(look); lookEast.set(0, 1, 0).cross(zenith).normalize(); lookNorth.crossVectors(zenith, lookEast);
+        inside.off = Math.acos(THREE.MathUtils.clamp(-look.dot(zenith), -1, 1)) * 180 / Math.PI;
+        inside.bearing = (Math.atan2(look.dot(lookEast), look.dot(lookNorth)) * 180 / Math.PI + 360) % 360;
+        insideCamera.updateMatrixWorld();
+        earthTiles.group.visible = true; earthTiles.frame(insideCamera, height, delta);
+        resize(width, height);
+        renderer.render(scene, insideCamera);
+        return true;
+    }
     // Nothing shows the sky (the station without its Earth backdrop): the GPU's copies of its maps and meshes are let
     // go, about 130 MB with the 4K maps. Each is uploaded again from the copy kept here the next time it is drawn.
     function release() {
@@ -415,6 +449,6 @@ export function createSky() {
             }
         });
     }
-    return { scene, earth, moon, sun, iss, orbiters, addOrbiter, time, update, prepare, placeLabels, hideLabels, resize, renderBehind, release, moonLit: () => Math.round(lit * 100), ready: iss.ready,
-        mapStatus: () => earthMap.status(), mapLegend: () => earthMap.legend() };
+    return { scene, earth, moon, sun, iss, orbiters, addOrbiter, time, update, prepare, placeLabels, hideLabels, resize, renderBehind, renderFrom, inside, tiles: earthTiles, release, moonLit: () => Math.round(lit * 100), ready: iss.ready,
+        mapStatus: () => earthMap.status(), mapLegend: () => earthMap.legend(), mapLayers: earthMap.layers, setMapLayer: earthMap.setLayer };
 }

@@ -29,6 +29,18 @@ export function createOrbitView(sky) {
     function setFrame(name) { frameName = name; for (const button of frameButtons) button.setAttribute('aria-pressed', String(button.dataset.frame === name)); }
     frameButtons.forEach(button => button.addEventListener('click', () => setFrame(button.dataset.frame)));
     controls.addEventListener('start', () => setFrame(null));
+    // Map layers, each on or off by itself: wind (colour and streaks) and rain. Kept in this browser.
+    const layerButtons = [...panel.querySelectorAll('[data-layer]')], layerKey = 'iss.orbit.layers';
+    function setLayer(name, on) {
+        sky.setMapLayer(name, on);
+        for (const button of layerButtons) button.setAttribute('aria-pressed', String(!!sky.mapLayers[button.dataset.layer]));
+        try { localStorage.setItem(layerKey, JSON.stringify(sky.mapLayers)); } catch (error) { /* not kept */ }
+    }
+    try { const kept = JSON.parse(localStorage.getItem(layerKey) || 'null'); if (kept) for (const name of ['wind', 'rain']) if (typeof kept[name] === 'boolean') sky.setMapLayer(name, kept[name]); } catch (error) { /* defaults */ }
+    for (const button of layerButtons) {
+        button.setAttribute('aria-pressed', String(!!sky.mapLayers[button.dataset.layer]));
+        button.addEventListener('click', () => setLayer(button.dataset.layer, !sky.mapLayers[button.dataset.layer]));
+    }
 
     // Where the chosen frame wants the camera. ISS: above the station, a little behind it and off to the north of its
     // orbital plane, so the orbit reads as a ring round Earth. Moon and Sun: square to the line from Earth to the body
@@ -59,7 +71,7 @@ export function createOrbitView(sky) {
     const pad = value => String(value).padStart(2, '0');
     const utc = date => date.getUTCFullYear() + '-' + pad(date.getUTCMonth() + 1) + '-' + pad(date.getUTCDate()) + ' ' + pad(date.getUTCHours()) + ':' + pad(date.getUTCMinutes()) + ':' + pad(date.getUTCSeconds()) + ' UTC';
     const age = ms => ms < 3600000 ? Math.round(ms / 60000) + ' min' : ms < 172800000 ? Math.round(ms / 3600000) + ' h' : Math.round(ms / 86400000) + ' days';
-    let legendShown = '';
+    const legendShown = { wind: '', rain: '' };
     function updateReadout() {
         const state = sky.iss.state, iss = sky.iss;
         field('orbit-clock').textContent = utc(sky.time.date);
@@ -67,10 +79,13 @@ export function createOrbitView(sky) {
         field('orbit-moon').textContent = Math.round(sky.moon.position.length()).toLocaleString('en-US') + ' km · ' + sky.moonLit() + '% lit';
         // The wind map (js/orbit/earth-map.js): its sources and wind speed scale.
         field('orbit-map-source').textContent = sky.mapStatus();
-        // The wind speed scale, in the palette of the theme shown, once the speeds are on the globe.
-        const legend = field('orbit-wind-legend'), gradient = sky.mapLegend();
-        legend.hidden = !gradient;
-        if (gradient && gradient !== legendShown) { legendShown = gradient; legend.querySelector('i').style.background = gradient; }
+        // Each layer's scale, in the palette of the theme shown, while the layer is on the globe.
+        const gradients = sky.mapLegend();
+        for (const name of ['wind', 'rain']) {
+            const legend = field('orbit-' + name + '-legend'), gradient = gradients[name];
+            legend.hidden = !gradient;
+            if (gradient && gradient !== legendShown[name]) { legendShown[name] = gradient; legend.querySelector('i').style.background = gradient; }
+        }
         if (!state) { field('orbit-source').textContent = iss.object ? 'SGP4 failed for this time' : 'Loading orbital elements…'; return; }
         field('orbit-altitude').textContent = state.height.toFixed(1) + ' km';
         field('orbit-speed').textContent = state.speed.toFixed(2) + ' km/s';
@@ -113,7 +128,7 @@ export function createOrbitView(sky) {
     }
     const projected = new THREE.Vector3();
     return {
-        camera, controls, setWarp, setFrame,
+        camera, controls, setWarp, setFrame, setLayer,
         get frame() { return frameName; },
         enter() { active = true; controls.enabled = true; panel.hidden = false; setWarp(sky.time.warp); setFrame('iss'); resize(viewport.clientWidth, viewport.clientHeight); },
         leave() { active = false; controls.enabled = false; panel.hidden = true; setWarp(1); sky.hideLabels(); },

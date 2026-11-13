@@ -8,8 +8,8 @@
 //     pre-built operation planned for the station as it stands), answered by { type: 'route', id, result }.
 //   { type: 'cancel', id }.
 import { fieldBuilder } from '../robotics/field.js?v=180c067b77';
-import { createWorld, placeBodies } from '../robotics/collision.js?v=6f3c17fd88';
-import { planSteps, route } from '../robotics/planner.js?v=ba03aa124f';
+import { createWorld, placeBodies } from '../robotics/collision.js?v=ee93b5170b';
+import { planSteps, route } from '../robotics/planner.js?v=b33acbc219';
 
 let world = null;
 const cancelled = new Set();

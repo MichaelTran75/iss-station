@@ -69,7 +69,7 @@ export const powerChannels = { [-outerSolarStation]: ['2B', '4B'], [-innerSolarS
 // Every channel carries an iROSA since 5 November 2026: 2B and 4B (2021), 3A and 4A (December 2022), 1A and 1B (June
 // 2023), 2A (29 October 2026) and 3B (5 November 2026).
 export const augmentedChannels = new Set(['2B', '4B', '4A', '1A', '3A', '1B', '2A', '3B']);
-export const modernParts = new Set(['irosa', 'nauka', 'prichal', 'tranquility', 'leonardo', 'beam', 'bishop', 'poisk', 'rassvet', 's3payloads', 'p3payloads', 'soyuz-ms29', 'progress-aft', 'progress-poisk', 'pma3', 'cargo-dragon', 'dextre', 'aces']);
+export const modernParts = new Set(['irosa', 'nauka', 'prichal', 'tranquility', 'leonardo', 'beam', 'bishop', 'poisk', 'rassvet', 's3payloads', 'p3payloads', 'soyuz-ms29', 'progress-aft', 'progress-poisk', 'pma3', 'cargo-dragon', 'cygnus', 'dextre', 'aces']);
 // Shown only in the simplified comparison: in the 2026 configuration other vehicles hold those ports.
 export const referenceParts = new Set(['soyuz']);
 export const shownIn = (id, configuration) => configuration === 'modern' ? !referenceParts.has(id) : !modernParts.has(id);

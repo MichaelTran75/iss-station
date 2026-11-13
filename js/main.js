@@ -29,6 +29,7 @@ import './parts/nauka.js';
 import './parts/prichal.js';
 import { approach, dragonFlightBounds, updateApproach } from './parts/dragon.js';
 import './parts/cargo-dragon.js';
+import './parts/cygnus.js';
 import './parts/soyuz.js';
 import './parts/robotics.js';
 import './parts/dextre.js';
@@ -40,16 +41,18 @@ import './parts/z1.js';
 import './parts/external-payloads.js';
 import './parts/assembly.js';
 import { loadZ1Maintenance, z1EVA } from './figures/eva.js';
+import { createRider } from './figures/rider.js';
+import { cabinCrew } from './figures/cabin-crew.js';
 import { scheduleLineArt } from './ui/ghost.js';
 import { halveLargeMaps, releaseAfterUpload } from './core/release.js';
 import './ui/rendezvous-guide.js';
 import { live } from './orbit/live.js';
 import * as robotics from './robotics/index.js';
-import { adoptEvaFigure, advance, configuration, currentView, focusPart, labels, motion, notify, render, resize,
-    restartApproach, selected, selectPart, setConfiguration, setView, stationBounds, getLaunchView, getOrbitView, getSky, setLive, showSunAt, startRealSun } from './ui/controller.js';
+import { adoptEvaFigure, adoptRider, advance, configuration, currentView, focusPart, labels, motion, notify, render, resize,
+    restartApproach, selected, selectPart, setConfiguration, setView, stationBounds, getCupolaView, getLaunchView, getOrbitView, getSky, setLive, showSunAt, startRealSun } from './ui/controller.js';
 
 const loading = document.getElementById('loading');
-window.issAtlas = { showSunAt, setLive, live, robotics, z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get sky() { return getSky(); }, get currentView() { return currentView; }, get orbitView() { return getOrbitView(); }, get launchView() { return getLaunchView(); } };
+window.issAtlas = { cabinCrew, showSunAt, setLive, live, robotics, z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get sky() { return getSky(); }, get currentView() { return currentView; }, get orbitView() { return getOrbitView(); }, get launchView() { return getLaunchView(); }, get cupolaView() { return getCupolaView(); } };
 if (quality.ceiling !== 'high') halveLargeMaps(station);   // both before the first frame uploads anything
 releaseAfterUpload(station);
 applyQuality(quality.tier); setConfiguration('modern');
@@ -62,7 +65,12 @@ window.lucide?.createIcons();
 if (!window.lucide) window.addEventListener('load', () => window.lucide?.createIcons(), { once: true });
 loading.style.opacity = '0'; loading.style.pointerEvents = 'none'; setTimeout(() => { loading.hidden = true; }, 400);
 app.dataset.ready = 'true';
-loadZ1Maintenance(adoptEvaFigure); startRealSun();
+loadZ1Maintenance(figure => {
+    adoptEvaFigure(figure);
+    const quest = parts.get('quest').group.userData;
+    adoptRider(window.issAtlas.rider = createRider(figure, robotics.crewView, quest.evaHatch, quest.evaWorksite));
+});
+startRealSun();
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => advance(Math.min(clock.getDelta(), .06)));
 document.fonts.ready.then(() => render());

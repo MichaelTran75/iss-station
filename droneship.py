@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Chuyển model sà lan đáp (GLB) thành data/droneship.json và assets/droneship/*.jpg cho góc nhìn Launch.
 
-    python3 droneship.py ~/Downloads/space_x_drone_barge.glb
+    python3 droneship.py <path>/space_x_drone_barge.glb
 
 Model: "Space X Drone Barge" của TAIGA-ZOE (Sketchfab, CC BY 4.0). Gốc dựng theo +z, quay về +y như glTF.
 - Tỉ lệ: dài 6,47 đơn vị = 300 ft (91,44 m), như sà lan Marmac 300 của "Of Course I Still Love You"; khi đó bề rộng cả

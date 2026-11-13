@@ -1,16 +1,19 @@
-// Falcon 9 with Crew Dragon, from the pad to orbit, and its booster's flight back to the droneship: a point-mass
-// flight simulation, run once when the Launch view loads (about 25,000 steps). Pure model, no drawing.
+// Falcon 9 with Crew Dragon, from the pad to orbit, and its booster's flight back to the droneship: a flight
+// simulation (the path as a point mass; the body's axis turned by torque, roll left out), run once when the Launch
+// view loads (about 25,000 steps). Pure model, no drawing.
 // - Forces: nine Merlin 1D (914 kN and Isp 311 s in vacuum each, less 0.68 m² of nozzle exit times the air pressure),
 //   the vacuum Merlin (981 kN, Isp 348 s), drag by Mach number on a 3.66 m body, gravity, in an inertial frame with
 //   Earth turning under it; US Standard Atmosphere 1976. Mass falls as propellant burns.
 // - Masses: first stage 25.6 t dry with 405 t of propellant, second stage 4 t with 107.5 t, Crew Dragon 12.5 t
 //   (549 t at liftoff, as published).
-// - Guidance: straight up for 10 s, a 1.9° pitch-over toward 31.6° (north-east of the ground), then a gravity turn
+// - Guidance: straight up for 10 s, a 1.86° pitch-over toward 32.2° (north-east of the ground), then a gravity turn
 //   (thrust along the air-relative velocity). Throttled to 72% through Max-Q and held to 3.1 g for the crew. The second
 //   stage steers by a linear-tangent law and cuts off on reaching its orbit. Fitted so cutoffs land on NASA's Demo-2
-//   times and the climb on DM-1's webcast telemetry (shahar603/Telemetry-Data): at main engine cutoff 86.7 km and
-//   1,888 m/s against 88 km and 1,871 m/s; orbit 202 × 216 km at 51.64°.
-// - The booster: pushed 1 m/s off at separation, coasts and flips, fires three engines as it falls back through 70 km
+//   times and the climb on DM-1's webcast telemetry (shahar603/Telemetry-Data): at main engine cutoff 84.5 km and
+//   1,899 m/s against 88 km and 1,871 m/s; orbit 202 × 216 km at 51.64°.
+// - Attitude: guidance only asks for a direction; the engines' swing (to 5°), the grid fins and the nitrogen
+//   thrusters turn the body there (createAttitude), and the thrust pushes where the nozzles then point.
+// - The booster: pushed 1 m/s off at separation, turns end over end on its nitrogen thrusters, fires three engines as it falls back through 70 km
 //   (entry burn), falls tail-first with its grid fins out, and fires one engine to land, lit when that would just stop
 //   it at the deck (a hoverslam: one Merlin cannot throttle below hover). Where it comes down is the droneship.
 // Commanded times (cutoff, separations, nose cone) follow NASA's Demo-2 timeline; Max-Q, second-stage cutoff and the
@@ -29,8 +32,8 @@ export const vehicle = {
     merlinVac: 914e3, merlinIsp: 311, merlinExit: .681, mvacVac: 981e3, mvacIsp: 348
 };
 const guidance = {
-    kick: 1.9, kickStart: 10, kickEnd: 20, azimuth: 31.6424, bucket: [38, 70, .72], gLimit: 3.1,
-    ignition: -3, meco: 153, separation: 156, ses: 164, pitch0: 5.96134, pitchRate: -.000271072, orbit: [202e3, 216e3],
+    kick: 1.858806, kickStart: 10, kickEnd: 20, azimuth: 32.16852, bucket: [38, 70, .72], gLimit: 3.1,
+    ignition: -3, meco: 153, separation: 156, ses: 164, pitch0: 3.64062, pitchRate: -.0004145783, orbit: [202e3, 216e3],
     entryAltitude: 70e3, entryLength: 20, tailArea: 1.6, landingCap: 6000, dragon: 720, nosecone: 766, end: 800
 };
 
@@ -76,10 +79,57 @@ const unit = a => scale(a, 1 / (length(a) || 1));
 const spin = [0, 0, omega];
 const airVelocity = s => add(s.v, cross(spin, s.r), -1);
 
+// Attitude. Each body turns about its centre of mass as a rod (roll left out) under the torque of what steers it:
+// the engines' gimbal (the thrust swung up to 5° off the axis, on its arm from the centre of mass: the push sideways
+// acts on the flight too), the grid fins once out (torque in proportion to the air's dynamic pressure) and nitrogen
+// thrusters (a fixed torque). A rate loop turns it toward the commanded direction: the turn rate wanted goes with
+// the angle off, capped so that what steers can still stop it in time; the torque asked goes with the rate's error.
+// `gyration`: radius of gyration (m; inertia = mass × its square). `arm`: centre of mass to the gimbal (m). `gas`:
+// the thrusters' torque (N·m). `fins`: torque per Pa of dynamic pressure (N·m/Pa). `spin`: the fastest turn asked
+// (rad/s: the booster's flip is a push, a coast round and a push to stop). `natural`, `damping`: the loop's
+// frequency (rad/s) and damping; `brake`: the share of the torque counted on for stopping; `finsFrom`: the dynamic
+// pressure (Pa) the fins work from; `upright`: in the landing burn the booster points against its fall plus this
+// much straight up (m/s), so it stands upright as it slows instead of chasing the last drift. Estimates from the
+// published sizes and masses, not the maker's figures. Air torque on the body itself is left out.
+export const steering = {
+    natural: 2, damping: .7, gimbal: 5, brake: .8, finsFrom: 100, upright: 20,
+    stack: { gyration: 18, arm: 25, gas: 46e3 }, second: { gyration: 6, arm: 9, gas: 6e3, spin: .07 }, booster: { gyration: 11, arm: 13, gas: 150e3, fins: 65, spin: .12 }
+};
+function createAttitude(axis, rate = [0, 0, 0]) {
+    let a = axis.slice(), w = rate.slice(), last = null;
+    const kp = steering.natural / (2 * steering.damping), kd = 2 * steering.damping * steering.natural, swing = Math.sin(steering.gimbal * rad);
+    return {
+        get axis() { return a; }, get rate() { return w; },
+        // One step of `dt` toward `want`, for a `body` of `steering` and its mass, with `force` N of thrust on the
+        // gimbal and `q` Pa on the fins (0 while stowed). Gives the thrust's direction and what each did: `gimbal`
+        // (the thrust's swing off the axis, its sine), `fins` and `gas` (the torque's axis, by their share of full).
+        step(want, body, mass, force, q, dt) {
+            const inertia = mass * body.gyration ** 2;
+            const byGimbal = force * body.arm * swing / inertia, byFins = q > steering.finsFrom ? body.fins * q / inertia : 0, byGas = body.gas / inertia, most = byGimbal + byFins + byGas;
+            let turn = cross(a, want);
+            const sine = length(turn), angle = Math.atan2(sine, dot(a, want));
+            if (sine < 1e-9) turn = cross(a, Math.abs(a[2]) < .9 ? [0, 0, 1] : [1, 0, 0]);
+            // The command's own turning is carried along (not across a jump in the command).
+            let lead = last ? scale(cross(last, want), 1 / dt) : [0, 0, 0];
+            if (length(lead) > .1) lead = [0, 0, 0];
+            last = want;
+            const wanted = add(lead, unit(turn), Math.min(kp * angle, Math.sqrt(2 * steering.brake * most * angle), body.spin ?? Infinity));
+            let ask = scale(add(wanted, w, -1), kd); ask = add(ask, a, -dot(ask, a));
+            const size = length(ask), given = Math.min(size, most), about = size > 0 ? scale(ask, 1 / size) : [0, 0, 0];
+            const gimballed = Math.min(given, byGimbal), finned = Math.min(given - gimballed, byFins), blown = given - gimballed - finned;
+            const gimbal = gimballed > 0 ? scale(cross(a, about), gimballed / byGimbal * swing) : null;
+            const thrust = gimbal ? unit(add(scale(a, Math.sqrt(1 - dot(gimbal, gimbal))), gimbal)) : a;
+            w = add(w, about, given * dt); a = unit(add(a, cross(w, a), dt)); w = add(w, a, -dot(w, a));
+            return { thrust, gimbal, fins: finned > 0 ? scale(about, finned / byFins) : null, gas: blown > 0 ? scale(about, blown / byGas) : null };
+        }
+    };
+}
+
 // The simulation. Inertial frame: z north, the pad on the x-z plane at liftoff.
 const phi = launchSite.latitude * rad, padStart = [R * Math.cos(phi), 0, R * Math.sin(phi)];
-function simulate() {
-    const v = vehicle, p = guidance, step = .05, keep = 4;   // samples every 0.2 s
+// `change`: guidance values to try instead (for fitting).
+export function simulate(change) {
+    const v = vehicle, p = change ? { ...guidance, ...change } : guidance, step = .05, keep = 4;   // samples every 0.2 s
     const mdotMerlin = v.merlinVac / (v.merlinIsp * g0), mdotMvac = v.mvacVac / (v.mvacIsp * g0);
     const heading = (r, azimuth) => { const up = unit(r), east = unit(cross([0, 0, 1], up)), north = cross(up, east); return add(scale(east, Math.sin(azimuth * rad)), north, Math.cos(azimuth * rad)); };
     // Forces on a state for a mode: { engines, vacuum, throttle, direction(state, airVelocity, up), tail }.
@@ -110,27 +160,32 @@ function simulate() {
     const targetA = R + (p.orbit[0] + p.orbit[1]) / 2;
     const stack = [], booster = [];
     let s = { r: padStart.slice(), v: cross(spin, padStart), m: v.s1Dry + v.s1Prop + v.s2Dry + v.s2Prop + v.payload };
-    let attitude = unit(padStart), seco = null, maxQ = { q: 0, at: 0 }, reserve = 0, separated = null, insertion = null;
+    const turning = createAttitude(unit(padStart));
+    let attitude = turning.axis, want = attitude, steer = {}, seco = null, maxQ = { q: 0, at: 0 }, reserve = 0, separated = null, insertion = null;
     stack.push({ t: 0, r: s.r, v: s.v, m: s.m, q: 0, load: 0, engines: 9, lit: 9, attitude });   // on the pad at liftoff
     for (let k = 0; ; k++) {
         const t = k * step;
         if (t > p.end + 1e-9) break;
-        let mode = { engines: 0 }, throttle = 1;
+        // The direction commanded (`want`, held when nothing commands one), then the turn toward it by what steers.
+        let mode = { engines: 0 }, throttle = 1, force = 0;
+        const up = unit(s.r);
         if (t < p.meco) {
             const atm = air(length(s.r) - R), full = 9 * (v.merlinVac - v.merlinExit * atm.p);
             throttle = Math.max(.4, Math.min(t > p.bucket[0] && t < p.bucket[1] ? p.bucket[2] : 1, p.gLimit * g0 * s.m / full));
-            mode = { engines: 9, throttle, direction: (st, vAir, up) => {
-                if (t < p.kickStart) return up;
-                if (t < p.kickEnd) { const angle = p.kick * rad * (t - p.kickStart) / (p.kickEnd - p.kickStart); return unit(add(scale(up, Math.cos(angle)), heading(st.r, p.azimuth), Math.sin(angle))); }
-                return unit(vAir);
-            } };
+            force = Math.max(0, 9 * (v.merlinVac * throttle - v.merlinExit * atm.p));
+            mode = { engines: 9, throttle };
+            if (t < p.kickStart) want = up;
+            else if (t < p.kickEnd) { const angle = p.kick * rad * (t - p.kickStart) / (p.kickEnd - p.kickStart); want = unit(add(scale(up, Math.cos(angle)), heading(s.r, p.azimuth), Math.sin(angle))); }
+            else want = unit(airVelocity(s));
         } else if (t >= p.ses && seco === null) {
-            mode = { engines: 1, vacuum: true, throttle: 1, direction: (st, vAir, up) => {
-                const level = unit(add(st.v, up, -dot(st.v, up))), pitch = Math.atan(Math.tan(p.pitch0 * rad) - p.pitchRate * (t - p.ses));
-                return unit(add(scale(level, Math.cos(pitch)), up, Math.sin(pitch)));
-            } };
+            const level = unit(add(s.v, up, -dot(s.v, up))), pitch = Math.atan(Math.tan(p.pitch0 * rad) - p.pitchRate * (t - p.ses));
+            want = unit(add(scale(level, Math.cos(pitch)), up, Math.sin(pitch)));
+            force = v.mvacVac;
+            mode = { engines: 1, vacuum: true, throttle: 1 };
         }
-        if (mode.engines) attitude = mode.direction(s, airVelocity(s), unit(s.r));
+        steer = turning.step(want, t < p.separation ? steering.stack : steering.second, s.m, force, 0, step);
+        const along = steer.thrust;
+        mode.direction = () => along;
         const info = {}, before = s;
         s = rk4(s, mode, info);
         // Cutoff inside a step: redo it at the fraction of thrust that reaches the orbit's energy exactly.
@@ -141,23 +196,24 @@ function simulate() {
         }
         if (t < p.meco && info.q > maxQ.q) maxQ = { q: info.q, at: t };
         const now = t + step;
+        attitude = turning.axis;
         if (Math.abs(now - p.meco) < step / 2) reserve = s.m - v.s1Dry - v.s2Dry - v.s2Prop - v.payload;
         if (Math.abs(now - p.separation) < step / 2) {
-            separated = { r: s.r.slice(), v: add(s.v, attitude, -1), m: v.s1Dry + reserve, attitude: attitude.slice() };   // pushers: 1 m/s apart
+            separated = { r: s.r.slice(), v: add(s.v, attitude, -1), m: v.s1Dry + reserve, attitude: attitude.slice(), rate: turning.rate.slice() };   // pushers: 1 m/s apart
             s.m -= v.s1Dry + reserve;
         }
         if (now >= p.ses && seco === null && orbit(s).a >= targetA) { seco = now; insertion = orbit(s); }
-        if (k % keep === keep - 1) stack.push({ t: now, r: s.r, v: s.v, m: s.m, q: info.q, load: info.load, engines: mode.engines ? (mode.vacuum ? -1 : 9 * throttle) : 0, lit: mode.engines && !mode.vacuum ? 9 : 0, attitude });
+        if (k % keep === keep - 1) stack.push({ t: now, r: s.r, v: s.v, m: s.m, q: info.q, load: info.load, engines: mode.engines ? (mode.vacuum ? -1 : 9 * throttle) : 0, lit: mode.engines && !mode.vacuum ? 9 : 0, attitude, gimbal: steer.gimbal, gas: steer.gas });
     }
     // The booster's own flight.
     let b = separated, entry = null, landingStart = null, landing = null, apogee = 0;
-    const retro = st => scale(unit(airVelocity(st)), -1);
-    if (b) booster.push({ t: guidance.separation, r: b.r, v: b.v, m: b.m, q: 0, load: 0, engines: 0, lit: 0, retro: retro(b) });
+    const retro = st => scale(unit(airVelocity(st)), -1), tumble = b && createAttitude(b.attitude, b.rate);
+    if (b) booster.push({ t: p.separation, r: b.r, v: b.v, m: b.m, q: 0, load: 0, engines: 0, lit: 0, attitude: b.attitude });
     // Its engines spool as above: `pump` and `thrust` (in engines at full thrust) follow the command through the two
     // lags once lit, thrust alone runs down at cutoff, and the `lit` engines burn until it has.
-    let pump = 0, thrust = 0, lit = 0, commandedAt = -Infinity, commanded = false;
+    let pump = 0, thrust = 0, lit = 0, commandedAt = -Infinity, commanded = false, pressure = 0;
     for (let k = 0; b && !landing; k++) {
-        const t = guidance.separation + k * step;
+        const t = p.separation + k * step;
         if (t > p.end) break;
         const h = length(b.r) - R, vAir = airVelocity(b), speed = length(vAir), descent = -dot(vAir, unit(b.r));
         apogee = Math.max(apogee, h);
@@ -178,17 +234,23 @@ function simulate() {
         if (commanded) { if (t - commandedAt >= merlinSpool.delay) { const lag = 1 - Math.exp(-step / merlinSpool.rise); pump += (command - pump) * lag; thrust += (pump - thrust) * lag; } }
         else { thrust *= Math.exp(-step / merlinSpool.tailOff); pump = thrust; if (thrust < .002) thrust = pump = lit = 0; }
         const burning = lit ? thrust : 0;
-        if (lit) mode = { engines: lit, throttle: thrust / lit, tail: true, direction: retro };
+        // It holds as it left for 4 s, then turns tail-first into the air stream and keeps there: by the nitrogen
+        // thrusters in the thin air, the grid fins once out (16 s) and the air is there, the gimbal in the burns.
+        const force = lit ? Math.max(0, v.merlinVac * thrust - lit * v.merlinExit * air(h).p) : 0;
+        const aim = t < p.separation + 4 ? b.attitude : landingStart === null ? retro(b) : unit(add(scale(unit(b.r), steering.upright), vAir, -1));
+        const steer = tumble.step(aim, steering.booster, b.m, force, t > p.separation + 16 ? pressure : 0, step);
+        if (lit) mode = { engines: lit, throttle: thrust / lit, tail: true, direction: () => steer.thrust };
         const info = {};
         b = { ...rk4(b, mode, info), attitude: b.attitude };
-        const now = t + step;
-        if (k % keep === keep - 1) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, lit, retro: retro(b) });
+        pressure = info.q;
+        const now = t + step, turned = { attitude: tumble.axis, gimbal: steer.gimbal, fins: steer.fins, gas: steer.gas };
+        if (k % keep === keep - 1) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, lit, ...turned });
         if (length(b.r) - R <= 0) {
             landing = { at: now, speed: length(airVelocity(b)), r: b.r, m: b.m };
-            if (booster[booster.length - 1].t < now - 1e-9) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, lit, retro: retro(b) });   // the touchdown itself
+            if (booster[booster.length - 1].t < now - 1e-9) booster.push({ t: now, r: b.r, v: b.v, m: b.m, q: info.q, load: info.load, engines: burning, lit, ...turned });   // the touchdown itself
         }
     }
-    return { stack, booster, seco, maxQ, reserve, insertion, entry, landingStart, landing, apogee, separatedAttitude: separated?.attitude };
+    return { stack, booster, seco, maxQ, reserve, insertion, entry, landingStart, landing, apogee };
 }
 export const flightData = simulate();
 const sim = flightData;
@@ -379,15 +441,29 @@ function sampleAt(list, time) {
     // Thrust runs on smoothly between samples (a burn's spool is a few samples long), and the engines lit at either
     // end count (the vacuum Merlin's -1 is a flag, not a thrust).
     const engines = a.engines >= 0 && b.engines >= 0 ? a.engines + (b.engines - a.engines) * u : near.engines;
-    return { ...near, t: time, r, v: vel, engines, ...(a.lit !== undefined || b.lit !== undefined ? { lit: Math.max(a.lit || 0, b.lit || 0) } : {}) };
+    const attitude = a.attitude && b.attitude ? { attitude: unit(add(scale(a.attitude, 1 - u), b.attitude, u)) } : {};
+    return { ...near, ...attitude, t: time, r, v: vel, m: a.m + (b.m - a.m) * u, engines, ...(a.lit !== undefined || b.lit !== undefined ? { lit: Math.max(a.lit || 0, b.lit || 0) } : {}) };
 }
 // `flight`: the direction of its velocity through space (in the pad's frame), which its orbit's frame is built on.
+// `gimbal`, `fins`, `gas`: what steers it at that moment, as the simulation gives them, in the pad's frame (or null).
 function describe(entry, time, direction) {
+    const steer = vector => vector ? toPad(vector, time, false) : null;
     return {
+        gimbal: steer(entry.gimbal), fins: steer(entry.fins), gas: steer(entry.gas),
         position: toPad(entry.r, time, true), direction: unit(toPad(direction, time, false)), flight: unit(toPad(entry.v, time, false)), altitude: Math.max(0, length(entry.r) - R),
         downrange: Math.acos(Math.min(1, cosineAt(entry.r, time))) * R, speed: length(airVelocity(entry)), inertial: length(entry.v),
         q: entry.q || 0, load: entry.load || 0, mass: entry.m, engines: entry.engines || 0, lit: entry.lit || 0
     };
+}
+// A state's thrust (N), throttle (of the engines lit) and weight (N, at its height), from `engines` (thrust in engines
+// at full thrust; the vacuum Merlin's -1) and `lit`: the sea-level Merlins lose their nozzles' exit area times the air
+// pressure, as in the simulation.
+export function thrustOf(state) {
+    const weight = state.mass * mu / Math.pow(R + state.altitude, 2);
+    if (state.engines < 0) return { thrust: vehicle.mvacVac, throttle: 1, lit: 1, weight };
+    if (!(state.engines > 0) || !state.lit) return { thrust: 0, throttle: 0, lit: 0, weight };
+    const thrust = Math.max(0, vehicle.merlinVac * state.engines - state.lit * vehicle.merlinExit * air(state.altitude).p);
+    return { thrust, throttle: Math.min(1, state.engines / state.lit), lit: state.lit, weight };
 }
 // Angle between the pad and the point under the vehicle (cosine), for the distance downrange.
 function cosineAt(r, time) {
@@ -448,21 +524,15 @@ export function padTransform(time) {
     const angle = -omega * time, c = Math.cos(angle), s = Math.sin(angle), rows = [padEast, padUp, scale(padNorth, -1)];
     return { m: rows.flatMap(e => [e[0] * c + e[1] * s, e[1] * c - e[0] * s, e[2]]), offset: rows.map(e => -dot(padStart, e)) };
 }
-// The booster after separation: flipping tail-first over 4-40 s, then flying tail-first into the air stream.
+// The booster after separation, pointing as its simulated attitude has it (the flip, then tail-first).
 export function boosterState(mission) {
     // Once down it stays on the barge: freeze the clock there, so Earth's turning does not carry its inertial
     // position away.
     const landed = sim.landing && mission >= sim.landing.at, sinceDown = landed ? mission - sim.landing.at : 0;
     if (landed) mission = sim.booster[sim.booster.length - 1].t;
-    const entry = sampleAt(sim.booster, mission), since = mission - guidance.separation;
-    const flip = since <= 4 ? 0 : since >= 40 ? 1 : (since - 4) / 36, eased = flip * flip * (3 - 2 * flip);
-    // Turn from the separation attitude toward retrograde through the plane they share.
-    const from = sim.separatedAttitude, to = entry.retro, angle = Math.acos(Math.max(-1, Math.min(1, dot(from, to)))) * eased;
-    let axis = cross(from, to); if (length(axis) < 1e-6) axis = cross(from, [0, 0, 1]); axis = unit(axis);
-    const c = Math.cos(angle), s = Math.sin(angle), turned = add(add(scale(from, c), cross(axis, from), s), axis, dot(axis, from) * (1 - c));
-    const state = describe(entry, mission, eased >= 1 ? to : turned);
+    const entry = sampleAt(sim.booster, mission), state = describe(entry, mission, entry.attitude);
     // On the deck the engine is cut and runs down.
-    if (landed) Object.assign(state, { speed: 0, inertial: omega * (R + state.altitude) * Math.cos(phi), engines: state.engines * tailOff(sinceDown), lit: sinceDown < 1.2 ? state.lit : 0, load: 1, q: 0, landed: true });
+    if (landed) Object.assign(state, { speed: 0, inertial: omega * (R + state.altitude) * Math.cos(phi), engines: state.engines * tailOff(sinceDown), lit: sinceDown < 1.2 ? state.lit : 0, load: 1, q: 0, landed: true, gimbal: null, fins: null, gas: null });
     return state;
 }
 // Where the booster comes down: the droneship, in the pad's frame (position and its local up).

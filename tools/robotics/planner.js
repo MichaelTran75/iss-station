@@ -26,17 +26,19 @@ window.roboticsPlanner = async clear => {
     // The tightest moment of a compiled plan, from segment `from` on.
     function clearanceOf(plan, from = 0, step = 2) {
         let t0 = 0, worst = { clearance: Infinity };
+        const min = {};
         plan.segments.forEach((segment, k) => {
             if (k >= from) {
                 const n = samples(segment, step);
                 for (let j = 0; j <= n; j++) {
                     const t = t0 + Math.min(segment.duration - 1e-6, segment.duration * j / n), r = clear.test(MO.sample(plan, t).state);
                     if (r.clearance < worst.clearance) worst = { ...r, label: segment.label, t: +t.toFixed(2) };
+                    for (const kind in r.min) if (r.min[kind] !== null && !(min[kind] <= r.min[kind])) min[kind] = r.min[kind];
                 }
             }
             t0 += segment.duration;
         });
-        return worst;
+        return { ...worst, min };
     }
     const better = (a, b) => { const ga = Math.min(a.clearance, ENOUGH), gb = Math.min(b.clearance, ENOUGH); return Math.abs(ga - gb) > 1e-6 ? ga > gb : a.duration < b.duration; };
     // Where the tip waits before its approach, for a reach or a stow.

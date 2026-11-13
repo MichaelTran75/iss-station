@@ -131,7 +131,9 @@ export const dragon = part('dragon', 'SpaceX Crew Dragon', '17 / RENDEZVOUS & DO
     allIndex.set(suitIndex.white); allIndex.set(suitIndex.black, suitIndex.white.length); allIndex.set(suitIndex.visor, suitIndex.white.length + suitIndex.black.length);
     suitBody.setAttribute('position', new THREE.BufferAttribute(suitPoints, 3)); suitBody.setIndex(new THREE.BufferAttribute(allIndex, 1)); suitBody.computeVertexNormals();
     const suitUv = new THREE.BufferAttribute(new Float32Array(suitPoints.length / 3 * 2), 2);
-    const crewSkins = { white: material(0xf1f2ef, .56, .05), black: material(0x25282c, .6, .15), visor: material(0x0d1115, .14, .7) };
+    // Own copies (the shared cache would mark other parts), marked as crew for the ghost context (js/ui/ghost.js).
+    const crewSkins = { white: material(0xf1f2ef, .56, .05).clone(), black: material(0x25282c, .6, .15).clone(), visor: material(0x0d1115, .14, .7).clone() };
+    for (const skin of Object.values(crewSkins)) skin.userData.astronaut = true;
     const suitParts = Object.entries(suitIndex).map(([name, index]) => {
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', suitBody.attributes.position); geometry.setAttribute('normal', suitBody.attributes.normal); geometry.setAttribute('uv', suitUv);

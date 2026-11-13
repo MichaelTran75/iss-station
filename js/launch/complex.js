@@ -63,6 +63,47 @@ function canvasTexture(width, height, draw, repeat) {
     if (repeat) { texture.wrapS = texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(...repeat); }
     return texture;
 }
+// A trench's floor from above, 8 px a metre across and 4 px a metre along it (north at the top): refractory concrete
+// in bays 6 m long, its joints dark; soot in streaks along the flow; at a pad in use the first 45 m beyond the
+// deflector burnt darker, with paler washed streaks where the deluge water runs off.
+function trenchFloor(used) {
+    return canvasTexture(144, 464, (g, w, h) => {
+        let seed = 11; const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        g.fillStyle = '#57534d'; g.fillRect(0, 0, w, h);
+        for (let k = 0; k < 2600; k++) { const v = 60 + random() * 50; g.fillStyle = 'rgba(' + v + ',' + (v - 3) + ',' + (v - 8) + ',.35)'; g.fillRect(random() * w, random() * h, 1 + random() * 2, 1 + random() * 3); }
+        for (let k = 0; k < 90; k++) {
+            const x = random() * w, y0 = random() * h, length = 30 + random() * 160, dark = random() < .7;
+            const streak = g.createLinearGradient(0, y0 + length, 0, y0);
+            streak.addColorStop(0, dark ? 'rgba(20,18,16,.32)' : 'rgba(170,166,158,.22)'); streak.addColorStop(1, 'rgba(0,0,0,0)');
+            g.fillStyle = streak; g.fillRect(x, y0, 1.5 + random() * 5, length);
+        }
+        if (used) {
+            const burnt = g.createLinearGradient(0, h, 0, h - 240);
+            burnt.addColorStop(0, 'rgba(14,12,11,.75)'); burnt.addColorStop(.5, 'rgba(20,17,15,.45)'); burnt.addColorStop(1, 'rgba(0,0,0,0)');
+            g.fillStyle = burnt; g.fillRect(0, 0, w, h);
+        }
+        g.fillStyle = 'rgba(18,17,16,.7)'; for (let y = h - 24; y > 0; y -= 24) g.fillRect(0, y, w, 1);
+        g.fillRect(w / 2, 0, 1, h);
+        g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, 3, h); g.fillRect(w - 3, 0, 3, h);
+    });
+}
+// The flame deflector's face: steel plates 3 m square, bolted, burnt bare down the middle where the exhaust strikes.
+let deflectorMap = null;
+function deflectorPlates() {
+    return deflectorMap ||= canvasTexture(144, 240, (g, w, h) => {
+        let seed = 5; const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        g.fillStyle = '#5d5953'; g.fillRect(0, 0, w, h);
+        const burnt = g.createRadialGradient(w / 2, h * .45, 4, w / 2, h * .45, w * .75);
+        burnt.addColorStop(0, 'rgba(22,19,17,.8)'); burnt.addColorStop(.6, 'rgba(40,34,30,.4)'); burnt.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = burnt; g.fillRect(0, 0, w, h);
+        for (let k = 0; k < 60; k++) { g.fillStyle = 'rgba(' + (random() < .5 ? '150,120,95' : '25,22,20') + ',.18)'; g.fillRect(random() * w, random() * h, 2 + random() * 4, 20 + random() * 70); }
+        g.fillStyle = 'rgba(16,15,14,.75)';
+        for (let x = 0; x <= w; x += 24) g.fillRect(x, 0, 1, h);
+        for (let y = 0; y <= h; y += 24) g.fillRect(0, y, w, 1);
+        g.fillStyle = 'rgba(190,186,178,.5)';
+        for (let x = 0; x <= w; x += 24) for (let y = 0; y <= h; y += 24) for (const [dx, dy] of [[3, 3], [-4, 3], [3, -4], [-4, -4]]) g.fillRect(x + dx, y + dy, 1, 1);
+    });
+}
 // Siding: a light wall with faint vertical panel joints.
 function siding(g, w, h, base, joint, every) {
     g.fillStyle = base; g.fillRect(0, 0, w, h);
@@ -274,10 +315,10 @@ export function createComplex() {
         walls.push(pad.x - half, 0, back, pad.x + half, 0, back, pad.x - half, pad.deck, back, pad.x + half, 0, back, pad.x + half, pad.deck, back, pad.x - half, pad.deck, back);
         const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(walls, 3)); geometry.computeVertexNormals();
         const wallMesh = new THREE.Mesh(geometry, lit({ color: 0x9f9b92, side: THREE.DoubleSide })); group.add(wallMesh);
-        const floor = new THREE.Mesh(new THREE.BoxGeometry(half * 2, .2, north + south), lit({ color: 0x3a3733 }));
+        const floor = new THREE.Mesh(new THREE.BoxGeometry(half * 2, .2, north + south), lit({ map: trenchFloor(pad.name === '39A') }));
         floor.position.set(pad.x, .1, pad.z + (south - north) / 2); group.add(floor);
         // The flame deflector: a ramp from under the mount down to the trench floor, turning the exhaust north.
-        const deflector = new THREE.Mesh(new THREE.BoxGeometry(half * 2 - .2, 1.2, Math.hypot(pad.deck - 2, 28)), lit({ color: 0x4a4641 }));
+        const deflector = new THREE.Mesh(new THREE.BoxGeometry(half * 2 - .2, 1.2, Math.hypot(pad.deck - 2, 28)), lit({ map: deflectorPlates() }));
         deflector.rotation.x = -Math.atan2(pad.deck - 2, 28); deflector.position.set(pad.x, (pad.deck - 2) / 2, pad.z + south - 14); group.add(deflector);
     }
 

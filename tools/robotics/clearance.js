@@ -7,10 +7,18 @@
 // test(state) (a pose.js state) gives the smallest gap in metres, and where it is, between the arm and the station, the
 // base, Dextre and itself (bodies three or more apart), and between Dextre and the station and base. Within a metre of
 // a fixture's seat nothing counts: end effectors and Dextre's own latch meet fixtures there.
+//
+// The cargo vehicle has a grid in its own frame. While it is there (state.cargo.on other than 'away') the arm is
+// measured against it ('cargo'); while the arm carries it, points over its hull and arrays are measured against the
+// station and the base ('cargoOut'), but for its berthing end within 2 m of the port it is going to.
+//
+// With the foot restraint fitted (state.crew.seat above 0) the spacewalker's spheres (collision.js CREW_SPHERES, in
+// pose.js crewFrame) are measured against the station, the base, Dextre, the vehicle and the far half of the arm
+// ('crew').
 window.roboticsClearance = async () => {
     const THREE = await import('three');
     const K = await import('./js/robotics/kinematics.js'), P = await import('./js/robotics/pose.js');
-    const M = await import('./js/robotics/layout.js'), F = await import('./js/robotics/fixtures.js');
+    const M = await import('./js/robotics/layout.js'), F = await import('./js/robotics/fixtures.js'), C = await import('./js/robotics/collision.js');
     const A = window.issAtlas, station = A.station;
     station.updateMatrixWorld(true);
     const toStation = station.matrixWorld.clone().invert();
@@ -71,7 +79,7 @@ window.roboticsClearance = async () => {
         return best;
     }
     // The station as shown, and which part each triangle belongs to.
-    const skip = new Set(['robotics', 'dextre', 'dragon']), world = grid(.5), owner = [];
+    const skip = new Set(['robotics', 'dextre', 'dragon', 'cygnus']), world = grid(.5), owner = [];
     const meshMatrix = mesh => toStation.clone().multiply(mesh.matrixWorld);
     for (const entry of A.parts.values()) {
         if (skip.has(entry.id) || !entry.group.visible) continue;
@@ -94,6 +102,16 @@ window.roboticsClearance = async () => {
         let up = o.parent, inBody = false; while (up && up !== dextre) { if (up === body) inBody = true; up = up.parent; }
         addMesh(inBody ? dextreBodyGrid : dextreBaseGrid, o, (inBody ? bInverse : dInverse).clone().multiply(o.matrixWorld));
     });
+    // The cargo vehicle in its body frame (drawn or not), and points over it: rings round the hull, the arrays' rims
+    // and halfway in.
+    const ship = A.parts.get('cygnus').group.userData.body, cargoGrid = grid(.25), cargoPoints = [];
+    ship.updateMatrixWorld(true);
+    const shipInverse = ship.matrixWorld.clone().invert();
+    ship.traverse(o => { if (o.isMesh && o.geometry?.attributes.position) addMesh(cargoGrid, o, shipInverse.clone().multiply(o.matrixWorld)); });
+    for (const [y, r] of [[0, 1.19], [-.2, 1.19], ...Array.from({ length: 13 }, (_, k) => [-.9 - k * .45, 1.535]), [-6.5, 1.15], [-7.1, 1.15], [-7.75, 1.15], [-7.9, .26]])
+        for (let i = 0; i < 16; i++) cargoPoints.push([Math.cos(i * Math.PI / 8) * r, y, Math.sin(i * Math.PI / 8) * r]);
+    for (const x of [-3.6, 3.6]) for (const r of [.9, 1.85]) for (let i = 0; i < 16; i++) cargoPoints.push([x + Math.cos(i * Math.PI / 8) * r, -7 + Math.sin(i * Math.PI / 8) * r, 0]);
+    const PORT = [0, -2.53, 12];
     // The arm's spheres [x, y, z, radius] in the arm frame at zero, LEE A's half (B0..B3; B4..B7 by the half turn):
     // end effector, roll, yaw and pitch housings, then boom 1 with its end fittings, camera and electronics boxes.
     const half = [
@@ -113,7 +131,8 @@ window.roboticsClearance = async () => {
         const near = [apply(P.baseFrame(state), [0, 0, 0]), ...(state.tip ? [apply(P.tipFrame(state), [0, 0, 0])] : []), ...seats];
         const dBody = P.dextreBody(state), dBase = K.multiply(dBody, P.bodyRoll(-state.dextre.roll));
         const dBodyInverse = K.invert(dBody), dBaseInverse = K.invert(dBase);
-        const min = { station: Infinity, base: Infinity, dextre: Infinity, self: Infinity, dextreOut: Infinity };
+        const cargo = state.cargo && state.cargo.on !== 'away' ? P.cargoBody(state) : null, cargoInverse = cargo && K.invert(cargo);
+        const min = { station: Infinity, base: Infinity, dextre: Infinity, self: Infinity, dextreOut: Infinity, cargo: Infinity, cargoOut: Infinity, crew: Infinity };
         let worst = { clearance: Infinity };
         const note = (kind, d, where) => { if (d < min[kind]) min[kind] = d; if (d < worst.clearance) worst = { clearance: d, what: kind, ...where }; };
         const placed = [];
@@ -124,6 +143,7 @@ window.roboticsClearance = async () => {
             note('station', nearest(world, p, r + .6) - r, where);
             note('base', nearest(baseGrid, [p[0] - shift, p[1], p[2]], r + .6) - r, where);
             note('dextre', Math.min(nearest(dextreBodyGrid, apply(dBodyInverse, p), r + .6), nearest(dextreBaseGrid, apply(dBaseInverse, p), r + .6)) - r, where);
+            if (cargo) note('cargo', nearest(cargoGrid, apply(cargoInverse, p), r + .6) - r, where);
         }));
         for (const [x, y, z, r, onBase] of dextreSpheres) {
             const p = apply(onBase ? dBase : dBody, [x, y, z]);
@@ -131,8 +151,23 @@ window.roboticsClearance = async () => {
             const d = Math.min(nearest(world, p, r + .6), nearest(baseGrid, [p[0] - shift, p[1], p[2]], r + .6)) - r;
             note('dextreOut', d, { at: p });
         }
+        if (cargo && state.cargo.on === 'tip') for (const point of cargoPoints) {
+            const p = apply(cargo, point);
+            if (point[1] > -1 && distance(p, PORT) < 2) continue;
+            note('cargoOut', Math.min(nearest(world, p, .8), nearest(baseGrid, [p[0] - shift, p[1], p[2]], .8)), { at: p });
+        }
+        if (state.crew && state.crew.seat > 0) {
+            const crewAt = P.crewFrame(state);
+            for (const [x, y, z, r] of C.CREW_SPHERES) {
+                const p = apply(crewAt, [x, y, z]), where = { body: 'crew', at: p };
+                let d = Math.min(nearest(world, p, r + .6), nearest(baseGrid, [p[0] - shift, p[1], p[2]], r + .6), nearest(dextreBodyGrid, apply(dBodyInverse, p), r + .6), nearest(dextreBaseGrid, apply(dBaseInverse, p), r + .6));
+                if (cargo) d = Math.min(d, nearest(cargoGrid, apply(cargoInverse, p), r + .6));
+                note('crew', d - r, where);
+                for (const a of placed) if ((state.end === 'A' ? a.b : 7 - a.b) <= 4) note('crew', distance(a.p, p) - a.r - r, { body: 'crew/' + a.b, at: p });
+            }
+        }
         for (const a of placed) for (const c of placed) if (c.b - a.b >= 3) note('self', distance(a.p, c.p) - a.r - c.r, { body: a.b + '/' + c.b, at: a.p });
-        if (worst.what === 'station' || worst.what === 'dextreOut') worst.part = whichPart(worst.at);
+        if (worst.what === 'station' || worst.what === 'dextreOut' || worst.what === 'cargoOut' || worst.what === 'crew') worst.part = whichPart(worst.at);
         worst.clearance = +worst.clearance.toFixed(3); worst.at = worst.at?.map(v => +v.toFixed(2));
         for (const kind in min) min[kind] = Number.isFinite(min[kind]) ? +min[kind].toFixed(3) : null;
         return { ...worst, min };

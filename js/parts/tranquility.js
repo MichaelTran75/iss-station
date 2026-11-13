@@ -7,8 +7,12 @@ import { referenceCbmCone, referenceFreeCbm, referencePassiveCBM } from '../core
 import { hullBadge } from '../core/surfaces.js';
 import { moduleAt } from '../core/hull.js';
 
-part('tranquility', 'Tranquility & Cupola', '10 / HABITATION & OBSERVATION', 'Tranquility houses life-support equipment. Cupola has six trapezoidal side windows, an 80 cm circular Earth-facing window and protective external shutters; it supports Earth observation and robotic operations. The shutters are shown folded open and the glazing is drawn 75% transparent, showing the cabin and its robotic workstation.', [['Joined station', '2010'], ['Cupola windows', '6 side + 1 nadir']], [-7, -2, 12], (kit, group) => {
-    moduleAt(kit, [-6.3, 0, 12], 6.7, 2.15, 'x', { skin: 'quilted', endInterfaceSides: [-1] });
+part('tranquility', 'Tranquility & Cupola', '10 / HABITATION & OBSERVATION', 'Tranquility houses life-support equipment. Cupola has six trapezoidal side windows, an 80 cm circular Earth-facing window and protective external shutters; it supports Earth observation and robotic operations. The shutters are shown folded open and the glazing is drawn 75% transparent, showing the cabin and its robotic workstation. A band of Tranquility\'s hull is drawn the same way: inside, one crew member squats on the resistive exerciser, one floats through between the hatches and one photographs the Earth from the Cupola.', [['Joined station', '2010'], ['Cupola windows', '6 side + 1 nadir']], [-7, -2, 12], (kit, group) => {
+    // The two bays next to Unity are see-through over the forward and forward-zenith side (module frame: z along the
+    // axis toward Unity, angle 0 forward, a quarter turn zenith); nodeCabin() furnishes them.
+    const open = { a0: -Math.PI / 4, a1: 3 * Math.PI / 8, z0: .67, z1: 3.35 };
+    moduleAt(kit, [-6.3, 0, 12], 6.7, 2.15, 'x', { skin: 'quilted', endInterfaceSides: [-1], window: open });
+    nodeCabin(group, open);
     // The short inboard cone and passive CBM meet Unity's radial active collar.
     // Node 3's barrel, Cupola and all other ports keep their existing placement.
     const unityCollar = new THREE.Group(), unityCollarKit = new Kit();
@@ -149,6 +153,8 @@ part('tranquility', 'Tranquility & Cupola', '10 / HABITATION & OBSERVATION', 'Tr
         cabinKit.add(shapes.box, material(0x9aa1a3), [cx - .30, -2.845, cz + dz], [.03, .10, .03], [0, 0, 0], false);
     }
     const cabin = new THREE.Group(); cabin.name = 'Cupola cabin'; cabinKit.finish(cabin); group.add(cabin);
+    // wall: the cabin wall's corner radius at a height.
+    group.userData.cupola = { center: [cx, cz], yBase, yTop, baseRadius, topRadius, hatchY: -2.80, home: cabin, wall: y => 1.10 - .60 * (-2.795 - y) / .70 };
     cabin.traverse(object => { object.userData.interior = true; if (object.isMesh) { object.castShadow = false; object.receiveShadow = true; } });
     const glazing = new THREE.Group(); glazing.name = 'Cupola glazing (75% transparent)'; glazingKit.finish(glazing); group.add(glazing);
     glazing.traverse(object => { object.userData.interior = true; if (object.isMesh) { object.castShadow = false; object.receiveShadow = false; object.renderOrder = 2; } });
@@ -156,3 +162,143 @@ part('tranquility', 'Tranquility & Cupola', '10 / HABITATION & OBSERVATION', 'Tr
     // Inboard of the zenith port, so the lettering stays clear of its collar.
     hullBadge(kit, 'NODE 3', [-4.35, 0, 12], 2.225, [2.4, .40], 'x');
 });
+
+// Node 3's cabin behind the see-through section: cut faces and exposed frames around the opening, a 75%-transparent
+// skin over it, the liner, a rack row on the aft wall and one under the deck, a bulkhead with an open hatch at each
+// end, and the resistive exerciser (ARED) on the deck: a foot plate, a frame with two vacuum cylinders, and a lift arm
+// whose bar the crew member carries on the shoulders. The arm and its piston rods are separate meshes that
+// js/figures/cabin-crew.js moves; the overhead and forward rack rows are left out so the cabin stays in view.
+function nodeCabin(group, open) {
+    const tube = new THREE.Group(), interior = new THREE.Group(), frames = new THREE.Group();
+    tube.name = 'Tranquility module frame'; interior.name = 'Tranquility cabin'; frames.name = 'Tranquility exposed frames';
+    tube.position.set(-6.3, 0, 12); tube.rotation.y = Math.PI / 2; group.add(tube); tube.add(frames, interior);
+    const R = 2.15, Ro = 2.197, Rp = 1.98, aisle = .95, rackDepth = .72, span = open.z1 - open.z0, mid = (open.z0 + open.z1) / 2;
+    const at = (r, a, z) => [Math.cos(a) * r, Math.sin(a) * r, z];
+    const twoSided = (color, roughness = .7, metalness = .22) => { const m = material(color, roughness, metalness).clone(); m.side = THREE.DoubleSide; return m; };
+    const frameKit = new Kit(), cabinKit = new Kit(), glazingKit = new Kit();
+    function sweep(target, r0, z0, r1, z1, a0, a1, surface) {
+        const steps = Math.max(2, Math.ceil(Math.abs(a1 - a0) / (Math.PI / 32))), positions = [], indices = [];
+        for (let row = 0; row < 2; row++) for (let i = 0; i <= steps; i++) positions.push(...at(row ? r1 : r0, a0 + (a1 - a0) * i / steps, row ? z1 : z0));
+        for (let i = 0; i < steps; i++) { const j = i + steps + 1; indices.push(i, i + 1, j, j, i + 1, j + 1); }
+        const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setIndex(indices); geometry.computeVertexNormals(); target.add(geometry, surface, [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
+    }
+    function arc(target, r, z, a0, a1, radius, color) {
+        const points = [], steps = Math.max(8, Math.ceil(Math.abs(a1 - a0) / (Math.PI / 40)));
+        for (let i = 0; i <= steps; i++) points.push(new THREE.Vector3(...at(r, a0 + (a1 - a0) * i / steps, z)));
+        target.add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), steps * 2, radius, 6, false), material(color, .6, .3), [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
+    }
+    // Cut faces of the wall, 6 mm clear of the barrel's own end face, a beam along each long edge, and a ring frame
+    // of two arcs and a lattice at each end.
+    const cutFace = twoSided(0xe4e6df, .82, .08);
+    for (const a of [open.a0, open.a1]) {
+        const corners = [at(Rp, a, open.z0), at(Ro, a, open.z0), at(Ro, a, open.z1), at(Rp, a, open.z1)], face = new THREE.BufferGeometry();
+        face.setAttribute('position', new THREE.Float32BufferAttribute(corners.flat(), 3)); face.setIndex([0, 1, 2, 0, 2, 3]); face.computeVertexNormals();
+        frameKit.add(face, cutFace, [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
+        frameKit.rod(at(2.07, a, open.z0), at(2.07, a, open.z1), .045, 0xd6d9d2);
+        for (let n = 1; n < 8; n++) frameKit.box(at(2.07, a, open.z0 + span * n / 8), [.13, .13, .05], 0xbfc4be, [0, 0, a], false);
+    }
+    for (const z of [open.z0 + .006, open.z1 - .006]) sweep(frameKit, Rp, z, Ro, z, open.a0, open.a1, cutFace);
+    // The grapple fixture on this side of the node stands on a longeron across the opening, with a doubler under it.
+    const mount = { a: Math.PI / 4, z: 1.7 };
+    frameKit.rod(at(2.12, mount.a, open.z0), at(2.12, mount.a, open.z1), .05, 0xd6d9d2);
+    frameKit.cylinder(at(Ro - .035, mount.a, mount.z), .40, .07, 0xd6d9d2, [0, 0, mount.a - Math.PI / 2]);
+    for (const z of [open.z0 + .07, open.z1 - .07]) {
+        const lo = open.a0 - .03, hi = open.a1 + .03, n = 10;
+        for (const r of [1.72, 1.96]) arc(frameKit, r, z, lo, hi, .032, 0xdfe2db);
+        for (let i = 0; i < n; i++) {
+            const a = lo + (hi - lo) * i / n, b = lo + (hi - lo) * (i + 1) / n;
+            frameKit.rod(at(1.72, a, z), at(1.96, b, z), .016, 0xc5c9c3); frameKit.rod(at(1.96, a, z), at(1.72, b, z), .016, 0xc5c9c3);
+        }
+    }
+    frameKit.finish(frames);
+    // The clear skin stays part of the hull for the robotic arm's clearance map (userData.shell).
+    const clearSkin = new THREE.MeshStandardMaterial({ color: 0xd3d8d4, roughness: .35, metalness: .08, transparent: true, opacity: .25, depthWrite: false });
+    const glazing = new THREE.Group(); glazing.name = 'Tranquility see-through hull section';
+    sweep(glazingKit, Ro, open.z0, Ro, open.z1, open.a0, open.a1, clearSkin);
+    for (const a of [-Math.PI / 8, 0, Math.PI / 8, Math.PI / 4]) glazingKit.line([at(Ro + .004, a, open.z0), at(Ro + .004, a, open.z1)]);
+    glazingKit.line(Array.from({ length: 19 }, (_, i) => at(Ro + .004, open.a0 + (open.a1 - open.a0) * i / 18, 2.01)));
+    glazingKit.finish(glazing); tube.add(glazing);
+    glazing.traverse(object => { object.userData.interior = true; object.userData.shell = true; if (object.isMesh) { object.castShadow = false; object.receiveShadow = false; object.renderOrder = 2; } });
+
+    // Liner and the two bulkheads, each with an open hatch that reads dark.
+    sweep(cabinKit, Rp, open.z0, Rp, open.z1, open.a1, open.a0 + Math.PI * 2, twoSided(0xd8dbd3, .85, .06));
+    const bulkhead = twoSided(0xe1e3dc, .85, .06), beyond = new THREE.MeshBasicMaterial({ color: 0x14181a, side: THREE.DoubleSide });
+    const roundedSquare = (half, radius) => {
+        const s = new THREE.Shape(); s.moveTo(-half + radius, -half); s.lineTo(half - radius, -half); s.quadraticCurveTo(half, -half, half, -half + radius);
+        s.lineTo(half, half - radius); s.quadraticCurveTo(half, half, half - radius, half); s.lineTo(-half + radius, half);
+        s.quadraticCurveTo(-half, half, -half, half - radius); s.lineTo(-half, -half + radius); s.quadraticCurveTo(-half, -half, -half + radius, -half); return s;
+    };
+    const hatchFrame = roundedSquare(.68, .3); hatchFrame.holes.push(roundedSquare(.56, .24));
+    for (const [z, side] of [[open.z0 + .02, 1], [open.z1 - .02, -1]]) {
+        sweep(cabinKit, 0, z, R - .003, z, 0, Math.PI * 2, bulkhead);
+        cabinKit.add(new THREE.ExtrudeGeometry(hatchFrame, { depth: .07, bevelEnabled: false, curveSegments: 8 }), material(0xb4bab6, .6, .3), [0, 0, side > 0 ? z : z - .07], [1, 1, 1], [0, 0, 0], false);
+        cabinKit.add(new THREE.ShapeGeometry(roundedSquare(.565, .24), 8), beyond, [0, 0, z + side * .012], [1, 1, 1], [0, 0, 0], false);
+        for (const x of [-.82, .82]) {
+            cabinKit.rod([x, -.4, z + side * .1], [x, .4, z + side * .1], .016, palette.gold);
+            for (const y of [-.4, .4]) cabinKit.rod([x, y, z], [x, y, z + side * .1], .013, palette.gold);
+        }
+        // Soft stowage bags strapped above the hatch.
+        for (let i = 0; i < 3; i++) cabinKit.box([-.5 + i * .5, 1.02, z + side * .13], [.44, .34, .22], [0xe9eae4, 0xdcdfd8, 0xe4e1d6][i], [0, 0, 0], false);
+        cabinKit.box([0, 1.02, z + side * .245], [1.5, .03, .012], 0x40607c, [0, 0, 0], false);
+    }
+    // Rack fronts: lockers and equipment panels drawn once on a canvas.
+    function fronts(seed, equipment) {
+        const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 384; const g = canvas.getContext('2d');
+        let state = seed * 9301 + 49297; const random = () => (state = (state * 9301 + 49297) % 233280) / 233280;
+        g.fillStyle = '#d9dcd5'; g.fillRect(0, 0, 256, 384);
+        for (let row = 0; row < 6; row++) for (let column = 0; column < 2; column++) {
+            const x = 8 + column * 124, y = 8 + row * 62, w = 116, h = 54, kind = equipment ? random() : 1;
+            g.fillStyle = kind < .3 ? '#39424a' : kind < .5 ? '#b9c3c4' : '#eceee8'; g.fillRect(x, y, w, h);
+            g.strokeStyle = '#8b938f'; g.lineWidth = 2; g.strokeRect(x, y, w, h);
+            if (kind < .3) { g.fillStyle = ['#5fd0a0', '#e9b44c', '#6aa7e0'][Math.floor(random() * 3)]; for (let i = 0; i < 5; i++) g.fillRect(x + 10 + i * 20, y + 12, 10, 5); g.fillStyle = '#9fb0b8'; g.fillRect(x + 10, y + 28, 70, 14); }
+            else { g.fillStyle = '#5c6562'; g.fillRect(x + w / 2 - 16, y + h - 14, 32, 5); g.fillStyle = random() < .5 ? '#2f5f8f' : '#b5533c'; g.fillRect(x + 8, y + 8, 26, 9); }
+        }
+        const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy()); return texture;
+    }
+    const rackBody = material(0x9ea8a3, .78, .18), rackPost = 0xd1d5ce, width = span / 2 - .04;
+    [mid - span / 4, mid + span / 4].forEach((z, bay) => {
+        // Aft wall: fronts face forward (+x). Deck: fronts face up.
+        cabinKit.add(shapes.box, rackBody, [-aisle - rackDepth / 2, 0, z], [rackDepth - .02, 1.86, width], [0, 0, 0], false);
+        cabinKit.add(new THREE.PlaneGeometry(width - .03, 1.82).rotateY(Math.PI / 2), material(0xffffff, .82, .05, fronts(bay + 1, true)), [-aisle + .004, 0, z], [1, 1, 1], [0, 0, 0], false);
+        cabinKit.add(shapes.box, rackBody, [0, -aisle - rackDepth / 2, z], [1.86, rackDepth - .02, width], [0, 0, 0], false);
+        cabinKit.add(new THREE.PlaneGeometry(1.82, width - .03).rotateX(-Math.PI / 2), material(0xffffff, .82, .05, fronts(bay + 5, false)), [0, -aisle + .004, z], [1, 1, 1], [0, 0, 0], false);
+        for (const edge of [-width / 2, width / 2]) { cabinKit.box([-aisle + .02, 0, z + edge], [.07, 1.9, .045], rackPost, [0, 0, 0], false); cabinKit.box([0, -aisle + .02, z + edge], [1.9, .07, .045], rackPost, [0, 0, 0], false); }
+        for (const y of [-.5, .15, .62]) cabinKit.rod([-aisle + .05, y, z - .32], [-aisle + .05, y, z + .1], .012, 0x7c8581);
+    });
+    // A light bar along the aft overhead edge, a service duct above it, and gold rails along the deck edges.
+    cabinKit.box([-.905, .905, mid], [.1, .1, span - .08], 0xd9dcd4, [0, 0, 0], false);
+    cabinKit.add(shapes.box, new THREE.MeshBasicMaterial({ color: 0xf8f5e6 }), [-.86, .86, mid], [.03, .03, span - .2], [0, 0, Math.PI / 4], false);
+    cabinKit.box([-1.13, 1.2, mid], [.38, .34, span - .1], 0x4b5351, [0, 0, 0], false);
+    for (const sx of [-1, 1]) cabinKit.rod([sx * .86, -.9, open.z0 + .1], [sx * .86, -.9, open.z1 - .1], .018, palette.gold);
+
+    // The exerciser. Its user faces forward (+x) with the bar across the shoulders, along the module axis.
+    const ared = { z: 1.55, top: -aisle + .06, pivot: [-.84, .45], reach: .5355, rodFrom: .45, rodTo: [], rods: [] };
+    const steel = 0xaab1af, dark = 0x2c3136;
+    cabinKit.box([-.30, -aisle + .03, ared.z], [.66, .06, .92], dark, [0, 0, 0], false);
+    for (const dz of [-.3, .3]) cabinKit.box([-.26, -aisle + .064, ared.z + dz], [.4, .008, .2], 0x6f777a, [0, 0, 0], false);
+    for (const side of [-1, 1]) {
+        const z = ared.z + side * .56;
+        cabinKit.rod([-.86, -aisle, z], [-.86, ared.pivot[1] + .07, z], .032, steel);
+        cabinKit.rod([-.86, -aisle + .02, z], [-.46, -aisle + .02, z], .028, steel);
+        cabinKit.rod([-.78, -aisle + .04, z], [-.78, -.28, z], .095, 0xc9cdc6);
+        cabinKit.rod([-.78, -.28, z], [-.78, -.25, z], .07, dark);
+        ared.rodTo.push([-.78, -.27, z]);
+    }
+    cabinKit.rod([-.86, ared.pivot[1] + .05, ared.z - .56], [-.86, ared.pivot[1] + .05, ared.z + .56], .028, steel);
+    cabinKit.rod([ared.pivot[0], ared.pivot[1], ared.z - .6], [ared.pivot[0], ared.pivot[1], ared.z + .6], .022, dark);
+    const utilities = new THREE.Group(); utilities.name = 'Tranquility liner, racks and exerciser'; cabinKit.finish(utilities); interior.add(utilities);
+    // Moving parts: the lift arm about the pivot (its x axis runs out to the bar) and a piston rod each side.
+    const armKit = new Kit(), arm = new THREE.Group(); arm.name = 'Exerciser lift arm';
+    for (const side of [-1, 1]) armKit.rod([0, 0, side * .56], [ared.reach, 0, side * .56], .026, steel);
+    armKit.rod([ared.reach, 0, -.62], [ared.reach, 0, .62], .017, 0x3b4146);
+    for (const side of [-1, 1]) armKit.rod([ared.reach, 0, side * .09], [ared.reach, 0, side * .2], .034, 0x1d2023);
+    armKit.finish(arm); arm.position.set(ared.pivot[0], ared.pivot[1], ared.z); interior.add(arm); ared.arm = arm;
+    for (const side of [-1, 1]) {
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(.016, .016, .8, 10).translate(0, -.4, 0), material(0xdfe3e1, .3, .7)); rod.name = 'Exerciser piston rod';
+        interior.add(rod); ared.rods.push(rod);
+    }
+    interior.traverse(object => { object.userData.interior = true; if (object.isMesh) { object.castShadow = false; object.receiveShadow = false; } });
+    group.userData.seeThrough = { angleStart: open.a0, angleEnd: open.a1, axialStart: open.z0, axialEnd: open.z1, opacity: .25 };
+    group.userData.cabin = { tube, interior, open, aisle, ared };
+}

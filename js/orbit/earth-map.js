@@ -6,11 +6,16 @@
 // globe, in its own Earth-fixed frame (y north, as js/orbit/sky.js maps it), and loads the first time the map shows.
 // - Coastlines and borders: Natural Earth 1:50m through world-atlas (TopoJSON). An arc two countries share is a land
 //   border; an arc one country uses alone is coast.
-// - Wind: NOAA GFS 10 m wind on a 1° grid, the three-hourly step nearest the shown time, from the PacIOOS ERDDAP
-//   server (OPeNDAP binary, about 290 kB gzipped). Streaks are seeded over the part of the globe on screen, one for
+// - Wind: NOAA GFS 10 m wind on a 1° grid, the three-hourly step nearest the shown time, from NOAA's copy on AWS
+//   (js/orbit/gfs.js: two GRIB2 fields, about 150 kB); if that fails, from the PacIOOS ERDDAP server (OPeNDAP binary,
+//   about 290 kB gzipped). The two do not agree exactly (about 1 m/s rms at the same time). Streaks are seeded over the part of the globe on screen, one for
 //   every 150 square pixels of it, and move 3 pixels a second for each m/s, so they look alike from a whole globe down
 //   to a close view: from about 80,000 times faster than the air (whole globe) to 4,000 times (closest). The speed
 //   colours the globe through a palette up to 30 m/s (stronger wind keeps the last colour); the panel shows it.
+// - Rain: NOAA GFS surface precipitation rate, same sources and step, 0.5° grid (about 210 kB from AWS, 257 kB from
+//   PacIOOS): the model's rate, a mean over its last 3-6 hour interval, not rain observed. Coloured on a
+//   log scale from `rainLow` (below it the layer is clear) to `rainTop` mm/h, over the wind colour when both show.
+// - Layers: wind (colour and streaks) and rain switch on and off apart (setLayer); a layer switched off is not fetched.
 // - Storms: GDACS (European Commission JRC and the United Nations), from JTWC and NHC advisories; reloaded every half
 //   hour. Under the official forecast, each storm's 51 tracks from the newest ECMWF ensemble run (js/orbit/storm-ensemble.js,
 //   ECMWF open data, CC BY 4.0) for the next 5 days, thin and faint, coloured by each run's strongest wind at each step:
@@ -22,6 +27,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { loadEnsemble } from './storm-ensemble.js';
+import { loadGfs } from './gfs.js?v=69d98d0b25';
 import { quality } from '../core/quality.js';
 import { earthRadius } from '../sim/orbit.js';
 
@@ -30,7 +36,7 @@ const windSource = 'https://pae-paha.pacioos.hawaii.edu/erddap/griddap/ncep_glob
 const stormSource = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH?eventlist=TC&alertlevel=green;orange;red';
 const degree = Math.PI / 180, threeHours = 3 * 3600000;
 // Heights above the surface, km: clear of the sphere's flat facets (they sag up to 2.5 km below it), and in this order.
-const speedRadius = earthRadius + 1, bordersRadius = earthRadius + 2, streaksRadius = earthRadius + 3, equatorRadius = earthRadius + 4, coneRadius = earthRadius + 5, ensembleRadius = earthRadius + 6, trackRadius = earthRadius + 7;
+const speedRadius = earthRadius + 1, rainRadius = earthRadius + 1.5, bordersRadius = earthRadius + 2, streaksRadius = earthRadius + 3, equatorRadius = earthRadius + 4, coneRadius = earthRadius + 5, ensembleRadius = earthRadius + 6, trackRadius = earthRadius + 7;
 // Ensemble tracks: how far ahead (hours), and the strongest wind (m/s) where a storm turns tropical storm (34 kt) and
 // typhoon or hurricane (64 kt).
 const ensembleHours = 120, stormWind = 17.5, typhoonWind = 33;
@@ -74,24 +80,30 @@ function swirl(south) {
 // (tropical depression, tropical storm, hurricane / typhoon) and their cones; the wind speed palette (m/s, colour) and
 // how much darker the night side is.
 const windTop = 30;   // m/s at the end of the palette; stronger wind keeps its last colour
+const rainLow = .1, rainTop = 20, rainStride = 1;   // mm/h: clear below rainLow, last colour from rainTop; grid step in 0.5° cells
+const resolutionOf = stride => stride === 1 ? '0p50' : '1p00';   // the GFS file on AWS with that grid
 const looks = {
     dark: {
         coast: [0xd4dde6, .78], border: [0x8996a4, .5], equator: 0xff4a3a, streak: [.9, .95, 1], additive: true,
         storm: { TD: '#ffd9a8', TS: '#ffa25c', HU: '#ff5a3c' }, cone: ['#ffb27a', .3], ensemble: .3,
         wind: [[0, '#0b1622'], [2, '#102639'], [4, '#15394f'], [6, '#1b5160'], [8, '#23695f'], [10, '#5c7d43'], [13, '#9a8a3c'], [16, '#b9733a'], [20, '#b44a3d'], [25, '#943766'], [30, '#b29ad6']],
+        rain: [[.1, '#2d64ac'], [1, '#4596e6'], [5, '#9fd2ff'], [20, '#f4f8ff']], rainOpacity: [.5, .95],
         night: .5
     },
     light: {
         coast: [0x2f302b, .85], border: [0x857e6d, .6], equator: 0xc8281e, streak: [.1, .11, .12], additive: false,
         storm: { TD: '#b9813a', TS: '#c45a1f', HU: '#a8261a' }, cone: ['#a95a28', .45], ensemble: .32,
         wind: [[0, '#ebe4d4'], [2, '#e2e1d0'], [4, '#cddccf'], [6, '#acd0c6'], [8, '#8abeb8'], [10, '#d6c87f'], [13, '#e0a65d'], [16, '#d47944'], [20, '#bb4a39'], [25, '#8f2f4c'], [30, '#5c2350']],
+        rain: [[.1, '#8fb6dc'], [1, '#4a82c4'], [5, '#24489a'], [20, '#4b2577']], rainOpacity: [.55, .95],
         night: .14
     }
 };
-function paletteTexture(stops) {
+// Where a rain rate (mm/h) falls on its log scale, 0 to 1.
+const rainPlace = rate => Math.log(rate / rainLow) / Math.log(rainTop / rainLow);
+function paletteTexture(stops, place = speed => speed / windTop) {
     const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 1;
     const g = canvas.getContext('2d'), gradient = g.createLinearGradient(0, 0, 256, 0);
-    for (const [speed, colour] of stops) gradient.addColorStop(speed / windTop, colour);
+    for (const [value, colour] of stops) gradient.addColorStop(place(value), colour);
     g.fillStyle = gradient; g.fillRect(0, 0, 256, 1);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace; texture.generateMipmaps = false; texture.minFilter = texture.magFilter = THREE.LinearFilter;
@@ -102,7 +114,8 @@ export function createEarthMap(earth) {
     const group = new THREE.Group(); group.visible = false; earth.add(group);
     const lineMaterials = [];
     let look = looks.dark;
-    const state = { borders: 'idle', wind: 'idle', windTime: null, windStep: NaN, windAsked: -Infinity, storms: 'idle', stormsAt: -Infinity, stormCount: 0, ensemble: 'idle', ensembleAt: -Infinity, ensembleRun: null, ensembleCount: 0 };
+    const layers = { wind: true, rain: false };
+    const state = { borders: 'idle', wind: 'idle', windTime: null, windStep: NaN, windAsked: -Infinity, rain: 'idle', rainTime: null, rainStep: NaN, rainAsked: -Infinity, storms: 'idle', stormsAt: -Infinity, stormCount: 0, ensemble: 'idle', ensembleAt: -Infinity, ensembleRun: null, ensembleCount: 0 };
 
     // Coastlines stronger than land borders.
     const outlines = { coast: null, border: null };
@@ -139,27 +152,49 @@ export function createEarthMap(earth) {
         } catch (error) { state.borders = 'failed'; console.warn('Earth map: borders unavailable', error); }
     }
 
+    // GFS fields at one step from the ERDDAP server: { fields: [Float32Array], time }, each field rows from 90°N to 90°S
+    // by columns from 0° east, `stride` 0.5° cells apart (2: 181 × 360).
+    async function loadGrid(step, names, stride) {
+        const time = new Date(step).toISOString().slice(0, 19) + 'Z', grid = '[(' + time + ')][(90):' + stride + ':(-90)][(0):' + stride + ':(359.5)]';
+        const response = await fetch(windSource + encodeURIComponent(names.map(name => name + grid).join(',')));
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const buffer = await response.arrayBuffer(), bytes = new Uint8Array(buffer), marker = [10, 68, 97, 116, 97, 58, 10];   // "\nData:\n"
+        let offset = -1;
+        for (let k = 0; k < Math.min(bytes.length, 8192) && offset < 0; k++) if (marker.every((byte, m) => bytes[k + m] === byte)) offset = k + marker.length;
+        if (offset < 0) throw new Error('no data block');
+        // OPeNDAP binary (XDR, big-endian): each array is its length twice, then the values; each grid is its array,
+        // then its time, latitude and longitude maps.
+        const view = new DataView(buffer);
+        const floats = () => { const n = view.getUint32(offset), out = new Float32Array(n); offset += 8; for (let k = 0; k < n; k++) out[k] = view.getFloat32(offset + k * 4); offset += n * 4; return out; };
+        const doubles = () => { const n = view.getUint32(offset), out = new Float64Array(n); offset += 8; for (let k = 0; k < n; k++) out[k] = view.getFloat64(offset + k * 8); offset += n * 8; return out; };
+        const rows = 360 / stride + 1, columns = 720 / stride, fields = [];
+        let times = null;
+        for (const name of names) {
+            const field = floats(), at = doubles(); doubles(); doubles();
+            if (field.length !== rows * columns) throw new Error('unexpected grid ' + name + ' ' + field.length);
+            fields.push(field); times ||= at;
+        }
+        return { fields, time: new Date(times[0] * 1000) };
+    }
+
+    // GFS fields: from AWS, else PacIOOS. { fields, time, from }, `from` naming the run and the source for the panel.
+    async function loadFields(step, names, stride) {
+        try {
+            const grid = await loadGfs(step, names, resolutionOf(stride));
+            return { ...grid, from: 'run ' + pad(grid.run.getUTCHours()) + 'Z ' + grid.run.getUTCDate() + ' ' + grid.run.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' }) + ', AWS' };
+        } catch (error) {
+            console.warn('Earth map: GFS on AWS unavailable, trying PacIOOS', error);
+            return { ...await loadGrid(step, names, stride), from: 'PacIOOS' };
+        }
+    }
+
     // Wind grid: u (east) and v (north), m/s, 181 rows from 90°N to 90°S by 360 columns from 0° to 359°E.
     let windU = null, windV = null, sampledU = 0, sampledV = 0;
     async function loadWind(step) {
         state.windStep = step; state.windAsked = performance.now(); state.wind = windU ? state.wind : 'loading';
-        const time = new Date(step).toISOString().slice(0, 19) + 'Z', grid = '[(' + time + ')][(90):2:(-90)][(0):2:(359.5)]';
         try {
-            const response = await fetch(windSource + encodeURIComponent('ugrd10m' + grid + ',vgrd10m' + grid));
-            if (!response.ok) throw new Error('HTTP ' + response.status);
-            const buffer = await response.arrayBuffer(), bytes = new Uint8Array(buffer), marker = [10, 68, 97, 116, 97, 58, 10];   // "\nData:\n"
-            let offset = -1;
-            for (let k = 0; k < Math.min(bytes.length, 8192) && offset < 0; k++) if (marker.every((byte, m) => bytes[k + m] === byte)) offset = k + marker.length;
-            if (offset < 0) throw new Error('no data block');
-            // OPeNDAP binary (XDR, big-endian): each array is its length twice, then the values; each grid is its
-            // array, then its time, latitude and longitude maps.
-            const view = new DataView(buffer);
-            const floats = () => { const n = view.getUint32(offset), out = new Float32Array(n); offset += 8; for (let k = 0; k < n; k++) out[k] = view.getFloat32(offset + k * 4); offset += n * 4; return out; };
-            const doubles = () => { const n = view.getUint32(offset), out = new Float64Array(n); offset += 8; for (let k = 0; k < n; k++) out[k] = view.getFloat64(offset + k * 8); offset += n * 8; return out; };
-            const u = floats(), time = doubles(); doubles(); doubles();
-            const v = floats();
-            if (u.length !== 181 * 360 || v.length !== u.length) throw new Error('unexpected grid ' + u.length);
-            windU = u; windV = v; state.windTime = new Date(time[0] * 1000); state.wind = 'ready';
+            const { fields: [u, v], time, from } = await loadFields(step, ['ugrd10m', 'vgrd10m'], 2);
+            windU = u; windV = v; state.windTime = time; state.windFrom = from; state.wind = 'ready';
             paintSpeed();
         } catch (error) {
             // Keep any grid already shown; try again in a minute.
@@ -199,7 +234,49 @@ export function createEarthMap(earth) {
             sample(row - 89.5, column - 179.5);
             speedData[row * 360 + column] = Math.min(255, Math.round(Math.sqrt(sampledU * sampledU + sampledV * sampledV) / windTop * 255));
         }
-        speedMap.needsUpdate = true; speedLayer.visible = true;
+        speedMap.needsUpdate = true;
+    }
+
+    // Rain as colour over the wind's: a shell a little above it, clear where it is dry, the rate's place on the log
+    // scale in one byte (0 dry). The grid as fetched, one texel to a grid point, 90°N row last (v runs from the south).
+    const rainColumns = 720 / rainStride, rainRows = 360 / rainStride + 1, rainData = new Uint8Array(rainColumns * rainRows);
+    const rainMap = new THREE.DataTexture(rainData, rainColumns, rainRows, THREE.RedFormat, THREE.UnsignedByteType);
+    rainMap.wrapS = THREE.RepeatWrapping; rainMap.minFilter = rainMap.magFilter = THREE.LinearFilter; rainMap.generateMipmaps = false;
+    const rainPalettes = { dark: paletteTexture(looks.dark.rain, rainPlace), light: paletteTexture(looks.light.rain, rainPlace) };
+    const rainLayer = new THREE.Mesh(earth.geometry, new THREE.ShaderMaterial({
+        uniforms: { rainMap: { value: rainMap }, palette: { value: rainPalettes.dark }, sunDirection: { value: earth.material.uniforms.sunDirection.value }, night: { value: looks.dark.night },
+            opacity: { value: new THREE.Vector2(...looks.dark.rainOpacity) }, columns: { value: rainColumns }, rows: { value: rainRows } },
+        vertexShader: 'varying vec2 vUv; varying vec3 vNormalW; void main() { vUv = uv; vNormalW = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
+        // The sphere's u runs from 180° W, the grid's columns from 0°: half a turn round. v from the South Pole to the
+        // North, texel centres on the grid's points (the poles' rows sit on the texture's edges).
+        fragmentShader: `uniform sampler2D rainMap, palette; uniform vec3 sunDirection; uniform float night, columns, rows; uniform vec2 opacity; varying vec2 vUv; varying vec3 vNormalW;
+            void main() {
+                vec2 at = vec2(vUv.x + .5 + .5 / columns, (vUv.y * (rows - 1.) + .5) / rows);
+                float place = texture2D(rainMap, at).r;
+                if (place < .002) discard;
+                vec3 colour = texture2D(palette, vec2(clamp((place * 255. - 1.) / 254., 0., 1.), .5)).rgb;
+                float day = smoothstep(-.1, .16, dot(normalize(vNormalW), sunDirection));
+                float alpha = smoothstep(0., .25, place) * mix(opacity.x, opacity.y, place);   // drizzle fades out: soft edges, no lone cells
+                gl_FragColor = vec4(colour * (1. - night * (1. - day)), alpha);
+                #include <colorspace_fragment>
+            }`,
+        transparent: true, depthWrite: false
+    }));
+    rainLayer.scale.setScalar(rainRadius / earthRadius); rainLayer.visible = false; rainLayer.renderOrder = .5; rainLayer.raycast = () => {}; group.add(rainLayer);
+    let rainShown = false;
+    async function loadRain(step) {
+        state.rainStep = step; state.rainAsked = performance.now(); state.rain = rainShown ? state.rain : 'loading';
+        try {
+            const { fields: [rate], time, from } = await loadFields(step, ['pratesfc'], rainStride);
+            for (let row = 0; row < rainRows; row++) for (let column = 0; column < rainColumns; column++) {
+                const value = rate[row * rainColumns + column] * 3600;   // kg m-2 s-1 to mm/h
+                rainData[(rainRows - 1 - row) * rainColumns + column] = value >= rainLow ? 1 + Math.round(Math.min(1, rainPlace(value)) * 254) : 0;
+            }
+            rainMap.needsUpdate = true; rainShown = true; state.rainTime = time; state.rainFrom = from; state.rain = 'ready';
+        } catch (error) {
+            if (!rainShown) state.rain = 'failed';
+            state.rainAsked = performance.now() + 40000; console.warn('Earth map: rain unavailable', error);
+        }
     }
 
     // Streaks: each a particle and the places it passed, one every `tick`, faint toward the tail. Each step between two
@@ -260,7 +337,7 @@ export function createEarthMap(earth) {
         earth.updateMatrixWorld(); earth.worldToLocal(local.copy(camera.position));
         const distance = local.length(), seen = Math.asin(Math.min(1, earthRadius / distance)), halfHeight = camera.fov * degree / 2;
         // Hidden once the globe is a small disc (the Earth & Moon and Sun frames).
-        streaks.visible = !!windU && seen > halfHeight * .08;
+        streaks.visible = layers.wind && !!windU && seen > halfHeight * .08;
         if (!streaks.visible) { since = 0; return; }
         // A fixed step, so the tails are as long at any frame rate.
         since += Math.max(0, delta);
@@ -442,10 +519,14 @@ export function createEarthMap(earth) {
         streak.blending = look.additive ? THREE.AdditiveBlending : THREE.NormalBlending;
         speedLayer.material.uniforms.palette.value = light ? palettes.light : palettes.dark;
         speedLayer.material.uniforms.night.value = look.night;
+        rainLayer.material.uniforms.palette.value = light ? rainPalettes.light : rainPalettes.dark;
+        rainLayer.material.uniforms.night.value = look.night; rainLayer.material.uniforms.opacity.value.set(...look.rainOpacity);
         if (stormData.length) drawStorms();
     }
-    // The speed palette as a CSS gradient for the panel's legend; null until the speeds are on the globe.
-    const legend = () => speedLayer.visible ? 'linear-gradient(90deg, ' + look.wind.map(([speed, colour]) => colour + ' ' + +(speed / windTop * 100).toFixed(2) + '%').join(', ') + ')' : null;
+    // The palettes as CSS gradients for the panel's legends; null for a layer off or not yet on the globe.
+    const gradient = (stops, place) => 'linear-gradient(90deg, ' + stops.map(([value, colour]) => colour + ' ' + +(place(value) * 100).toFixed(2) + '%').join(', ') + ')';
+    const legend = () => ({ wind: layers.wind && windU ? gradient(look.wind, speed => speed / windTop) : null, rain: layers.rain && rainShown ? gradient(look.rain, rainPlace) : null });
+    function setLayer(name, on) { layers[name] = !!on; }
 
     const toCamera = new THREE.Vector3(), worldPosition = new THREE.Vector3(), normal = new THREE.Vector3(), worldScale = new THREE.Vector3();
     function resize(width, height) { resolution.set(width, height); equatorMaterial.resolution.set(width, height); for (const material of lineMaterials) material.resolution.set(width, height); }
@@ -455,7 +536,9 @@ export function createEarthMap(earth) {
         const step = Math.round(date.getTime() / threeHours) * threeHours;
         // A new grid when the shown time reaches another three-hourly step (often while time runs fast), at most every
         // 20 s; after a failure, again a minute later.
-        if ((step !== state.windStep || state.wind === 'failed') && clock - state.windAsked > 20000) loadWind(step);
+        if (layers.wind && (step !== state.windStep || state.wind === 'failed') && clock - state.windAsked > 20000) loadWind(step);
+        if (layers.rain && (step !== state.rainStep || state.rain === 'failed') && clock - state.rainAsked > 20000) loadRain(step);
+        speedLayer.visible = layers.wind && !!windU; rainLayer.visible = layers.rain && rainShown;
         if (state.storms !== 'loading' && clock - state.stormsAt > 30 * 60000) loadStorms();
         if (state.ensemble !== 'loading' && clock - state.ensembleAt > (state.ensemble === 'failed' ? 10 * 60000 : 3 * 3600000)) loadTracks();
         moveStreaks(delta, camera);
@@ -473,12 +556,14 @@ export function createEarthMap(earth) {
     }
     const pad = value => String(value).padStart(2, '0');
     function status() {
-        const wind = state.wind === 'ready' ? 'NOAA GFS 10 m · ' + state.windTime.getUTCDate() + ' ' + state.windTime.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' }) + ' ' + pad(state.windTime.getUTCHours()) + ':00 UTC'
+        const wind = state.wind === 'ready' ? 'NOAA GFS 10 m · ' + state.windTime.getUTCDate() + ' ' + state.windTime.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' }) + ' ' + pad(state.windTime.getUTCHours()) + ':00 UTC (' + state.windFrom + ')'
             : state.wind === 'failed' ? 'unavailable' : 'loading…';
         const storms = state.storms === 'ready' ? (state.stormCount ? state.stormCount + ' active' : 'none active') : state.storms === 'failed' ? 'unavailable' : 'loading…';
         const run = state.ensembleRun, tracks = state.ensemble === 'ready' ? 'ECMWF ensemble ' + run.getUTCDate() + ' ' + run.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' }) + ' ' + pad(run.getUTCHours()) + ' UTC, 51 runs, 5 days'
             : state.ensemble === 'failed' ? 'unavailable' : 'loading…';
-        return 'Wind: ' + wind + ' · Storms: GDACS, ' + storms + ' · Tracks: ' + tracks + ' · Borders: Natural Earth';
+        const rain = state.rain === 'ready' ? 'NOAA GFS model rate · ' + state.rainTime.getUTCDate() + ' ' + state.rainTime.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' }) + ' ' + pad(state.rainTime.getUTCHours()) + ':00 UTC (' + state.rainFrom + ')'
+            : state.rain === 'failed' ? 'unavailable' : 'loading…';
+        return (layers.wind ? 'Wind: ' + wind + ' · ' : '') + (layers.rain ? 'Rain: ' + rain + ' · ' : '') + 'Storms: GDACS, ' + storms + ' · Tracks: ' + tracks + ' · Borders: Natural Earth';
     }
-    return { group, show(on) { group.visible = on; }, frame, resize, status, setTheme, legend };
+    return { group, show(on) { group.visible = on; }, frame, resize, status, setTheme, legend, setLayer, layers };
 }
