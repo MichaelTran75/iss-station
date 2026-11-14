@@ -22,7 +22,7 @@ const columbusCrewHuman = assetData.columbusCrewHuman;
 // Crew 1 types or works the touchpad. `axes` are bone-local axes for breathing and for the floating legs.
 const columbusCrewMotion = assetData.columbusCrewMotion;
 // END COLUMBUS CREW MOTION
-part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laboratory, drawn after ESA\'s cutaway illustration. A 75%-transparent section of the hull shows racks along the far wall and deck of a square aisle, three crew at work (one at a laptop who types, stops to read, uses the touchpad, reaches up to a rack switch and now and then turns, one hand still on the laptop, to watch the crew member beside him with his chin on his fist; one with both hands in the glovebox; one who holds a rack rail while working a panel, then pushes off and glides to the next rail) and the Harmony hatch at the far end; the near-wall and overhead racks are left out so the cabin stays in view. The outboard end cone carries a platform and a gold instrument box above (the SOLAR observatory on its tower, no longer there, is left off), and a white frame of finned instrument boxes below, with the ACES atomic clocks hanging under its floor in the 2026 configuration. Rack contents, crew poses and payload shapes are illustrative.', [['Joined station', 'FEB 2008'], ['Hull window', '75% transparent']], [4.965376, 1.0, -4.7], (kit, group) => {
+part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laboratory, drawn after ESA\'s cutaway illustration. A 75%-transparent section of the hull shows racks along the far wall and deck of a square aisle, three crew at work over a 140 s cycle (one at a laptop who types, stops to read, uses the touchpad, reaches up to a rack switch and now and then turns, one hand still on the laptop, to watch the crew member beside him with his chin on his fist; one with both hands in the glovebox, who takes a break with his hands out of the gloves; one who holds a rack rail while working a panel, then pushes off and glides to the next rail; in the middle of the cycle that one floats over to watch the glovebox work with a hand on the shoulder of the one working it, on to the laptop to talk the results over, and back, while the one at the laptop stretches, points at the screen and nods) and the Harmony hatch at the far end; the near-wall and overhead racks are left out so the cabin stays in view. The outboard end cone carries a platform and a gold instrument box above (the SOLAR observatory on its tower, no longer there, is left off), and a white frame of finned instrument boxes below, with the ACES atomic clocks hanging under its floor in the 2026 configuration. Rack contents, crew poses and payload shapes are illustrative.', [['Joined station', 'FEB 2008'], ['Hull window', '75% transparent']], [4.965376, 1.0, -4.7], (kit, group) => {
     group.position.x = -1.134624;
     group.userData.connectionTranslation = [-1.134624, 0, 0];
     // Rebuilt after ESA's Columbus cutaway illustration. Local frame: the module axis is z (+z outboard, toward the
@@ -196,7 +196,8 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
     // One rack: its front faces +x at x = 0 and its body runs back to -x; height along y, width along z.
     const rackBody = material(0x9ea8a3, .78, .18), rackPost = 0xd1d5ce;
     function rackUnit(name, texture, extras) {
-        const rack = new THREE.Group(), rk = new Kit(); rack.name = name;
+        // Crew gear: kept in view (90%) when the station is ghosted (js/ui/ghost.js).
+        const rack = new THREE.Group(), rk = new Kit(); rack.name = name; rack.userData.crewGear = true;
         rk.add(shapes.box, rackBody, [-rackDepth / 2, 0, 0], [rackDepth - .02, 1.68, 1.0], [0, 0, 0], false);
         rk.add(new THREE.PlaneGeometry(.99, 1.64), material(0xffffff, .82, .05, texture), [.004, 0, 0], [1, 1, 1], [0, Math.PI / 2, 0], false);
         for (const z of [-.5, .5]) rk.box([-.02, 0, z], [.07, 1.72, .045], rackPost, [0, 0, 0], false);
@@ -317,7 +318,7 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
     function crewMember(name, pose, look, place, home) {
         const geometry = new THREE.BufferGeometry();
         for (const key of ['position', 'normal', 'skinIndex', 'skinWeight']) geometry.setAttribute(key, humanBody.attributes[key]);
-        geometry.setAttribute('color', humanBody.attributes.color); if (look.stripes) geometry.setAttribute('uv', humanHeightUv);
+        geometry.setAttribute('color', humanBody.attributes.color); geometry.setAttribute('uv', humanHeightUv);   // any figure may be dressed in stripes later (dress)
         geometry.setIndex(humanBody.index); for (const group of humanBody.groups) geometry.addGroup(group.start, group.count, group.materialIndex);
         // Skin keeps the baked texture, tinted from the model's own tone to this crew member's; fabric takes its colour here.
         const tone = new THREE.Color(look.skin), fabric = hex => new THREE.MeshStandardMaterial({ color: new THREE.Color(hex).multiplyScalar(1 / human.tones.cloth), vertexColors: true, roughness: .88, metalness: .02, side: THREE.DoubleSide });
@@ -342,12 +343,32 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
         else { interior.add(person); crew.push(person); }
         return person;
     }
-    // At the laptop on the outboard rack, leaning in with the fingertips on the keys: green shirt, blue shorts.
-    crewMember('Crew 1', 'typist', { skin: 0xc29270, shirt: 0x235f43, shorts: 0x2f5c8c, shoes: 0xe2e2dc, hair: 0x2b2420 }, { position: [-.2, -aisle, 1.39], yaw: -Math.PI / 2 });
+    // Another look on an existing figure: skin, clothes and hair recoloured as crewMember colours them, on the solid
+    // materials and on the see-through copies the ghost context may be showing (js/ui/ghost.js).
+    const stripeMaps = new Map();
+    function dress(person, look) {
+        const body = person.children.find(child => child.isSkinnedMesh), tone = new THREE.Color(look.skin), key = look.stripes ? look.stripes.join() : '';
+        if (key && !stripeMaps.has(key)) stripeMaps.set(key, stripeMap(look.stripes));
+        const map = key ? stripeMaps.get(key) : null;
+        for (const list of [body.userData.solidMaterial, body.material]) {
+            if (!Array.isArray(list)) continue;
+            list[0].color.setRGB(tone.r / skinBase[0], tone.g / skinBase[1], tone.b / skinBase[2]);
+            if (list[1].map !== map) { list[1].map = map; list[1].needsUpdate = true; }
+            list[1].color.set(map ? 0xffffff : look.shirt).multiplyScalar(1 / human.tones.cloth);
+            [look.shorts, look.shoes, look.hair].forEach((hex, k) => list[k + 2].color.set(hex).multiplyScalar(1 / human.tones.cloth));
+        }
+        person.userData.look = look;
+    }
+    // At the laptop on the outboard rack, leaning in with the fingertips on the keys: green shirt, blue shorts. Socks:
+    // aboard, the crew go without shoes.
+    const looks = [{ skin: 0xc29270, shirt: 0x235f43, shorts: 0x2f5c8c, shoes: 0x8f9396, hair: 0x2b2420 },
+        { skin: 0xd0a07f, shirt: 0xeeede8, shorts: 0x2f6f9a, shoes: 0x2b2f38, hair: 0x2c2622 },
+        { skin: 0xe1b597, stripes: ['#26357e', '#f1f1ec'], shorts: 0x24386f, shoes: 0xdcdcd6, hair: 0x4a3324 }];
+    crewMember('Crew 1', 'typist', looks[0], { position: [-.2, -aisle, 1.39], yaw: -Math.PI / 2 }).userData.look = looks[0];
     // Floating at the glovebox with one knee raised and both hands through its ports: white shirt, blue shorts.
-    crewMember('Crew 2', 'gloves', { skin: 0xd0a07f, shirt: 0xeeede8, shorts: 0x2f6f9a, shoes: 0x2c7d86, hair: 0x2c2622 }, { position: [-.4, -aisle + .1, .45], yaw: -Math.PI / 2 });
+    crewMember('Crew 2', 'gloves', looks[1], { position: [-.4, -aisle + .1, .45], yaw: -Math.PI / 2 }).userData.look = looks[1];
     // Floating free in the neutral posture of weightlessness (arms forward, hips and knees bent): striped shirt.
-    const crew3 = crewMember('Crew 3', 'floater', { skin: 0xe1b597, stripes: ['#26357e', '#f1f1ec'], shorts: 0x24386f, shoes: 0xf0f0ec, hair: 0x4a3324 }, { position: [0, -.9, 0], yaw: 0 });
+    const crew3 = crewMember('Crew 3', 'floater', looks[2], { position: [0, -.9, 0], yaw: 0 }); crew3.userData.look = looks[2];
     // Crew 3 floats in a group that carries it along the aft wall racks: it holds a rail with one hand and works a panel
     // with the other, pushes off, glides about 0.8 m to the next rail, catches it and works there, then comes back.
     const hover = new THREE.Group(); hover.name = 'Crew 3 float'; hover.add(crew3); interior.add(hover);
@@ -435,7 +456,8 @@ part('columbus', 'Columbus laboratory', '09 / EUROPE - ESA', 'Europe\'s laborato
     group.userData.seeThrough = { angleStart: open.a0, angleEnd: open.a1, axialStart: open.z0, axialEnd: open.z1, opacity: .25 };
     group.userData.equipmentRacks = racks.length; group.userData.crewFigures = crew.length; group.userData.externalBrackets = 2;
     group.userData.lab = { tube, shell, interior, framework, racks, crew, external, hover, motion, open,
-        addCrew: (name, look, home) => crewMember(name, 'floater', look, { position: [0, 0, 0], yaw: 0 }, home), axes: human.axes };
+        addCrew: (name, look, home) => { const person = crewMember(name, 'floater', look, { position: [0, 0, 0], yaw: 0 }, home); person.userData.look = look; return person; },
+        looks, dress, axes: human.axes };
 });
 // Columbus crew at work. Crew 1 and Crew 3 play keyed work loops: between keys every bone follows a Catmull-Rom curve
 // in time, so the motion flows through the keys rather than stopping at each. On top come breathing, small irregular
@@ -480,7 +502,9 @@ export const crewThought = { element: document.getElementById('crew-thought'), l
 const crewAxes = (() => { const a = columbusCrewHuman.axes, v = list => new THREE.Vector3(...list), out = { headYaw: v(a.headYaw), headPitch: v(a.headPitch) };
     for (const group of ['flex', 'elbow', 'wrist']) for (const [bone, axis] of Object.entries(a[group])) out[bone] = v(axis);
     for (const [bone, axis] of Object.entries(columbusCrewMotion.axes)) out[bone] = v(axis); return out; })();
-export function updateColumbusCrew(time) {
+// `clock` says where each loop is: the time in Crew 1's and Crew 3's loops, how much Crew 1 types (finger taps) and shows
+// the thought, and Crew 2's glovebox task with its own time. js/figures/lab-crew.js runs the crew's day through it.
+export function updateColumbusCrew(time, clock = { typist: time, floater: time, typing: 1, thought: 1, glove: { task: 'work', time } }) {
     const { crew: [typist, gloves, floater], hover, motion } = parts.get('columbus').group.userData.lab;
     // Each turn is applied on top of the solved pose, about a bone-local axis.
     const turn = (person, bone, ...steps) => {
@@ -489,9 +513,9 @@ export function updateColumbusCrew(time) {
     };
     const add = (person, bone, axis, angle) => person.userData.bones[bone].quaternion.multiply(crewTurn.setFromAxisAngle(axis, angle));
     const look = (person, yaw, pitch) => turn(person, 'Head', [crewAxes.headYaw, yaw], [crewAxes.headPitch, pitch]);
-    const work = crewPlay(typist, motion.typist, time); crewPlay(floater, motion.floater, time, hover);
-    const turnTime = time % motion.typist.cycle;
-    crewThought.level = THREE.MathUtils.smoothstep(turnTime, 17.9, 18.3) - THREE.MathUtils.smoothstep(turnTime, 26, 26.4);
+    const work = crewPlay(typist, motion.typist, clock.typist); crewPlay(floater, motion.floater, clock.floater, hover);
+    const turnTime = ((clock.typist % motion.typist.cycle) + motion.typist.cycle) % motion.typist.cycle;
+    crewThought.level = (THREE.MathUtils.smoothstep(turnTime, 17.9, 18.3) - THREE.MathUtils.smoothstep(turnTime, 26, 26.4)) * clock.thought;
     // Breathing (about 4 s a breath) and small head movements that never quite repeat.
     for (const [person, rate, phase] of [[typist, 1.5, 0], [floater, 1.37, 1.1]]) {
         const breath = Math.sin(time * rate + phase);
@@ -504,25 +528,29 @@ export function updateColumbusCrew(time) {
     const burst = THREE.MathUtils.smoothstep(Math.sin(time * .55), -.2, .5), tap = phase => burst * Math.max(0, Math.sin(time * 9 + phase)) ** 2;
     for (const [side, offset] of [['Left', 0], ['Right', 2.1]]) {
         [['Index', 0], ['Middle', 1.3], ['Ring', 2.6]].forEach(([finger, delay]) => {
-            const k = tap(offset + delay) * work.type, base = side + 'Hand' + finger;
+            const k = tap(offset + delay) * work.type * clock.typing, base = side + 'Hand' + finger;
             add(typist, base + '1', crewAxes[base + '1'], -.26 * k); add(typist, base + '2', crewAxes[base + '2'], -.1 * k);
         });
-        add(typist, side + 'Hand', crewAxes[side + 'Hand'], -.03 * tap(offset + .6) * work.type);
+        add(typist, side + 'Hand', crewAxes[side + 'Hand'], -.03 * tap(offset + .6) * work.type * clock.typing);
     }
-    add(typist, 'RightHandIndex1', crewAxes.RightHandIndex1, .16 * work.pad * Math.max(0, Math.sin(time * 4.5)) ** 3);
+    add(typist, 'RightHandIndex1', crewAxes.RightHandIndex1, .16 * work.pad * clock.typing * Math.max(0, Math.sin(time * 4.5)) ** 3);
     // Crew 3's legs drift a little on their own: knees and hips out of step.
     add(floater, 'LeftLeg', crewAxes.LeftLeg, .07 * Math.sin(time * .47)); add(floater, 'RightLeg', crewAxes.RightLeg, .06 * Math.sin(time * .39 + 1.9));
     add(floater, 'LeftUpLeg', crewAxes.LeftUpLeg, .035 * Math.sin(time * .31 + .7)); add(floater, 'RightUpLeg', crewAxes.RightUpLeg, .03 * Math.sin(time * .43 + 2.4));
-    workGlovebox(gloves, time, parts.get('columbus').group.userData.lab.interior, turn);
+    workGlovebox(gloves, time, parts.get('columbus').group.userData.lab.interior, turn, clock.glove);
 }
-// Crew 2 at the glovebox, a 26 s loop. Each hand follows keyed offsets from where it rests in its port, in the cabin
-// frame (-x reaches into the box, +y is up, +z runs along the rack toward the left port): the right hand takes a sample
-// tube from the tray and lifts it toward the window; the left unscrews its cap in two turns, lifts it off, puts it back
-// and screws it on; the tube goes back, and both hands work a small tool at the centre. Keys are [time, x, y, z, roll,
-// grip]; the roll twists the hand about its long axis and the grip closes the fingers. A two-bone solve that keeps each
-// elbow in its rest plane reaches the hands, which stay in the gloves while the body floats; hands move at 0.12 m/s at
-// most. The head follows the hands and looks up a little when the tube is raised; near the end of the loop it glances
-// at the laptop.
+// Crew 2 at the glovebox, in tasks. Each hand follows keyed offsets from where it rests in its port, in the cabin frame
+// (-x reaches into the box, +y is up, +z runs along the rack toward the left port). Keys are [time, x, y, z, roll, grip];
+// the roll twists the hand about its long axis and the grip closes the fingers. A two-bone solve that keeps each elbow in
+// its rest plane reaches the hands, which stay in the gloves while the body floats; hands move at 0.12 m/s at most (out
+// of the ports 0.16). Every task starts and ends with the hands at rest in the ports.
+// - work (26 s): the right hand takes a sample tube from the tray and lifts it toward the window; the left unscrews its
+//   cap in two turns, lifts it off, puts it back and screws it on; the tube goes back, and both hands work a small tool
+//   at the centre. The head follows the hands and looks up a little when the tube is raised; near the end it glances at
+//   the laptop.
+// - pause (22 s): the hands come out of the gloves and rest on the bar across the front of the box; head and shoulders turn to the
+//   laptop end (`head` keys: yaw, pitch, twist of the upper back), with a nodding laugh; then back into the gloves.
+// - tool (14 s): both hands on the small tool at the centre, turning it back and forth.
 const gloveKeys = {
     Right: [[0, 0, 0, 0, 0, .25], [1.5, 0, 0, 0, 0, .25], [3.5, -.075, -.035, .045, 0, .25], [4.2, -.075, -.035, .045, 0, .85],
         [6.4, -.035, .05, .08, .15, .85], [7.4, -.035, .05, .08, .5, .85], [8.4, -.035, .05, .08, 0, .85], [14.6, -.035, .05, .08, 0, .85],
@@ -534,9 +562,22 @@ const gloveKeys = {
         [16.4, -.02, 0, -.02, 0, .25], [19.2, -.05, -.01, -.08, 0, .25], [19.8, -.05, -.01, -.08, 0, .6], [21, -.06, -.02, -.085, -.2, .6],
         [22.2, -.05, -.01, -.08, 0, .6], [22.8, -.05, -.01, -.08, 0, .25], [24.8, 0, 0, 0, 0, .25], [26, 0, 0, 0, 0, .25]]
 };
+// Resting on the bar the palms turn down (the roll of the right hand; the left's is opposite).
+const gloveRoll = .9;
+const restOnBox = (side, roll) => [[0, 0, 0, 0, 0, .25], [.8, 0, 0, 0, 0, .1], [1.8, .1, 0, side * .01, 0, .1], [3, .085, .1, 0, roll, .35], [17.8, .085, .1, 0, roll, .35],
+    [19.2, .1, .02, side * .01, 0, .1], [20.4, 0, 0, 0, 0, .1], [21.2, 0, 0, 0, 0, .25], [22, 0, 0, 0, 0, .25]];
+const onTool = (side, grip) => [[0, 0, 0, 0, 0, .25], [2, -.05, -.01, side * .08, 0, .25], [2.6, -.05, -.01, side * .08, 0, grip], [4, -.06, -.02, side * .085, side * .2, grip],
+    [5.4, -.05, -.01, side * .08, -side * .1, grip], [6.8, -.06, -.02, side * .085, side * .2, grip], [8.2, -.05, -.01, side * .08, 0, grip], [8.8, -.05, -.01, side * .08, 0, .25],
+    [11, 0, 0, 0, 0, .25], [14, 0, 0, 0, 0, .25]];
+export const gloveTasks = {
+    work: { length: 26, ...gloveKeys },
+    pause: { length: 22, Right: restOnBox(-1, gloveRoll), Left: restOnBox(1, -gloveRoll),
+        head: [[0, 0, 0, 0], [3, .2, -.05, 0], [5.2, .95, .06, .3], [9, .95, .06, .3], [9.5, .95, -.06, .3], [10, .95, .07, .3], [10.5, .95, -.05, .3], [11, .95, .06, .3],
+            [16, .95, .05, .3], [18.4, .2, -.08, 0], [22, 0, 0, 0]] },
+    tool: { length: 14, Right: onTool(-1, .7), Left: onTool(1, .6) }
+};
 const gloveSmooth = t => t * t * t * (t * (t * 6 - 15) + 10);
-function gloveKey(keys, time) {
-    const t = time % 26;
+function gloveKey(keys, t) {
     let i = 0; while (i < keys.length - 2 && t >= keys[i + 1][0]) i++;
     const a = keys[i], b = keys[i + 1], e = gloveSmooth(THREE.MathUtils.clamp((t - a[0]) / (b[0] - a[0]), 0, 1));
     return a.map((value, k) => value + (b[k] - value) * e);
@@ -550,7 +591,8 @@ function turnToward(bone, from, to) {
     bone.quaternion.premultiply(gloveParent.clone().invert().multiply(gloveTurn).multiply(gloveParent));
     bone.updateMatrixWorld(true);
 }
-function workGlovebox(person, time, interior, turn) {
+const spineTwist = new THREE.Vector3(0, 1, 0);
+function workGlovebox(person, time, interior, turn, glove) {
     const data = person.userData, bones = data.bones;
     // Where the hands rest in their ports, in the cabin frame, measured once with the body at rest.
     if (!data.portHands) {
@@ -559,16 +601,22 @@ function workGlovebox(person, time, interior, turn) {
         person.updateMatrixWorld(true);
         data.portHands = Object.fromEntries(['Left', 'Right'].map(side => [side, interior.worldToLocal(bones[side + 'Hand'].getWorldPosition(new THREE.Vector3()))]));
     }
-    const right = gloveKey(gloveKeys.Right, time), left = gloveKey(gloveKeys.Left, time);
+    const task = gloveTasks[glove.task], t = THREE.MathUtils.clamp(glove.time, 0, task.length);
+    const right = gloveKey(task.Right, t), left = gloveKey(task.Left, t);
     // The body floats a little in front of the box; it breathes and its head follows the hands.
     person.position.copy(data.rest.position); person.position.y += .012 * Math.sin(time * .7);
     person.quaternion.copy(data.rest.quaternion).multiply(crewTurn.setFromAxisAngle(crewForward, .015 * Math.sin(time * .5)));
-    const breath = Math.sin(time * 1.43 + 2.3);
-    turn(person, 'Spine1', [crewAxes.Spine1, .006 * breath]); turn(person, 'Spine2', [crewAxes.Spine2, .01 * breath]);
-    const t = time % 26, glance = THREE.MathUtils.smoothstep(t, 23.6, 24.2) - THREE.MathUtils.smoothstep(t, 25.2, 25.8);
-    const focusZ = (left[3] + right[3]) / 2, focusY = (left[2] + right[2]) / 2;
-    turn(person, 'Head', [crewAxes.headYaw, THREE.MathUtils.lerp(1.3 * focusZ + .03 * Math.sin(time * .45), .45, glance)],
-        [crewAxes.headPitch, THREE.MathUtils.lerp(-1.4 * focusY + .02 * Math.sin(time * .6), -.12, glance)]);
+    const breath = Math.sin(time * 1.43 + 2.3), look = glove.look, k = look ? look.weight : 0;
+    let yaw, pitch, twist = 0;
+    if (task.head) [, yaw, pitch, twist] = gloveKey(task.head, t);
+    else {
+        const glance = glove.task === 'work' ? THREE.MathUtils.smoothstep(t, 23.6, 24.2) - THREE.MathUtils.smoothstep(t, 25.2, 25.8) : 0;
+        const focusZ = (left[3] + right[3]) / 2, focusY = (left[2] + right[2]) / 2;
+        yaw = THREE.MathUtils.lerp(1.3 * focusZ, .45, glance); pitch = THREE.MathUtils.lerp(-1.4 * focusY, -.12, glance);
+    }
+    if (k > 0) { yaw = THREE.MathUtils.lerp(yaw, look.yaw, k); pitch = THREE.MathUtils.lerp(pitch, look.pitch, k); twist = THREE.MathUtils.lerp(twist, look.twist, k); }
+    turn(person, 'Spine1', [crewAxes.Spine1, .006 * breath], [spineTwist, .4 * twist]); turn(person, 'Spine2', [crewAxes.Spine2, .01 * breath], [spineTwist, .6 * twist]);
+    turn(person, 'Head', [crewAxes.headYaw, yaw + .03 * Math.sin(time * .45)], [crewAxes.headPitch, pitch + .02 * Math.sin(time * .6)]);
     person.updateMatrixWorld(true);
     for (const [side, key] of [['Left', left], ['Right', right]]) {
         const arm = bones[side + 'Arm'], fore = bones[side + 'ForeArm'], hand = bones[side + 'Hand'];

@@ -14,18 +14,57 @@ const onUnity = (a, z, r = 2.305) => [V(r * Math.cos(rad(a)), r * Math.sin(rad(a
 const at = (p, n, o) => [V(...p), V(...n).normalize(), o];
 const ramp = [0, .486, -.874];   // outward normal of Z1's forward ramp
 const keys = {
-    // Inside the crew lock, head first down through the hatch, round the forward side of the hatch ring, up the
-    // crew lock's forward side, over the collar onto the equipment lock, down its end to Unity and over the top.
-    trunk: [at([7.37, .30, 11.44], [0, 0, 1]), at([7.37, -.55, 11.44], [0, 0, 1]), at([7.37, -1.14, 11.33], [0, 0, 1]), at([7.37, -1.30, 11.02], [0, -.92, .39]),
-        onQuest(7.36, 50, 1.38), onQuest(7.34, 68, 1.10), onQuest(7.30, 92, 1.075), onQuest(7.12, 114, 1.09), onQuest(6.72, 128, 1.10),
-        onQuest(6.34, 140, 1.16, 0, .12), onQuest(6.12, 150, 1.32, 0, .12, .05), onQuest(5.98, 153, 1.70, 1.6, 0, .08), onQuest(5.72, 156, 2.215, .35),
-        onQuest(5.2, 158, 2.22), onQuest(4.4, 158, 2.22), onQuest(3.72, 158, 2.23), onQuest(3.44, 156, 1.80, -1.6), onQuest(3.24, 152, 1.36, -.5, .26),
-        onQuest(2.75, 148, 1.325, 0, .2), onUnity(33, 11.0), onUnity(42, 10.5), onUnity(55, 9.98), onUnity(72, 9.66), onUnity(88, 9.62)],
+    // Inside the crew lock, head first down through the hatch to the forward point of the hatch's handrail ring; from
+    // there along the handrails (trunkRails, below).
+    trunk: [at([7.37, .30, 11.44], [0, 0, 1]), at([7.37, -.55, 11.44], [0, 0, 1]), at([7.37, -1.14, 11.33], [0, 0, 1]), at([7.37, -1.30, 11.02], [0, -.92, .39])],
     // The lead keeps to the ramp's port side, then swings out to the handholds on the port edge of the face.
     lead: [onUnity(100, 9.62), onUnity(112, 9.66), at([-.9, 2.5, 9.93], [0, .6, -.8], [0, .21, -.05]), at([-.9, 2.86, 10.03], ramp), at([-.9, 3.3, 10.273], ramp, [-.2, 0, 0]),
         at([-1.2, 3.80, 10.595], [0, 0, -1], [-.23, 0, 0])],
     helper: [onUnity(98, 9.62), at([-.45, 2.5, 9.93], [0, .6, -.8], [0, .09, 0]), at([-.45, 2.86, 10.03], ramp), at([-.45, 3.3, 10.273], ramp), at([-.45, 3.60, 10.43], ramp)]
 };
+// The handrails of the way out, as on the station: separate straight bars of standard lengths, each on two short posts
+// (the bar `standoff` off the surface), set along a module's axis or round it, a hand's reach apart; none crosses from
+// one module to the next (between Quest's inboard end and Unity the crew reach across). In travel order:
+// - crew lock: two round its forward side next to the hatch, one along it at 140° (none on the collar: the way passes
+//   a via point there, below);
+// - equipment lock: one up its outboard end face from r 1.58, two along it at 164° (between the gas-tank covers), one down its
+//   inboard end face to the neck;
+// - Unity: one along it beside Quest, two round its zenith side to the foot of Z1.
+// Quest angles count from nadir toward forward (as onQuest), Unity's from starboard toward zenith (as onUnity).
+const standoff = .12;
+const qPoint = (x, a, r) => V(x, -r * Math.cos(rad(a)), 12 - r * Math.sin(rad(a)));
+const qNormal = (a, along = 0, out = 1) => V(along, -out * Math.cos(rad(a)), -out * Math.sin(rad(a))).normalize();
+// A bar on a cone face of Quest (profile points [x, r] at either end), radial at angle a from radius r0 to r1.
+function qFace(a, [xa, ra], [xb, rb], r0, r1) {
+    const length = Math.hypot(xb - xa, rb - ra), along = (rb - ra) / length, out = -(xb - xa) / length, n = qNormal(a, along, out);
+    const on = r => qPoint(xa + (xb - xa) * (r - ra) / (rb - ra), a, r).addScaledVector(n, standoff);
+    return { a: on(r0), b: on(r1), na: n, nb: n.clone() };
+}
+const qAround = (x, r, a0, a1) => ({ a: qPoint(x, a0, r + standoff), b: qPoint(x, a1, r + standoff), na: qNormal(a0), nb: qNormal(a1) });
+const qAlong = (a, r, x0, x1) => ({ a: qPoint(x0, a, r + standoff), b: qPoint(x1, a, r + standoff), na: qNormal(a), nb: qNormal(a) });
+const unityRadius = 2.185;
+const uPoint = (a, z) => V((unityRadius + standoff) * Math.cos(rad(a)), (unityRadius + standoff) * Math.sin(rad(a)), z), uNormal = a => V(Math.cos(rad(a)), Math.sin(rad(a)), 0);
+const uAround = (z, a0, a1) => ({ a: uPoint(a0, z), b: uPoint(a1, z), na: uNormal(a0), nb: uNormal(a1) });
+const uAlong = (a, z0, z1) => ({ a: uPoint(a, z0), b: uPoint(a, z1), na: uNormal(a), nb: uNormal(a) });
+// Between bars the way may pass a `via` point (no bar there): where the crew lock meets the equipment lock's end face
+// (a concave corner) the body swings out and up before the face, the hips held off it (hip offset, as at()); from the
+// hatch's handrail ring the way curves up onto the crew lock.
+const via = (point, normal, offset) => ({ via: [point, normal.normalize(), offset] });
+const trunkWay = [
+    via(qPoint(7.36, 46, 1.40), qNormal(46), [0, 0, 0]),
+    qAround(7.30, .96, 58, 82), qAround(7.30, .96, 92, 120), qAlong(140, .96, 7.10, 6.50),
+    via(qPoint(6.30, 150, 1.38), qNormal(150, .75, .66), [.10, ...qNormal(150).multiplyScalar(.08).toArray().slice(1)]),
+    qFace(162, [6.015, 1.10], [5.78, 2.05], 1.58, 1.98), qAlong(164, 2.10, 5.55, 4.80), qAlong(164, 2.10, 4.55, 3.85), qFace(164, [3.57, 1.98], [3.39, .87], 1.90, 1.10),
+    uAlong(32, 11.40, 10.80), uAround(10.15, 44, 64), uAround(9.62, 72, 90)
+];
+export const trunkRails = trunkWay.filter(item => !item.via);
+// The route's rail: the bars' ends (and a middle point on the longer ones) after the hatch, and the via points.
+for (const item of trunkWay) {
+    if (item.via) { keys.trunk.push(item.via); continue; }
+    keys.trunk.push([item.a.clone(), item.na.clone()]);
+    if (item.a.distanceTo(item.b) > .6) keys.trunk.push([item.a.clone().lerp(item.b, .5), item.na.clone().lerp(item.nb, .5).normalize()]);
+    keys.trunk.push([item.b.clone(), item.nb.clone()]);
+}
 export const evaPath = {
     reach: .46,        // hips to handrail
     chord: .45,        // the body lies along the chord through the rail this far ahead of the hips …
@@ -39,25 +78,13 @@ export const evaPath = {
     tetherStart: 1.86, // arc of the hatch ring's forward point, where both safety tethers are hooked
     helperOffset: [.98, 0, 0]   // the helper's handholds, worksite and fairlead: the lead's, moved along the face
 };
-// Handholds (tools: see README): [x, y, z, tangent, normal] per grip, in path order. Trunk grips are shared.
+// Handholds: [x, y, z, tangent, normal] per grip, in path order. Trunk grips are shared: the hatch's rim and its
+// handrail ring, then grips along each bar of trunkRails, about 0.28 m apart (added below).
 export const evaHolds = {
     trunk: [
         [7.37, .24, 11.44, 0, -1, .01, 0, 0, 1], [7.37, -.04, 11.447, 0, -1, .026, 0, 0, 1], [7.37, -.32, 11.45, 0, -1, -.009, 0, 0, 1],
         [7.37, -.599, 11.436, 0, -.997, -.079, 0, .002, 1], [7.37, -.878, 11.412, 0, -.992, -.128, 0, .051, .999], [7.37, -1.143, 11.328, .001, -.8, -.6, 0, -.004, 1],
-        [7.371, -1.298, 11.1, -.002, -.259, -.966, 0, -.75, .661], [7.366, -1.119, 10.956, -.021, .994, -.105, 0, -.956, -.293], [7.358, -.839, 10.942, -.033, .999, .012, 0, -.614, -.789],
-        [7.348, -.561, 10.971, -.046, .993, .113, 0, -.464, -.886], [7.334, -.283, 10.967, -.036, .988, -.151, 0, -.267, -.964], [7.31, -.007, 10.926, -.194, .98, -.044, 0, -.007, -1],
-        [7.23, .258, 10.955, -.375, .906, .194, 0, .234, -.972], [7.079, .483, 11.018, -.74, .624, .252, 0, .437, -.899], [6.845, .615, 11.094, -.871, .407, .274, 0, .559, -.829],
-        [6.605, .737, 11.169, -.863, .427, .269, 0, .664, -.748], [6.369, .867, 11.244, -.783, .563, .265, 0, .754, -.656], [6.18, 1.054, 11.327, -.586, .778, .226, -.016, .841, -.54],
-        [6.055, 1.297, 11.305, -.294, .903, -.314, .435, .805, -.404], [5.966, 1.548, 11.219, -.361, .898, -.252, .844, .479, -.241], [5.872, 1.802, 11.148, -.373, .897, -.238, .666, .676, -.316],
-        [5.718, 2.025, 11.099, -.842, .538, -.042, .328, .863, -.384], [5.448, 2.069, 11.133, -.982, -.047, .182, .119, .916, -.384], [5.171, 2.059, 11.17, -.998, .024, .057, -.013, .928, -.373],
-        [4.891, 2.061, 11.175, -1, -.005, -.006, -.051, .928, -.369], [4.611, 2.059, 11.171, -1, -.008, -.018, -.018, .928, -.373], [4.332, 2.061, 11.168, -.998, .066, -.018, .004, .927, -.375],
-        [4.054, 2.093, 11.159, -.993, .112, -.03, .049, .926, -.373], [3.775, 2.089, 11.16, -.961, -.269, .064, .036, .927, -.374], [3.573, 1.912, 11.203, -.497, -.842, .21, -.46, .823, -.335],
-        [3.452, 1.667, 11.263, -.446, -.872, .202, -.846, .488, -.214], [3.356, 1.411, 11.323, -.292, -.932, .213, -.726, .617, -.304], [3.213, 1.183, 11.362, -.86, -.509, .007, -.416, .801, -.431],
-        [2.943, 1.125, 11.337, -.986, -.037, -.16, -.166, .841, -.515], [2.67, 1.125, 11.279, -.972, .035, -.233, .089, .851, -.518], [2.399, 1.147, 11.209, -.955, .117, -.272, .458, .805, -.378],
-        [2.138, 1.191, 11.12, -.901, .202, -.384, .759, .636, -.139], [1.911, 1.267, 10.978, -.634, .368, -.681, .837, .547, .003], [1.803, 1.391, 10.755, -.239, .482, -.843, .802, .597, .007],
-        [1.726, 1.528, 10.524, -.398, .478, -.783, .749, .663, 0], [1.599, 1.66, 10.312, -.478, .473, -.74, .692, .722, 0], [1.453, 1.792, 10.113, -.572, .466, -.675, .628, .778, 0],
-        [1.273, 1.919, 9.941, -.71, .445, -.546, .552, .834, 0], [1.062, 2.041, 9.804, -.796, .419, -.437, .459, .888, 0], [.828, 2.15, 9.697, -.88, .352, -.32, .358, .934, 0],
-        [.569, 2.232, 9.633, -.965, .235, -.115, .246, .969, 0], [.294, 2.284, 9.621, -.991, .132, 0, .127, .992, 0], [.015, 2.306, 9.618, -1, .018, -.025, .007, 1, 0]],
+        [7.371, -1.298, 11.1, -.002, -.259, -.966, 0, -.75, .661]],
     lead: [
         [-.264, 2.291, 9.616, -.992, -.122, .015, -.115, .993, 0], [-.536, 2.228, 9.621, -.933, -.36, -.002, -.232, .973, .006], [-.947, 2.102, 9.86, 0, 0, 1, -.411, .912, 0],
         [-.9, 2.7, 9.93, 1, 0, 0, 0, 0, -1], [-.89, 3.016, 10.105, .077, .876, .476, 0, .562, -.827], [-.89, 3.256, 10.247, -.149, .847, .51, 0, .517, -.856],
@@ -66,22 +93,25 @@ export const evaHolds = {
         [-.264, 2.291, 9.616, -.992, -.122, .015, -.115, .993, 0], [-.442, 2.262, 9.9, 0, 0, 1, -.192, .981, 0], [-.45, 2.7, 9.93, 1, 0, 0, 0, 0, -1],
         [-.45, 2.979, 10.087, 0, .882, .472, 0, .535, -.845], [-.45, 3.22, 10.228, 0, .863, .505, 0, .496, -.868]]
 };
-// Handrail bars: [end a, end b, normal a, normal b, post a, post b].
+// Handrail bars: [end a, end b, normal a, normal b, post a, post b]. The trunk's are trunkRails (added below), then
+// the bar across the foot of Z1's ramp.
 export const evaBars = {
-    trunk: [
-        [7.361, -.929, 10.945, 7.344, -.472, 10.979, 0, -.701, -.713, 0, -.412, -.911, .431, .149], [7.338, -.372, 10.978, 7.289, .08, 10.928, 0, -.343, -.939, 0, .073, -.997, .111, .099], [7.26, .175, 10.939, 7.008, .532, 11.042, 0, .159, -.987, 0, .48, -.877, .099, .12],
-        [6.923, .578, 11.069, 6.527, .775, 11.194, 0, .523, -.852, 0, .694, -.72, .088, .159], [6.442, .82, 11.22, 6.129, 1.128, 11.34, 0, .726, -.688, -.005, .863, -.506, .119, .187], [6.084, 1.216, 11.33, 5.936, 1.629, 11.196, .142, .878, -.457, .813, .524, -.255, .248, .09],
-        [5.903, 1.721, 11.171, 5.635, 2.059, 11.102, .749, .598, -.284, .256, .886, -.387, .084, .092], [5.537, 2.07, 11.116, 5.081, 2.061, 11.174, .18, .904, -.387, -.04, .928, -.371, .094, .104], [4.981, 2.062, 11.175, 4.522, 2.058, 11.17, -.052, .928, -.369, -.007, .927, -.374, .104, .061],
-        [4.421, 2.058, 11.168, 3.964, 2.101, 11.157, 0, .927, -.375, .06, .926, -.373, .103, .148], [3.864, 2.102, 11.156, 3.532, 1.834, 11.223, .059, .926, -.373, -.662, .693, -.284, .149, .051], [3.49, 1.746, 11.244, 3.327, 1.328, 11.341, -.798, .555, -.233, -.634, .69, -.349, .075, .213],
-        [3.28, 1.242, 11.357, 2.855, 1.123, 11.321, -.514, .761, -.397, -.091, .844, -.528, .225, .182], [2.758, 1.124, 11.3, 2.314, 1.159, 11.184, -.007, .848, -.53, .575, .759, -.304, .214, .213], [2.22, 1.174, 11.152, 1.863, 1.303, 10.912, .685, .696, -.216, .83, .558, .007, .291, .08],
-        [1.826, 1.348, 10.831, 1.686, 1.57, 10.455, .817, .577, .008, .731, .682, 0, .078, .111], [1.641, 1.617, 10.379, 1.4, 1.834, 10.053, .711, .703, 0, .605, .796, 0, .02, .114], [1.336, 1.879, 9.992, .989, 2.078, 9.766, .579, .815, 0, .428, .904, 0, .113, .109],
-        [.906, 2.117, 9.728, .481, 2.252, 9.625, .392, .92, 0, .208, .978, 0, .109, .109], [.383, 2.27, 9.622, -.075, 2.305, 9.616, .166, .986, 0, -.032, .999, 0, .109, .082], [-1, 2.7, 9.93, -.3, 2.7, 9.93, 0, 0, -1, 0, 0, -1, .07, .07]],
+    trunk: [[-1, 2.7, 9.93, -.3, 2.7, 9.93, 0, 0, -1, 0, 0, -1, .07, .07]],
     lead: [
         [-.175, 2.3, 9.615, -.619, 2.194, 9.622, -.076, .997, 0, -.267, .964, .011, .113, .087], [-.947, 2.102, 9.63, -.947, 2.102, 10.09, -.411, .912, 0, -.411, .912, 0, .115, .115], [-.897, 2.936, 10.064, -.91, 3.332, 10.292, 0, .535, -.845, 0, .471, -.882, .103, .104],
         [-.945, 3.411, 10.341, -1.167, 3.748, 10.561, 0, .418, -.908, 0, .053, -.999, .048, .125]],
     helper: [
         [-.442, 2.262, 9.72, -.442, 2.262, 10.18, -.192, .981, 0, -.192, .981, 0, .115, .115], [-.45, 2.898, 10.047, -.45, 3.299, 10.273, 0, .511, -.859, 0, .486, -.874, .099, .104]]
 };
+for (const bar of trunkRails) {
+    const way = bar.b.clone().sub(bar.a), length = way.length(), count = Math.max(2, Math.round(length / .28));
+    way.divideScalar(length);
+    for (let i = 0; i < count; i++) {
+        const k = (i + .5) / count, point = bar.a.clone().lerp(bar.b, k), normal = bar.na.clone().lerp(bar.nb, k).normalize();
+        evaHolds.trunk.push([...point.toArray(), ...way.toArray(), ...normal.toArray()]);
+    }
+}
+evaBars.trunk.unshift(...trunkRails.map(bar => [...bar.a.toArray(), ...bar.b.toArray(), ...bar.na.toArray(), ...bar.nb.toArray(), standoff, standoff]));
 
 const smooth = value => { const t = THREE.MathUtils.clamp(value, 0, 1); return t * t * (3 - 2 * t); };
 // role: 'lead' or 'helper'. task: { anchor: local point of the rail beside the hips at the start of the worksite
@@ -198,12 +228,15 @@ export function createEvaRoute(role, task) {
 }
 
 // When each crew is where. The helper leaves the airlock first and waits at the worksite; the lead follows, works
-// for one task period and goes back first. Both translate at `speed` with a gentle start and stop.
+// for one task period and goes back first. Both translate at `speed` with a gentle start and stop, `spacing` apart
+// along the shared way (hips to hips: a body reaches about a metre ahead of its hips and a metre behind, so this
+// leaves a metre and a half between the lead's gloves and the helper's boots). The lead's own way to the worksite is
+// longer than the helper's, so on the way back the helper waits that much longer before setting off.
 export function createEvaTimeline(lengths, taskPeriod) {
-    const speed = .14, ease = 2.5, gap = 12, pause = 12;
+    const speed = .14, ease = 2.5, spacing = 3.5, gap = spacing / speed, pause = 12;
     const travel = { lead: lengths.lead / speed + ease, helper: lengths.helper / speed + ease };
-    const arrive = { helper: travel.helper, lead: gap + travel.lead };
-    const depart = { helper: 0, lead: gap }, leave = { lead: arrive.lead + taskPeriod, helper: arrive.lead + taskPeriod + gap };
+    const arrive = { helper: travel.helper, lead: gap + travel.lead }, lag = Math.max(0, lengths.lead - lengths.helper) / speed;
+    const depart = { helper: 0, lead: gap }, leave = { lead: arrive.lead + taskPeriod, helper: arrive.lead + taskPeriod + gap + lag };
     const home = { lead: leave.lead + travel.lead, helper: leave.helper + travel.helper }, period = home.helper + pause;
     // Arc after `time` seconds of a move of `length`: constant speed between an eased start and stop.
     const moved = (time, length, total) => {

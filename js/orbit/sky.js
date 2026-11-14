@@ -3,7 +3,8 @@
 // inertial frame of date (x toward the vernal equinox, z north) turned so +y points north. Two views draw it: the
 // Orbit view (js/orbit/view.js), and the station's Earth backdrop, drawn at true scale behind the station
 // (renderBehind). It loads the first time either opens. More objects (satellites, a supply ship on its way up) join
-// through addOrbiter(). In the Orbit view Earth can also be drawn as a map with live wind and storms (earth-map.js).
+// through addOrbiter(). The Orbit and Launch views draw Earth as a map with live wind and storms (earth-map.js); the
+// backdrop and the Cupola as photographs, loaded the first time one of them draws.
 import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
@@ -63,8 +64,14 @@ export function createSky() {
     // city lights on the night side; a soft terminator. Detail map: red relief, green roughness (0 on water), blue clouds.
     const uniforms = { dayMap: { value: null }, nightMap: { value: null }, detailMap: { value: null }, hasDay: { value: 0 }, hasNight: { value: 0 },
         hasDetail: { value: 0 }, sunDirection: { value: new THREE.Vector3(1, 0, 0) }, mapStyle: { value: 0 }, mapLight: { value: 0 } };
-    load('earth_day_4096.jpg', texture => { uniforms.dayMap.value = texture; uniforms.hasDay.value = 1; });
-    load('earth_night_4096.jpg', texture => { uniforms.nightMap.value = texture; uniforms.hasNight.value = 1; });
+    // The day and night photographs (about 90 MB on the GPU at 4K) only for a view that draws Earth as a photograph
+    // (the station's backdrop, the Cupola): the Orbit and Launch views draw the map, which reads the detail map alone.
+    let photos = false;
+    function loadPhotos() {
+        if (photos) return; photos = true;
+        load('earth_day_4096.jpg', texture => { uniforms.dayMap.value = texture; uniforms.hasDay.value = 1; });
+        load('earth_night_4096.jpg', texture => { uniforms.nightMap.value = texture; uniforms.hasNight.value = 1; });
+    }
     load('earth_bump_roughness_clouds_4096.jpg', texture => { uniforms.detailMap.value = texture; uniforms.hasDetail.value = 1; }, false);
     const earth = new THREE.Mesh(new THREE.SphereGeometry(earthRadius, 160, 80), new THREE.ShaderMaterial({
         uniforms,
@@ -269,7 +276,7 @@ export function createSky() {
     const cameraDistance = new THREE.Vector3();
     // The Orbit view on paper (light) or black (dark): what shows against the background changes with it. Colours meant
     // for the paper are shown as given (no tone mapping); the dark sky keeps it.
-    let appliedTheme = 'dark';
+    let appliedTheme = 'dark', appliedMapTheme = 'dark';
     const untoned = (material, on) => { if (material.toneMapped === on) { material.toneMapped = !on; material.needsUpdate = true; } };
     function applyTheme(theme) {
         const light = theme === 'light';
@@ -288,7 +295,7 @@ export function createSky() {
             entry.trackAt = -Infinity;   // its paths again, in the new colours
         }
         paths.moonAt = paths.earthAt = NaN;
-        earthMap.setTheme(theme);
+        appliedMapTheme = theme; earthMap.setTheme(theme);
     }
     function prepare(camera, mode, nearest = Infinity) {
         earthTiles.group.visible = false;   // renderFrom alone shows them
@@ -317,11 +324,15 @@ export function createSky() {
             body.marker.position.copy(body.object.position);
             body.marker.visible = body.radius / cameraDistance.subVectors(camera.position, body.object.position).length() * pixelsPerRadian < 2.5;
         }
-        // The map (Orbit view only): its own Earth, a quieter rim, no labels.
-        const mapOn = orbitView, light = theme === 'light';
-        uniforms.mapStyle.value = mapOn ? 1 : 0;
+        // The map (Orbit and Launch views): its own Earth, a quieter rim, no labels. The Launch view's sky stays dark (stars,
+        // the Sun's glow) round an Earth on paper, as its buildings are drawn.
+        const launchView = mode === 'launch', mapOn = orbitView || launchView, light = theme === 'light', paperEarth = light || launchView;
+        if (!mapOn) loadPhotos();
+        uniforms.mapStyle.value = mapOn ? 1 : 0; uniforms.mapLight.value = paperEarth ? 1 : 0;
+        const mapTheme = mapOn && paperEarth ? 'light' : 'dark';
+        if (mapTheme !== appliedMapTheme) { appliedMapTheme = mapTheme; earthMap.setTheme(mapTheme); }
         atmosphere.visible = !(light && mapOn); atmosphere.material.uniforms.glow.value.copy(light ? paperGlow : mapOn ? mapGlow : photoGlow);
-        earthMap.show(mapOn); viewport.classList.toggle('earth-map', mapOn);
+        earthMap.show(mapOn); viewport.classList.toggle('earth-map', orbitView);
         if (mapOn) earthMap.frame(lastDelta, camera, time.date);
     }
     // Labels beside their objects (Orbit view only), hidden when Earth is in the way or off screen.

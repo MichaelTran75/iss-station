@@ -6,8 +6,9 @@ import { cbmHarmonyRear, cbmHarmonyScale, cbmPassiveRadius, cbmReferenceRadial, 
     referencePassiveCBM } from '../core/cbm.js';
 import { hullBadge, labelTexture, quiltPanel, quiltPanels, quiltSeam } from '../core/surfaces.js';
 import { referencePma } from '../core/pma.js';
+import { harmonyOpen, harmonyQuarters, inArc, sweep } from './living.js';
 
-part('harmony', 'Harmony / Node 2', '07 / RESEARCH JUNCTION', 'Harmony connects Destiny with the European Columbus and Japanese Kibo laboratories. The forward adapter receives commercial crew vehicles. Compact stepped CBM joints seat both laboratories against the radial ports; inclined collar brackets reinforce the axial connections.', [['Joined station', '2007'], ['Length', '7.2 m']], [0, 2.2, -4.65], (kit, group) => {
+part('harmony', 'Harmony / Node 2', '07 / RESEARCH JUNCTION', 'Harmony connects Destiny with the European Columbus and Japanese Kibo laboratories. The forward adapter receives commercial crew vehicles. Compact stepped CBM joints seat both laboratories against the radial ports; inclined collar brackets reinforce the axial connections. Harmony also holds four crew quarters, the station\'s bedrooms, one in a rack bay of each wall. A 75%-transparent band of the forward bay shows the port and deck ones: a booth of about 2.1 m³ each, with a sleeping bag strapped to the back wall, a laptop, a reading light and a vent; the crew sleep there through the station night (GMT). Layout and fittings are illustrative.', [['Joined station', '2007'], ['Length', '7.2 m']], [0, 2.2, -4.65], (kit, group) => {
     // Node 2 after reference imagery: a 4.3 m cylinder closed by shallow conical end bulkheads rather than the
     // generic domed ends, each with twelve sector seams, rim handrails and a raised berthing collar. The
     // four radial collars follow the reference node and meet the laboratory interfaces.
@@ -19,7 +20,10 @@ part('harmony', 'Harmony / Node 2', '07 / RESEARCH JUNCTION', 'Harmony connects 
         const slope = bulkheadRise(end), normalZ = 1 / Math.hypot(1, slope), normalR = slope * normalZ;
         return [Math.cos(angle) * (r + lift * normalR), Math.sin(angle) * (r + lift * normalR), endZ(end, r) + end * lift * normalZ];
     };
-    for (const profile of [[[1.28, -8.5], [2.15, -8.25], [2.15, -5.95]], [[2.15, -3.35], [2.15, -1.05], [cbmPassiveRadius, cbmHarmonyRear]]]) kit.add(new THREE.LatheGeometry(profile.map(([r,z])=>new THREE.Vector2(r,z)),64),material(palette.hull),[0,0,0],[1,1,1],[Math.PI/2,0,0]);
+    for (const profile of [[[1.28, -8.5], [2.15, -8.25]], [[2.15, -3.35], [2.15, -1.05], [cbmPassiveRadius, cbmHarmonyRear]]]) kit.add(new THREE.LatheGeometry(profile.map(([r,z])=>new THREE.Vector2(r,z)),64),material(palette.hull),[0,0,0],[1,1,1],[Math.PI/2,0,0]);
+    // The forward barrel round the see-through section (js/parts/living.js furnishes the crew quarters behind it).
+    const open = harmonyOpen;
+    sweep(kit, 2.15, open.z0, 2.15, open.z1, open.a1, open.a0 + Math.PI * 2, material(palette.hull));
     // Radial CBM belt rebuilt from the Harmony node in ISS_stationary.glb.
     // The GLB has four saddle-mounted collars and shallow inset covers. Dimensions are
     // normalized to the existing 2.15 m hull radius; occupied ports meet the current laboratories.
@@ -106,12 +110,13 @@ part('harmony', 'Harmony / Node 2', '07 / RESEARCH JUNCTION', 'Harmony connects 
     }
     // Kibo-style quilted MMOD panels over dark seams: twelve columns in two rows around the forward and aft bays,
     // and only the four diagonal panels in the middle bay, leaving recesses around the radial ports.
-    for (const [z0, z1] of [[-8.25, -5.95], [-3.35, -1.05]]) kit.add(new THREE.CylinderGeometry(2.166, 2.166, z1 - z0, 64, 1, true), quiltSeam, [0, 0, (z0 + z1) / 2], [1, 1, 1], [Math.PI / 2, 0, 0], false);
+    kit.add(new THREE.CylinderGeometry(2.166, 2.166, 2.3, 64, 1, true), quiltSeam, [0, 0, -2.2], [1, 1, 1], [Math.PI / 2, 0, 0], false);
+    sweep(kit, 2.166, open.z0, 2.166, open.z1, open.a1, open.a0 + Math.PI * 2, quiltSeam);
     [[-8.25, -5.95], [-5.95, -3.35], [-3.35, -1.05]].forEach(([z0, z1], bay) => {
         const middle = (z0 + z1) / 2;
         [[z0 + .04, middle - .016], [middle + .016, z1 - .04]].forEach(([za, zb], row) => {
             if (bay === 1) for (let k = 0; k < 4; k++) { const c = Math.PI / 4 + k * Math.PI / 2; quiltPanel(kit, 2.172, za, zb, c - .14, c + .14, quiltPanels[(k + row) % 2]); }
-            else for (let k = 0; k < 12; k++) quiltPanel(kit, 2.172, za, zb, k * Math.PI / 6 + .006, (k + 1) * Math.PI / 6 - .006, quiltPanels[(k + row + bay) % 2]);
+            else for (let k = 0; k < 12; k++) if (bay !== 0 || !inArc((k + .5) * Math.PI / 6, open.a0, open.a1)) quiltPanel(kit, 2.172, za, zb, k * Math.PI / 6 + .006, (k + 1) * Math.PI / 6 - .006, quiltPanels[(k + row + bay) % 2]);
         });
     });
     for (const z of [-5.95, -3.35]) ring(kit, [0, 0, z], 2.175, 'z', palette.silver, .02);
@@ -121,7 +126,7 @@ part('harmony', 'Harmony / Node 2', '07 / RESEARCH JUNCTION', 'Harmony connects 
         kit.rod(at(zc - half, 2.27), at(zc + half, 2.27), .033, palette.gold);
         for (const z of [zc - half, zc + half]) kit.rod(at(z, 2.172), at(z, 2.27), .026, palette.gold);
     };
-    for (const [zc, angles] of [[-7.1, [30, 150, 210, 270, 330]], [-2.2, [30, 90, 150, 210, 270, 330]]]) for (const degrees of angles) seamRail(degrees * Math.PI / 180, zc, .45);
+    for (const [zc, angles] of [[-7.1, [150, 210, 270]], [-2.2, [30, 150, 210, 270, 330]]]) for (const degrees of angles) seamRail(degrees * Math.PI / 180, zc, .45);
     for (let k = 0; k < 4; k++) seamRail(Math.PI / 4 + k * Math.PI / 2, -4.65, .4);
     // ESA and NASA stickers on the forward bulkhead's upper-starboard sectors, facing the starboard view.
     const sticker = (text, angle) => {
@@ -143,5 +148,6 @@ part('harmony', 'Harmony / Node 2', '07 / RESEARCH JUNCTION', 'Harmony connects 
         dockingFace: [0, -pmaReferenceOffset, pma2BaseZ - pmaReferenceLength],
         adapter: pma2, referenceSize: pma2.userData.referenceSize
     };
-    hullBadge(kit, 'HARMONY', [0, 0, -6.75], 2.225, [1.8, .38]);
+    hullBadge(kit, 'HARMONY', [0, 0, -2.2], 2.225, [1.8, .38]);
+    harmonyQuarters(group);
 });

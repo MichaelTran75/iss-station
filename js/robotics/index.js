@@ -18,7 +18,8 @@
 // into its way, the plan eases to a stop; a free move is planned again from there, and a pre-built approach waits
 // until the way is clear. Stop eases an operation to a halt as soon as the arm is back on its own base with nothing
 // in hand (it plays on until then), and a route takes it to the parked or live pose. Only a change the arm cannot
-// move through (a new base or end, Dextre on another fixture) cuts, as does anything with Scene animation off.
+// move through (a new base or end, Dextre on another fixture) cuts, as does a goal no clear route reaches and anything
+// with Scene animation off.
 // Operations pause with Scene animation.
 import * as THREE from 'three';
 import { parts } from '../core/station.js';
@@ -39,8 +40,9 @@ watchItems(roboticsItems);
 const { carriage, bodies, snares, seat } = parts.get('robotics').group.userData.robotics;
 const roboticsEntry = parts.get('robotics'), dextreGroup = parts.get('dextre').group, dextreBodyGroup = dextreGroup.userData.body;
 const cargoEntry = parts.get('cygnus'), cargoGroup = cargoEntry.group.userData.body;
-// The vehicle's silhouette for the operations menu, in its own frame: four lines along the hull and each array's rim.
-const CARGO_OUTLINE = [...[[1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]].map(([x, z]) => [[x, 0, z], [x, -7.9, z]]), ...[-3.6, 3.6].map(x => [[x - 1.85, -7, 0], [x, -5.15, 0], [x + 1.85, -7, 0], [x, -8.85, 0], [x - 1.85, -7, 0]])];
+// The vehicle's silhouette for the operations menu, in its own frame: four lines along the hull and each array's rim
+// (the arrays lie across the axis, js/parts/cygnus.js).
+const CARGO_OUTLINE = [...[[1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5]].map(([x, z]) => [[x, 0, z], [x, -7.9, z]]), ...[-3.42, 3.42].map(x => [[x - 1.85, -7.45, 0], [x, -7.45, 1.85], [x + 1.85, -7.45, 0], [x, -7.45, -1.85], [x - 1.85, -7.45, 0]])];
 // The spacewalker the arm carries, for js/figures/rider.js: where the foot restraint holds the hips (`at`, a station
 // matrix: x to the left, y to the head, z ahead), whether the rider is on it, and the act under way with its progress.
 export const crewView = { seat: 0, on: 'inside', act: '', u: 0, at: new Array(16).fill(0) };
@@ -164,11 +166,12 @@ function routeTo(goal, replans = 0) {
         request = null;
         if (result.reason === 'cancelled') return;
         learn(result);
-        note = result.ok ? '' : 'No clear route found: moving directly';
-        if (!result.ok) console.warn('Robotics route:', result.reason);
-        // Without a clear route the arm still moves rather than jumps: the ride, then the joints.
-        const steps = result.ok ? result.steps : [...goal.mbs !== from.mbs ? [{ ride: goal.mbs, label: 'Mobile Transporter' }] : [], { path: [from.theta, goal.theta], label: 'Arm' }, ...goal.dextre.roll !== from.dextre.roll ? [{ roll: goal.dextre.roll * 180 / Math.PI, label: 'Dextre' }] : []];
-        startRun('route', compile(steps, from), { goal: copyState(goal), replans, watched: result.ok && replans < 4, loose: result.relaxed ? new Set(steps.map((step, k) => k)) : new Set() });
+        note = result.ok ? '' : 'No clear route found: set at once';
+        // Without a clear route the arm is set in the goal at once: a straight move would sweep it through the station,
+        // Dextre or itself.
+        if (!result.ok) { console.warn('Robotics route:', result.reason); cut(goal); return; }
+        const steps = result.steps;
+        startRun('route', compile(steps, from), { goal: copyState(goal), replans, watched: replans < 4, loose: result.relaxed ? new Set(steps.map((step, k) => k)) : new Set() });
     });
 }
 // An operation planned from where the arm stands, from step `first` on (after a stop for a moving part, `home` and

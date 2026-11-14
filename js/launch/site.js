@@ -36,8 +36,10 @@ const roofMap = () => canvasTexture(64, (g, s) => {
     g.fillStyle = 'rgba(70,74,78,.12)'; for (let y = 0; y < s; y += 8) g.fillRect(0, y, s, 1);
 }, 4);
 
-export function createSite(data) {
+// `drawn` collects what stands within 600 m of 39A for the pad's drawing sheet (js/launch/drawing.js), as in ground.js.
+export function createSite(data, drawn = []) {
     const group = new THREE.Group(); group.name = 'launch site';
+    let recording = false; const near = (x, z) => Math.hypot(x, z) < 600;
     const colour = new THREE.Color();
 
     // Buildings: walls and roofs, each one geometry for the lot.
@@ -87,6 +89,7 @@ export function createSite(data) {
         let cx = 0, cz = 0, highest = -Infinity;
         for (const [x, z] of ring) { cx += x / ring.length; cz += z / ring.length; highest = Math.max(highest, terrainHeight(x, z)); }
         const top = Math.max(groundDrop(cx, cz) + building.h, groundDrop(cx, cz) + highest + 1);
+        if (near(cx, cz)) drawn.push({ k: 'prism', ring, y0: building.c ? top - .5 : groundDrop(cx, cz), y1: top, f: null });
         colour.set('#' + building.r); wallColour.set('#' + building.w);
         if (building.c) {
             // A canopy: a slab 0.5 m deep on posts at its corners.
@@ -111,6 +114,7 @@ export function createSite(data) {
     const pieces = new Map();
     const add = (hex, g) => { if (!pieces.has(hex)) pieces.set(hex, []); pieces.get(hex).push(g); };
     const rod = (hex, a, b, radius, sides = 6) => {
+        if (recording) drawn.push({ k: 'rod', a, b, r: radius, f: null });
         const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b);
         add(hex, new THREE.CylinderGeometry(radius, radius, start.distanceTo(end), sides).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize())).translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2));
     };
@@ -125,6 +129,8 @@ export function createSite(data) {
     const hang = (a, b, sag) => { for (let k = 0; k < 40; k++) for (const f of [k / 40, (k + 1) / 40]) wires.push(new THREE.Vector3().lerpVectors(a, b, f).setY(THREE.MathUtils.lerp(a.y, b.y, f) - sag * 4 * f * (1 - f))); };
     for (const tower of data.towers) {
         const { x, z } = tower, foot = groundDrop(x, z) + terrainHeight(x, z), top = groundDrop(x, z) + tower.h, tall = top - foot;
+        recording = near(x, z);
+        if (recording && tower.k === 'light') drawn.push({ k: 'box', c: [x, top - .6, z], s: [1.8, 1.2, .6], r: [0, 0, 0], f: null });
         if (tower.k === 'lightning') {
             const steelTop = tall * .875;
             latticeTower(x, z, foot, steelTop, 4.5, 1.6);
@@ -159,19 +165,25 @@ export function createSite(data) {
     // Propellant spheres on eight columns to their equators.
     for (const { x, z, y, r } of data.spheres) {
         const foot = groundDrop(x, z);
+        recording = near(x, z); if (recording) drawn.push({ k: 'sphere', c: [x, foot + y, z], r, f: null });
         add(tank, new THREE.SphereGeometry(r, 32, 20).translate(x, foot + y, z));
         for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; rod(steel, [x + Math.cos(a) * r * .92, foot, z + Math.sin(a) * r * .92], [x + Math.cos(a) * r * .9, foot + y, z + Math.sin(a) * r * .9], .35); }
     }
     // Sound suppression water towers: the tank on four splayed legs with bracing.
     for (const { x, z, y, r } of data.waterTowers) {
         const foot = groundDrop(x, z), legTop = y - r * .75;
+        recording = near(x, z); if (recording) drawn.push({ k: 'sphere', c: [x, foot + y, z], r, f: null });
         for (const sx of [-1, 1]) for (const sz of [-1, 1]) rod(steel, [x + sx * 6, foot, z + sz * 6], [x + sx * 3, foot + legTop, z + sz * 3], .45);
         for (let h = 12; h < legTop; h += 13) {
             const w = 6 - 3 * h / legTop;
-            for (const s of [-1, 1]) { add(steel, new THREE.BoxGeometry(2 * w, .4, .4).translate(x, foot + h, z + s * w)); add(steel, new THREE.BoxGeometry(.4, .4, 2 * w).translate(x + s * w, foot + h, z)); }
+            for (const s of [-1, 1]) {
+                add(steel, new THREE.BoxGeometry(2 * w, .4, .4).translate(x, foot + h, z + s * w)); add(steel, new THREE.BoxGeometry(.4, .4, 2 * w).translate(x + s * w, foot + h, z));
+                if (recording) drawn.push({ k: 'rod', a: [x - w, foot + h, z + s * w], b: [x + w, foot + h, z + s * w], r: .2, f: null }, { k: 'rod', a: [x + s * w, foot + h, z - w], b: [x + s * w, foot + h, z + w], r: .2, f: null });
+            }
         }
         add(tank, new THREE.SphereGeometry(r, 24, 16).translate(x, foot + y, z));
     }
+    recording = false;
     for (const [hex, geometries] of pieces) group.add(new THREE.Mesh(mergeGeometries(geometries, false), new THREE.MeshStandardMaterial({ color: hex, roughness: .75, metalness: .2 })));
     return group;
 }

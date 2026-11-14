@@ -43,7 +43,8 @@ function tubeModule(kit, length, radius, options = {}) {
     // Modules with measured CBMs supply their own end interfaces.
     for (const side of [-1, 1]) {
         if (options.endInterfaceSides && !options.endInterfaceSides.includes(side)) continue;
-        genericEndInterface(kit, side, bodyRadius(side * half), half, options.hollow);
+        // `outwardEnds`: the end bulge stays outside the barrel, clear of a cabin furnished behind a see-through section.
+        genericEndInterface(kit, side, bodyRadius(side * half), half, options.hollow || options.outwardEnds);
     }
     // Shield panel joins remain shallow; fasteners are schematic, not an engineering layout.
     const bays = Math.max(3, Math.round(length / 1.35));

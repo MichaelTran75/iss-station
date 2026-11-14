@@ -1,16 +1,17 @@
 // ISS Live robotics telemetry (NASA's ISSLIVE feed, js/orbit/live.js): Canadarm2's base and joint angles, its tip end
 // effector, Dextre's base and body roll, and where the Mobile Transporter stands. Item names and codes after ISS Mimic
-// and canadarm-live (bfeist), read on 7 November 2026: the arm on MBS PDGF 3 by LEE B, SR..WR 200.0, 200.0, -90.0,
-// -155.0, -105.0, -110.0, 5.0 degrees, tip released; Dextre on MBS PDGF 2 by its body LEE, body roll 60.0; the
-// transporter at worksite 1, 2169.16 cm.
+// and canadarm-live (bfeist). Two readings: 7 November 2026, the arm on MBS PDGF 3 by LEE B, SR..WR 200.0, 200.0,
+// -90.0, -155.0, -105.0, -110.0, 5.0 degrees, tip released; Dextre on MBS PDGF 2 by its body LEE, body roll 60.0; the
+// transporter at worksite 1, 2169.16 cm. 14 November 2026, the same base and Dextre, SR..WR 245.0, 52.0, -77.0, -115.0,
+// 0, 0, 0; the transporter at worksite 4, 287.02 cm.
 //
-// What the angles are measured from is not published. This page reads them as the SSRMS papers do (Xu 2013, Qin 2023):
-// with all seven at zero the booms lie in line across both end effectors' axes, the shoulder and wrist yaw axes along
-// the booms and the pitch axes parallel to the roll axes; each angle counts positive by the right hand about its axis
-// as kinematics.js lays it out. In this model's terms: yaw and pitch offset by a quarter turn (the table below). Under
-// that reading the 7 November pose stands folded above the base at worksite 1, 0.69 m clear of the station
-// (tools/robotics/check.js); but so do about a quarter of the 2048 readings that differ from it in sign or quarter
-// turn, so the choice rests on the papers, not on that fit. Inferred, not official.
+// What the angles are measured from is not published. This page reads them as they come: with all seven at zero the
+// arm lies straight, as kinematics.js lays it out (roll axes along the booms, the yaw and pitch axes across them, as
+// canadarm-live draws its model), each angle positive by the right hand about its axis. Under that reading both poses
+// stand clear: on 14 November the arm stands up from the base over the truss, elbow high. Reading yaw and pitch a
+// quarter turn off (an earlier guess from the SSRMS papers' zero) folds the 14 November pose through itself by
+// 0.28 m, so no route could reach it. Of the 64 sign choices with no offset, 6 keep both poses clear (the shoulder and
+// wrist yaw signs stay open); all positive is the plainest. Inferred, not official.
 import { fixtureByCode } from './fixtures.js';
 import { LIMIT } from './kinematics.js';
 
@@ -22,10 +23,9 @@ export const roboticsItems = {
 };
 export const JOINT_NAMES = ['SR', 'SY', 'SP', 'EP', 'WP', 'WY', 'WR'];
 // The model's chain angle = sign × (reading + offset), in degrees.
-export const convention = { sign: [1, 1, 1, 1, 1, 1, 1], offset: [0, 90, 90, 0, 90, -90, 0] };
+export const convention = { sign: [1, 1, 1, 1, 1, 1, 1], offset: [0, 0, 0, 0, 0, 0, 0] };
 const toRadians = Math.PI / 180;
-// An angle past a joint's travel (±270°) is the same angle a turn back: the joint cannot stand there (the reading of 200
-// for the shoulder yaw on 7 November is 290 in the model's terms, so -70).
+// An angle past a joint's travel (±270°) is the same angle a turn back: the joint cannot stand there.
 const withinTravel = angle => angle > LIMIT ? angle - 2 * Math.PI : angle < -LIMIT ? angle + 2 * Math.PI : angle;
 export const fromReadings = readings => readings.map((value, i) => withinTravel(convention.sign[i] * (value + convention.offset[i]) * toRadians));
 const wrap = degrees => ((degrees % 360) + 540) % 360 - 180;

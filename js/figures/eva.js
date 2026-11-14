@@ -256,7 +256,7 @@ async function createZ1Maintenance(evaAsset, simulation) {
     }
     if (query.get('worker') !== '0' && typeof Worker === 'function') {
         try {
-            const worker = new Worker(new URL('../sim/worker.js?v=ff961a1fae', import.meta.url), { type: 'module' });
+            const worker = new Worker(new URL('../sim/worker.js?v=284c0d6513', import.meta.url), { type: 'module' });
             driver.mode = 'starting'; driver.worker = worker; evaWorkerState = 'starting worker';
             worker.onmessage = ({ data }) => {
                 if (data.type === 'ready') {

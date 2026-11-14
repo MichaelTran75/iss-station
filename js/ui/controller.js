@@ -4,8 +4,11 @@ import * as THREE from 'three';
 import { app, camera, controls, hemisphere, inspectionLight, renderer, rim, scene, station, studioLight, sunlight, viewport } from '../core/stage.js';
 import { markShadowsDirty, updateShadows, updateStats, watchFrames } from '../core/quality.js';
 import { destinyShutter, ghostOpacity, modernParts, parts, referenceParts, shownIn, trackingDishes, wings } from '../core/station.js';
-import { crewThought, updateColumbusCrew } from '../parts/columbus.js';
-import { updateCabinCrew } from '../figures/cabin-crew.js';
+import { crewThought } from '../parts/columbus.js';
+import { updateCrew } from '../figures/crew-story.js';
+import { crewLine } from '../figures/crew-day.js';
+import { afterPaint, cancelViewLoading, noViewLoading, startViewLoading } from './view-loading.js';
+import { dragonTransfer, transferPhase, updateDragonTransfer } from '../figures/dragon-transfer.js';
 import { approach, approachPhase, approachStartTime, dragon, dragonBounds, dragonFlightBounds, lvlhToStation, rendezvous,
     setDragonShell, updateApproach, updateDragonCrew } from '../parts/dragon.js';
 import { evaWorkerState, z1EVA } from '../figures/eva.js';
@@ -77,13 +80,15 @@ function setPressed(id, value) { document.getElementById(id).setAttribute('aria-
 setPressed('motion-toggle', motion);
 let toastTimer;
 export function notify(message) { const toast = document.getElementById('toast'); toast.textContent = message; toast.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.hidden = true; }, 3500); }
-// Ghost every visible part except the selection (Dragon keeps Harmony solid, its docking target; the cargo Dragon
-// keeps PMA-3).
+// Ghost every visible part except the selection (Dragon keeps Harmony solid, its docking target, until Harmony's hatch
+// opens to the arriving crew; the cargo Dragon keeps PMA-3).
+let harmonyGhosted = false;
 function applyGhost() {
     markShadowsDirty();
+    harmonyGhosted = dragonTransfer.harmonyOpen;
     // Some parts are shown with what they work with: Dragon with the node it docks to, Canadarm2 and Dextre together.
     const companions = { 'cargo-dragon': ['pma3'], robotics: ['dextre', 'cygnus'], dextre: ['robotics', 'cygnus'], cygnus: ['robotics', 'dextre'] };
-    const solid = selected ? new Set(selected === 'dragon' ? dragonDetail === 'cabin' ? ['dragon'] : ['dragon', 'harmony'] : [selected, ...(companions[selected] || [])]) : null;
+    const solid = selected ? new Set(selected === 'dragon' ? dragonDetail === 'cabin' || harmonyGhosted ? ['dragon'] : ['dragon', 'harmony'] : [selected, ...(companions[selected] || [])]) : null;
     for (const entry of parts.values()) {
         const ghost = solid !== null && !solid.has(entry.id);
         if (!!entry.ghost === ghost) continue;
@@ -164,7 +169,7 @@ export function selectPart(id) {
         document.getElementById('detail-code').textContent = entry.category; document.getElementById('detail-title').textContent = entry.name;
         document.getElementById('detail-description').textContent = windowDetail
             ? 'The Earth-facing observation window has a 0.508 m clear aperture and four panes. Its external shutter protects the glass. This close-up demonstrates the hinged cover; the outline, opening angle and timing are illustrative.'
-            : cabinDetail ? 'The docked capsule with its hull 90% transparent. Four crew in SpaceX suits recline on the seat pallet under the flight display, with cargo stowed on the floor beneath them. The crew member in the outboard seat raises an arm, turns the hand palm-down and touches the display with the index finger. Below the floor, the service bay holds propellant tanks between radial bulkheads. The suit is measured from the supplied model and seated for this view; the seats, display and bay layout are illustrative.'
+            : cabinDetail ? 'The docked capsule with its hull 90% transparent. Four crew in SpaceX suits recline on the seat pallet under the flight display, with cargo stowed on the floor beneath them. The crew member in the outboard seat raises an arm, turns the hand palm-down and touches the display with the index finger. About 12 s after docking the crew change out of their suits; once both hatches are open they float out through the tunnel one at a time. Below the floor, the service bay holds propellant tanks between radial bulkheads. The suit is measured from the supplied model and seated for this view; the seats, display and bay layout are illustrative.'
             : id === 'destiny' ? 'Two forward bipods and two aft tripods connect S0 to Destiny. Ten adjustable legs converge on four mounted shoes, with captive bolts, telescoping collars and secured cable runs. Small fittings and attachment positions are schematic.' : entry.description;
         const [sourceLabel, sourceUrl] = id === 'destiny' ? windowDetail
             ? ['NASA · Observation window', 'https://science.nasa.gov/earth/earth-observatory/human-spaceflight-factsheet/']
@@ -319,12 +324,12 @@ const sunReach = new THREE.Vector3(...studioLight.sun).length(), sunShown = new 
 const { radiatorBanks, parkedTrrj, trrjClear } = parts.get('thermal').group.userData;
 // Joints and attitude as drawn glide to the pose asked for (Real Sun, ISS Live, telemetry carried forward, the
 // schematic pose) instead of jumping: switching ISS Live on turns the arrays and radiators to their telemetered angles,
-// and the Sun and Earth round to the attitude flown, over about five seconds. Each follows its goal on a critically
+// and the Sun and Earth round to the attitude flown, over about ten seconds. Each follows its goal on a critically
 // damped spring. A goal that keeps moving (the arrays tracking the Sun, fast while time runs fast) is followed without
 // lag, at the rate between its last two samples, so only a change of source or a jump eases in. SARJs and BGAs turn
 // the short way round; a TRRJ stays within the turn its wing has clear. Without motion (Motion off, or reduced motion
 // asked for) the pose is set at once.
-const glideRate = 4 / 3;   // per second: a large turn is 99% done in about 5 s
+const glideRate = 2 / 3;   // per second: a large turn is 99% done in about 10 s
 const glideJoints = new Map(), turnGoal = datedTurn.slice();
 let glideClock = 0, glideSource = '', turnSpeed = 0;
 const wrapAngle = angle => angle - 2 * Math.PI * Math.round(angle / (2 * Math.PI));
@@ -402,10 +407,14 @@ function lightFrom(sun, shadow) {
     if (sunShown.distanceTo(sunlight.position) > sunReach * .004 || Math.abs(litShown - lit) > .02) { markShadowsDirty(); sunShown.copy(sunlight.position); litShown = lit; }
 }
 const degrees = radians => Math.round(radians * 180 / Math.PI);
+// The station clock: now, or the time set ahead in the Orbit view, or a date fixed with showSunAt.
+const stationDate = () => sunFixed || new Date(Date.now() + (sky ? sky.time.offset : 0));
+// The Sun's line ends with the crew's block of the day.
+const narrowMeta = matchMedia('(max-width: 760px)'), setSunLine = text => { sunLine.textContent = text + ' / ' + crewLine(narrowMeta.matches); };
 function updateSun(delta) {
     if (!realSun || sunTrack.state !== 'ready' || (sunClock -= delta) > 0) return;
     sunClock = .5;
-    const date = sunFixed || new Date(Date.now() + (sky ? sky.time.offset : 0));
+    const date = stationDate();
     if (!updateSunTrack(date)) return;
     const { shadow, change } = sunTrack;
     // Live telemetry stands in for the computed angles and attitude only at the clock's own time: fresh, or carried
@@ -425,11 +434,11 @@ function updateSun(delta) {
     const light = shadow > .99 ? 'EARTH\'S SHADOW' : shadow > .01 ? 'PENUMBRA' : 'DAYLIGHT';
     const next = change ? ' / ' + (change.sunrise ? 'SUNRISE' : 'SUNSET') + ' IN ' + Math.max(1, Math.round((change.date - date) / 60000)) + ' MIN' : '';
     const beta = ' / BETA ' + degrees(sunTrack.beta) + '°';
-    if (!liveMode) { sunLine.textContent = 'REAL SUN / ' + name + ' / ' + light + next + beta; return; }
-    if (fresh) { const v = live.values; sunLine.textContent = 'ISS LIVE / ' + name + ' / SARJ ' + v.sarjPort.toFixed(1) + '° · ' + v.sarjStarboard.toFixed(1) + '° / ' + light + next + (Number.isFinite(v.beta) ? ' / BETA ' + v.beta.toFixed(1) + '°' : beta); return; }
-    if (heard) { sunLine.textContent = 'ISS LIVE / NO SIGNAL, LAST DATA ' + Math.max(1, Math.round((Date.now() - live.received) / 60000)) + ' MIN AGO / PREDICTED / ' + name + ' / ' + light + next; return; }
+    if (!liveMode) { setSunLine('REAL SUN / ' + name + ' / ' + light + next + beta); return; }
+    if (fresh) { const v = live.values; setSunLine('ISS LIVE / ' + name + ' / SARJ ' + v.sarjPort.toFixed(1) + '° · ' + v.sarjStarboard.toFixed(1) + '° / ' + light + next + (Number.isFinite(v.beta) ? ' / BETA ' + v.beta.toFixed(1) + '°' : beta)); return; }
+    if (heard) { setSunLine('ISS LIVE / NO SIGNAL, LAST DATA ' + Math.max(1, Math.round((Date.now() - live.received) / 60000)) + ' MIN AGO / PREDICTED / ' + name + ' / ' + light + next); return; }
     const why = live.state === 'failed' ? 'UNAVAILABLE' : live.state === 'on' && !live.aos ? 'NO SIGNAL (LOS)' : live.state === 'on' ? 'WAITING FOR DATA' : 'CONNECTING';
-    sunLine.textContent = 'ISS LIVE / ' + why + ' / COMPUTED SUN / ' + name + ' / ' + light + next;
+    setSunLine('ISS LIVE / ' + why + ' / COMPUTED SUN / ' + name + ' / ' + light + next);
 }
 function setLive(on) {
     liveMode = on; setPressed('live-toggle', on); sunClock = 0; setRoboticsLive(on);
@@ -448,10 +457,10 @@ const globeTexts = {
     cupola: ['08 / CUPOLA', 'EARTH BELOW / SGP4 PREDICTION', 'EYE IN THE CUPOLA / NADIR']
 };
 const globeLoaders = {
-    orbit: () => Promise.all([import('../orbit/view.js'), loadSky()]).then(([module, loaded]) => (orbitView = module.createOrbitView(loaded))),
-    cupola: () => Promise.all([import('../orbit/cupola-view.js?v=eda2d80e58'), loadSky()]).then(([module, loaded]) => (cupolaView = module.createCupolaView(loaded))),
-    launch: () => {
-        const loading = Promise.all([import('../launch/view.js'), loadSky()]).then(([module, loaded]) => module.createLaunchView(loaded, launchResume)).then(view => {
+    orbit: step => afterPaint().then(() => Promise.all([import('../orbit/view.js'), loadSky()])).then(([module, loaded]) => { step('build'); return (orbitView = module.createOrbitView(loaded)); }),
+    cupola: step => afterPaint().then(() => Promise.all([import('../orbit/cupola-view.js?v=eda2d80e58'), loadSky()])).then(([module, loaded]) => { step('build'); return (cupolaView = module.createCupolaView(loaded)); }),
+    launch: step => {
+        const loading = afterPaint().then(() => Promise.all([import('../launch/view.js'), loadSky()])).then(([module, loaded]) => { step('build'); return module.createLaunchView(loaded, launchResume); }).then(view => {
             view.onStation = toStation; if (globeLoading.launch === loading) launchView = view; return view;
         });
         return loading;
@@ -478,13 +487,15 @@ function enterGlobe(name) {
     controls.enabled = false; controls.autoRotate = false; setPressed('rotate-toggle', false);
     document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === name)));
     [document.getElementById('view-name').textContent, configurationName.textContent, orientation.textContent] = globeTexts[name];
-    const loading = (globeLoading[name] ||= globeLoaders[name]());
-    loading.then(view => { if (currentView === name && globeLoading[name] === loading) { view.enter(); resize(); } }, error => {
-        globeLoading[name] = null; console.warn(name + ' view unavailable:', error); notify('The ' + name + ' view could not load.'); setView('reverse');
+    // A card with the step and the time taken shows while it loads (js/ui/view-loading.js).
+    const job = globeLoading[name] ? noViewLoading : startViewLoading(name), loading = (globeLoading[name] ||= globeLoaders[name](job.step));
+    loading.then(view => { if (currentView === name && globeLoading[name] === loading) { view.enter(); resize(); job.entered(); } else job.cancel(); }, error => {
+        job.cancel(); globeLoading[name] = null; console.warn(name + ' view unavailable:', error); notify('The ' + name + ' view could not load.'); setView('reverse');
     });
 }
 function leaveGlobe() {
     if (!globeViews.has(currentView)) return;
+    cancelViewLoading();
     globeView()?.leave(); controls.enabled = true;
     if (currentView === 'launch') dropLaunch();
     currentView = 'reverse'; app.dataset.sceneView = 'reverse';
@@ -496,7 +507,7 @@ function leaveGlobe() {
 function toStation() {
     setView('reverse');
     if (!orbital) toggleBackdrop();
-    approach.time = approach.duration; updateApproach(0); selectPart('dragon'); focusPart('dragon');
+    approach.time = approach.duration; approach.docked = 0; updateApproach(0); updateDragonTransfer(true); selectPart('dragon'); focusPart('dragon');
 }
 export function setView(name) {
     if (globeViews.has(name)) { enterGlobe(name); return; }
@@ -541,7 +552,7 @@ export function focusPart(id) {
 export function restartApproach() {
     if (dragonDetail === 'cabin') { dragonDetail = 'approach'; if (selected === 'dragon') { selectPart('dragon'); focusPart('dragon'); } }
     approach.time = approachStartTime();
-    updateApproach(0);
+    updateApproach(0); updateDragonTransfer(true);
     motion = !reducedMotion.matches;
     setPressed('motion-toggle', motion);
     if (selected === 'dragon' && dragonDetail === 'approach' && currentView === 'detail') focusPart('dragon');
@@ -550,7 +561,7 @@ export function restartApproach() {
 // The cabin is shown docked: the approach jumps to its end before the camera frames the capsule.
 function setDragonDetail(mode) {
     dragonDetail = mode;
-    if (mode === 'cabin') { approach.time = approach.duration; updateApproach(0); }
+    if (mode === 'cabin') { approach.time = approach.duration; approach.docked = 0; updateApproach(0); updateDragonTransfer(true); }
     selectPart('dragon'); focusPart('dragon');
 }
 function setDestinyDetail(mode) {
@@ -759,7 +770,7 @@ export function render() {
     if (cargoOption.disabled !== cargoAway) cargoOption.disabled = cargoAway;
     if (selected === 'cygnus' && cargoAway) selectPart('robotics');
     updateRoboticsMenu((selected === 'robotics' || selected === 'dextre' || selected === 'cygnus') && currentView !== 'interior' && stationPixels >= 40);
-    const approachState = approach.time >= approach.duration ? 'DOCKED' : motion ? approachPhase() : 'PAUSED';
+    const approachState = approach.time >= approach.duration ? transferPhase() : motion ? approachPhase() : 'PAUSED';
     const readout = rangeLabel(approach.range) + ' / ' + approachState;
     updateRendezvousGuide(currentView === 'detail' && selected === 'dragon' && dragonDetail === 'approach');
     const status = document.getElementById('approach-state');
@@ -863,7 +874,8 @@ export function advance(delta) {
     const started = performance.now();
     glideClock += delta;
     if (motion) {
-        elapsed += delta; updateApproach(delta); updateShutter(delta); z1EVA.update(delta); updateDragonCrew(elapsed); updateColumbusCrew(elapsed); updateCabinCrew(elapsed);
+        elapsed += delta; updateApproach(delta); updateShutter(delta); z1EVA.update(delta); updateDragonCrew(elapsed); updateDragonTransfer();
+        if (selected === 'dragon' && dragonTransfer.harmonyOpen !== harmonyGhosted) applyGhost();
         if (!realSun || sunTrack.state !== 'ready') for (const wing of wings) aim(wing, wing.base + Math.sin(elapsed * .07) * .035 * wing.direction, false);
         // A small illustrative prime-antenna tracking arc about its azimuth and elevation axes; the spare stays parked.
         for (const dish of trackingDishes) {
@@ -871,6 +883,9 @@ export function advance(delta) {
             dish.elevation.rotation.x = dish.baseElevation + Math.sin(elapsed * .16) * Math.PI / 60;
         }
     }
+    // The crew: their story from the page opening (js/figures/crew-story.js), then their day by the station clock; posed
+    // only with motion.
+    updateCrew(elapsed, stationDate(), motion);
     updateSun(delta); glide(delta);
     // Canadarm2, the base and Dextre (js/robotics/): parked, live or a sequence. With motion the shadows refresh on their
     // own schedule; a jump needs them redrawn.

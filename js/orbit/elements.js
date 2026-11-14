@@ -20,7 +20,7 @@ async function fetchElements(norad) {
         try { localStorage.setItem(key, JSON.stringify({ tle, fetched: Date.now() })); } catch (error) { /* not cached */ }
         return { tle, source: 'CelesTrak', fetched: Date.now() };
     } catch (error) {
-        const response = await fetch('data/orbits.json?v=e820d6c158');
+        const response = await fetch('data/orbits.json?v=81ce3ea072');
         const data = await response.json(), entry = data.objects.find(object => object.norad === norad);
         return { tle: entry.tle, source: 'CelesTrak (copy of ' + data.fetched.slice(0, 10) + ')', fetched: Date.parse(data.fetched) };
     }

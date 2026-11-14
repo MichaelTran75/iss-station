@@ -43,6 +43,11 @@ import './parts/assembly.js';
 import { loadZ1Maintenance, z1EVA } from './figures/eva.js';
 import { createRider } from './figures/rider.js';
 import { cabinCrew } from './figures/cabin-crew.js';
+import { dragonTransfer } from './figures/dragon-transfer.js';
+import { labCrew } from './figures/lab-crew.js';
+import { livingCrew } from './figures/living-crew.js';
+import { crewDay } from './figures/crew-day.js';
+import { crewStory } from './figures/crew-story.js';
 import { scheduleLineArt } from './ui/ghost.js';
 import { halveLargeMaps, releaseAfterUpload } from './core/release.js';
 import './ui/rendezvous-guide.js';
@@ -52,7 +57,7 @@ import { adoptEvaFigure, adoptRider, advance, configuration, currentView, focusP
     restartApproach, selected, selectPart, setConfiguration, setView, stationBounds, getCupolaView, getLaunchView, getOrbitView, getSky, setLive, showSunAt, startRealSun } from './ui/controller.js';
 
 const loading = document.getElementById('loading');
-window.issAtlas = { cabinCrew, showSunAt, setLive, live, robotics, z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get sky() { return getSky(); }, get currentView() { return currentView; }, get orbitView() { return getOrbitView(); }, get launchView() { return getLaunchView(); }, get cupolaView() { return getCupolaView(); } };
+window.issAtlas = { crewStory, cabinCrew, dragonTransfer, labCrew, livingCrew, crewDay, showSunAt, setLive, live, robotics, z1EVA, scene, station, renderer, camera, controls, parts, wings, labels, stationBounds, modernParts, approach, dragonFlightBounds, updateApproach, restartApproach, setConfiguration, setView, selectPart, focusPart, render, advance, resize, get selected() { return selected; }, get motion() { return motion; }, get configuration() { return configuration; }, get sky() { return getSky(); }, get currentView() { return currentView; }, get orbitView() { return getOrbitView(); }, get launchView() { return getLaunchView(); }, get cupolaView() { return getCupolaView(); } };
 if (quality.ceiling !== 'high') halveLargeMaps(station);   // both before the first frame uploads anything
 releaseAfterUpload(station);
 applyQuality(quality.tier); setConfiguration('modern');

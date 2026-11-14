@@ -258,12 +258,44 @@ export function createEngineAudio(ctx) {
         }
     }
     // Touchdown, in the air from the booster's place; `distance` from the camera (m).
+    // A tone that sags as it rings down: a large steel structure struck hard.
+    function sag(from, to, decay, peak, into, at) {
+        const o = ctx.createOscillator(), level = gain(0);
+        o.frequency.setValueAtTime(from, at); o.frequency.exponentialRampToValueAtTime(to, at + decay * 2.5); chain(o, level, into);
+        level.gain.setValueAtTime(0, at); level.gain.linearRampToValueAtTime(peak, at + .004); level.gain.setTargetAtTime(0, at + .004, decay / 3);
+        o.start(at); o.stop(at + decay * 3);
+    }
+    // Touchdown on the droneship, heard in the air near the barge:
+    // - the four feet meet the tilted, heaving deck a few hundredths of a second apart: each a thud, the crack of its
+    //   crushable honeycomb, a short metallic ring of the foot pad;
+    // - the deck answers as the drum it is (a steel box some 90 m long): a low boom whose pitch sags as it rings down,
+    //   and its lowest modes for a couple of seconds;
+    // - the honeycomb goes on crackling while the legs stroke, the struts groan as they take the load, and the engine's
+    //   last flame goes out with a soft whump;
+    // - then the tanks vent in puffs of hiss and the hot engine section ticks as it cools.
     function touchdown(distance) {
         const at = ctx.currentTime, level = Math.min(1.6, 250 / Math.max(15, distance));
-        burst(brown, 'lowpass', 110, .8, .85 * level, .004, .35, sum, at);    // the feet striking the deck
-        burst(white, 'bandpass', 1200, .7, .45 * level, .003, .12, sum, at);  // the honeycomb crushing
-        ring([[92, 1.4, 1], [157, 1.1, .8], [238, .9, .7], [410, .7, .5], [690, .5, .35], [1130, .3, .2]], .22 * level, sum, at + .005);   // deck and legs
-        burst(white, 'bandpass', 3800, .6, .1 * level, .5, 1.6, sum, at + .8);   // venting
+        [0, .016 + .02 * random(), .035 + .02 * random(), .055 + .03 * random()].forEach((delay, k) => {
+            const t = at + delay, share = k ? .72 : 1;
+            burst(brown, 'lowpass', 90 + 30 * random(), .9, .62 * level * share, .003, .22, sum, t);
+            burst(white, 'bandpass', 900 + 800 * random(), .9, .26 * level * share, .002, .07, sum, t);
+            ring([[290 + 120 * random(), .32, 1], [530 + 200 * random(), .22, .7], [930 + 300 * random(), .14, .5], [1650 + 500 * random(), .08, .3]], .06 * level * share, sum, t + .002);
+        });
+        sag(70, 36, .95, .5 * level, sum, at + .012);
+        ring([[46, 2.3, 1], [73, 1.7, .7], [117, 1.2, .5], [181, .9, .35], [263, .6, .22]], .17 * level, sum, at + .02);
+        for (let i = 0; i < 10; i++) burst(white, 'bandpass', 1700 + 1800 * random(), 1.3, .045 * level, .002, .02, sum, at + .04 + .35 * random());
+        // The struts settling: a strained, falling groan.
+        {
+            const t = at + .15, o = ctx.createOscillator(), shape = filter('bandpass', 380, 3), level2 = gain(0);
+            o.type = 'sawtooth'; o.frequency.setValueAtTime(152, t); o.frequency.linearRampToValueAtTime(116, t + 1.1); chain(o, shape, level2, sum);
+            level2.gain.setValueAtTime(0, t); level2.gain.linearRampToValueAtTime(.03 * level, t + .22); level2.gain.setTargetAtTime(0, t + .55, .28);
+            o.start(t); o.stop(t + 2.4);
+        }
+        burst(brown, 'lowpass', 230, .7, .32 * level, .02, .25, sum, at + .12);    // the last flame out
+        burst(white, 'bandpass', 3800, .6, .1 * level, .5, 1.4, sum, at + .8);     // venting, in puffs
+        burst(white, 'bandpass', 3200, .7, .07 * level, .3, 1, sum, at + 2.9);
+        burst(white, 'bandpass', 4300, .7, .05 * level, .3, .8, sum, at + 5.2);
+        for (let i = 0; i < 12; i++) ring([[2200 + 3200 * random(), .04 + .03 * random(), 1]], .02 * level, sum, at + 1.4 + 7 * random());   // cooling ticks
     }
     function boom(strength = 1) {
         const s = ctx.createBufferSource(); s.buffer = boomBuffer;

@@ -15,7 +15,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { launchSite, padFrame } from '../sim/ascent.js';
-import { createComplex, inTrench, padDeck, pads, terrainHeight, terrainLines } from './complex.js';
+import { createComplex, groundDrop, inTrench, padDeck, pads, terrainHeight, terrainLines } from './complex.js';
+import { createLineStyle } from './line-style.js';
 import { createSite } from './site.js';
 
 const earthRadius = 6371000, rad = Math.PI / 180;
@@ -162,7 +163,7 @@ export function createGround(site) {
             const material = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, polygonOffset: behind > 0, polygonOffsetFactor: 2 * behind, polygonOffsetUnits: 8 * behind,
                 vertexColors: fade || near.length > 0, ...(fade ? { transparent: true, depthWrite: false } : { alphaTest: .5 }) });
             if (level >= 2) grainOn(material, level === drapedBy[0] ? pads[0] : null);
-            const mesh = new THREE.Mesh(geometry, material); mesh.visible = false; mesh.renderOrder = -50 + level; mesh.frustumCulled = false;
+            const mesh = new THREE.Mesh(geometry, material); mesh.visible = false; mesh.renderOrder = -50 + level; mesh.frustumCulled = false; mesh.userData.imagery = true;
             group.add(mesh);
             pending++;
             loader.load(url(zoom, tx, ty), texture => {
@@ -170,15 +171,22 @@ export function createGround(site) {
             }, undefined, () => { pending--; failed++; });
         }
     });
+    // The pad's members as built, for its drawing sheet (js/launch/drawing.js): each box, rod, cone, sphere, line and
+    // building outline in the frame of the part it moves with (`f`, null for the ground's own frame).
+    const drawn = []; let drawFrame = null;
     // Launch Complex 39 round the pad, and the rest of the Cape round it.
-    group.add(createComplex());
-    if (site) group.add(createSite(site));
+    group.add(createComplex(drawn));
+    if (site) group.add(createSite(site, drawn));
 
     // Structures. Steel lattice as merged boxes and rods.
     const pieces = new Map();
     const add = (colour, geometry) => { if (!pieces.has(colour)) pieces.set(colour, []); pieces.get(colour).push(geometry); };
-    const box = (colour, [x, y, z], [w, h, d], rotation = [0, 0, 0], into = add) => into(colour, new THREE.BoxGeometry(w, h, d).rotateX(rotation[0]).rotateY(rotation[1]).rotateZ(rotation[2]).translate(x, y, z));
+    const box = (colour, [x, y, z], [w, h, d], rotation = [0, 0, 0], into = add) => {
+        drawn.push({ k: 'box', c: [x, y, z], s: [w, h, d], r: rotation, f: drawFrame });
+        into(colour, new THREE.BoxGeometry(w, h, d).rotateX(rotation[0]).rotateY(rotation[1]).rotateZ(rotation[2]).translate(x, y, z));
+    };
     const rod = (colour, a, b, radius, into = add) => {
+        drawn.push({ k: 'rod', a, b, r: radius, f: drawFrame });
         const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b), length = start.distanceTo(end);
         into(colour, new THREE.CylinderGeometry(radius, radius, length, 6).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), end.clone().sub(start).normalize())).translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2));
     };
@@ -186,7 +194,7 @@ export function createGround(site) {
     const surfaceFor = new Map(), surface = colour => { if (!surfaceFor.has(colour)) surfaceFor.set(colour, new THREE.MeshStandardMaterial({ color: colour, roughness: .75, metalness: .2 })); return surfaceFor.get(colour); };
     function movingPart(pivot, build) {
         const own = new Map(), into = (colour, geometry) => { if (!own.has(colour)) own.set(colour, []); own.get(colour).push(geometry); };
-        build(into);
+        drawFrame = pivot; build(into); drawFrame = null;
         for (const [colour, geometries] of own) pivot.add(new THREE.Mesh(mergeGeometries(geometries, false), surface(colour)));
         return pivot;
     }
@@ -246,6 +254,7 @@ export function createGround(site) {
     box(steel, [tx + 4, deck + crane - .7, tz], [22, 1.4, 1.6]);
     box(dark, [tx - 6.2, deck + crane - 2, tz], [2.6, 2.4, 2.2]);   // counterweight
     add(0xd8d8d2, new THREE.CylinderGeometry(.22, .62, mastTop - crane, 10).translate(tx, deck + (crane + mastTop) / 2, tz));
+    drawn.push({ k: 'cone', a: [tx, deck + crane, tz], b: [tx, deck + mastTop, tz], r0: .62, r1: .22, f: null });
     // The annex SpaceX built on the south side up to the crew access level (217 ft over the deck, 265 ft above the
     // sea): its own braced frame, stairs, and the deck the crew walks out from.
     const annex = { x0: -31.4, x1: -24.7, z0: -3.2, z1: 6, top: crew + 5 };
@@ -263,6 +272,7 @@ export function createGround(site) {
     // east face, clear of the rocket, as at liftoff (it pivots east to meet Dragon's hatch, which faces the tower).
     const pivot = [annex.x1 - .2, deck + crew, .4], armX = pivot[0] + 1.6;
     add(steel, new THREE.CylinderGeometry(.5, .5, 7, 12).translate(pivot[0], pivot[1] + 1.5, pivot[2]));
+    drawn.push({ k: 'rod', a: [pivot[0], pivot[1] - 2, pivot[2]], b: [pivot[0], pivot[1] + 5, pivot[2]], r: .5, f: null });
     box(white, [armX, pivot[1] + 1.5, pivot[2] - 10.8], [2.6, 3, 21.6]);
     box(steel, [armX, pivot[1] - .5, pivot[2] - 10.8], [2.4, 1, 21.6]);
     for (let z = 0; z < 21; z += 3) rod(steel, [armX, pivot[1] - 1, pivot[2] - z], [armX, pivot[1], pivot[2] - z - 3], .09);
@@ -285,7 +295,9 @@ export function createGround(site) {
     for (let k = 0; k < 4; k++) {
         const z = tz - 3 + k * 2.2, from = new THREE.Vector3(tx - half - .6, deck + crew - 1, z), to = new THREE.Vector3(-392, 1.5, -18 + k * 3);
         box(0x9aa2a8, [from.x - 1, from.y - 1.8, z], [1.6, 1.4, 1.4]);
-        for (let i = 0; i < 40; i++) for (const f of [i / 40, (i + 1) / 40]) egress.push(new THREE.Vector3().lerpVectors(from, to, f).setY(THREE.MathUtils.lerp(from.y, to.y, f) - 9 * 4 * f * (1 - f)));
+        const at = f => new THREE.Vector3().lerpVectors(from, to, f).setY(THREE.MathUtils.lerp(from.y, to.y, f) - 9 * 4 * f * (1 - f));
+        for (let i = 0; i < 40; i++) egress.push(at(i / 40), at((i + 1) / 40));
+        drawn.push({ k: 'line', p: Array.from({ length: 41 }, (_, i) => at(i / 40).toArray()), f: null, wire: true });
     }
     group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(egress), new THREE.LineBasicMaterial({ color: 0x3a3e42 })));
 
@@ -318,7 +330,10 @@ export function createGround(site) {
         const axis = [-s * 1.4, 0, -teFront], from = s > 0 ? 8 : 90, end = (s > 0 ? 8 : 172) * Math.PI / 180;
         movingPart(pivot, into => {
             // A box-section arm: two chords round the skin, 0.5 m apart, with posts between; the pad bears on the skin.
-            for (const y of [-.25, .25]) into(dark, new THREE.TorusGeometry(radius + .1, .13, 6, 14, 82 * Math.PI / 180).rotateX(Math.PI / 2).rotateY(-from * Math.PI / 180).translate(axis[0], y, axis[2]));
+            for (const y of [-.25, .25]) {
+                into(dark, new THREE.TorusGeometry(radius + .1, .13, 6, 14, 82 * Math.PI / 180).rotateX(Math.PI / 2).rotateY(-from * Math.PI / 180).translate(axis[0], y, axis[2]));
+                drawn.push({ k: 'line', p: Array.from({ length: 15 }, (_, i) => { const a = (from + 82 * i / 14) * Math.PI / 180; return [axis[0] + Math.cos(a) * (radius + .1), y, axis[2] + Math.sin(a) * (radius + .1)]; }), f: pivot });
+            }
             for (let a = 0; a <= 82; a += 20.5) { const angle = (from + a) * Math.PI / 180; box(dark, [axis[0] + Math.cos(angle) * (radius + .1), 0, axis[2] + Math.sin(angle) * (radius + .1)], [.18, .5, .18], undefined, into); }
             box(0x2a2d31, [axis[0] + Math.cos(end) * (radius - .02), 0, axis[2] + Math.sin(end) * (radius - .02)], [.3, .6, .3], undefined, into);
             for (const y of [-.25, .25]) rod(dark, [axis[0], y, axis[2] + radius + .1], [0, y, 0], .16, into);
@@ -328,7 +343,8 @@ export function createGround(site) {
     // Hydraulic cylinders from the transporter frame to the strongback, stretched between their ends each frame.
     const cylinders = [-1, 1].map(s => {
         const mesh = new THREE.Mesh(new THREE.CylinderGeometry(.42, .42, 1, 10).translate(0, .5, 0), surface(0xb9bdbf));
-        group.add(mesh); return { mesh, foot: new THREE.Vector3(s * 2.8, deck + 1.2, 15), top: new THREE.Vector3(...te(s * 2.8, 14, teFront + .7)) };
+        group.add(mesh); drawn.push({ k: 'stretched', mesh, r: .42 });
+        return { mesh, foot: new THREE.Vector3(s * 2.8, deck + 1.2, 15), top: new THREE.Vector3(...te(s * 2.8, 14, teFront + .7)) };
     });
     // The transporter frame down the ramp, on bogies over the rails.
     for (let z = 6; z <= 44; z += 2) {
@@ -347,6 +363,7 @@ export function createGround(site) {
         const f = k / 40, sag = 30 * 4 * f * (1 - f);
         wire.push(new THREE.Vector3(tx, (deck + mastTop) * (1 - f) - sag * (1 - f * .3) + 1, tz + s * 340 * f));
     }
+    for (const s of [0, 1]) drawn.push({ k: 'line', p: wire.slice(s * 41, s * 41 + 41).map(point => point.toArray()), f: null, wire: true });
     const catenary = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wire.flatMap((point, k) => k % 41 === 40 ? [] : [point, wire[k + 1]])), new THREE.LineBasicMaterial({ color: 0x2b2e31 }));
     group.add(catenary);
 
@@ -382,7 +399,7 @@ export function createGround(site) {
         sky.visible = thickness > .003;
     }
     // Daylight on the imagery (its own lighting is baked in): dim it when the Sun is low.
-    function setDaylight(light) { for (const mesh of group.children) if (mesh.material?.isMeshBasicMaterial) mesh.material.color.setScalar(light); }
+    function setDaylight(light) { for (const mesh of group.children) if (mesh.userData.imagery) mesh.material.color.setScalar(light); lineStyle.setLight(light); }
 
     // The pad through the count (mission seconds): the strongback's cradles open (T−4:22 to T−4:16) and it leans back
     // (T−4:15 to T−4:00); at T−0, once the nine Merlins pass their checks, the hold-down clamps swing back and the tail
@@ -404,5 +421,8 @@ export function createGround(site) {
         }
     }
     updatePad(-270);
-    return { group, sky, updateSky, setDaylight, status, updatePad };
+    // Every structure drawn as line art (js/launch/line-style.js), on from the start; the imagery keeps its photograph.
+    const spheres = site ? [...site.spheres, ...site.waterTowers].map(({ x, z, y, r }) => ({ c: new THREE.Vector3(x, groundDrop(x, z) + y, z), r })) : [];
+    const lineStyle = createLineStyle(group, spheres); lineStyle.setOn(true);
+    return { group, sky, updateSky, setDaylight, status, updatePad, drawn, lineStyle };
 }

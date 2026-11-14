@@ -1,91 +1,17 @@
 // Crew at work inside Tranquility: one exercising on the resistive exerciser, one passing through between the two
 // hatches (out with a wave, back hugging a cargo bag), and one in the Cupola with a camera. They are the Columbus
-// crew model (lab.addCrew) posed here every frame, with no baked clips: the body is placed, then each limb is solved
-// to a target. All of the solving is in world space, so a figure can live in any frame of the station.
-//
-// Conventions of the model: bone +y runs to the next joint; a hand's +y is its fingers and +z the palm's normal; the
-// figure's own frame (the group, origin at the hips) has +y to the head, +z to the front and +x to its left.
+// crew model (lab.addCrew) posed here every frame by js/figures/pose-kit.js, with no baked clips.
 import * as THREE from 'three';
 import { parts } from '../core/station.js';
 import { Kit, material } from '../core/kit.js';
+import { B, actor, basis, basisAxes, basisZ, begin, curl, face, hold, homeDir, homePoint, mix, own, ownPoint, prop, rad, ramp, reach, span, spin,
+    smooth } from './pose-kit.js';
 
-const lab = parts.get('columbus').group.userData.lab, node = parts.get('tranquility').group;
+const node = parts.get('tranquility').group;
 const { tube, ared, open } = node.userData.cabin, cupola = node.userData.cupola;
-const B = { hips: 0, spine: 1, chest: 2, upper: 3, neck: 4, head: 5,
-    L: { arm: 7, fore: 8, hand: 9, fingers: 10, upLeg: 48, leg: 49, foot: 50 }, R: { arm: 26, fore: 27, hand: 28, fingers: 29, upLeg: 44, leg: 45, foot: 46 } };
-// Finger bones follow the hand in this order, three joints each.
-const FINGER = { Middle: 0, Thumb: 3, Index: 6, Ring: 9, Pinky: 12 };
-
-const clamp01 = x => Math.min(1, Math.max(0, x)), smooth = x => { x = clamp01(x); return x * x * x * (x * (x * 6 - 15) + 10); };
-const ramp = (t, a, b) => smooth((t - a) / (b - a)), span = (t, a, b, c, d) => ramp(t, a, b) * (1 - ramp(t, c, d));
-const mix = (a, b, k) => a + (b - a) * k, rad = THREE.MathUtils.degToRad;
 const V = () => new THREE.Vector3(), Q = () => new THREE.Quaternion();
-const qa = Q(), qb = Q(), qc = Q(), m4 = new THREE.Matrix4(), euler = new THREE.Euler();
-const s0 = V(), e0 = V(), w0 = V(), dir0 = V(), bend0 = V(), k0 = V(), x0 = V(), y0 = V(), z0 = V();
+const euler = new THREE.Euler(), z0 = basisAxes.z;
 const at = (bone, out) => out.setFromMatrixPosition(bone.matrixWorld);
-
-// Turns a bone by a world rotation, about its own joint.
-function turnWorld(bone, q) { bone.parent.getWorldQuaternion(qa); bone.quaternion.premultiply(qc.copy(qa).invert().multiply(q).multiply(qa)); bone.updateMatrixWorld(true); }
-function swing(bone, from, to) { turnWorld(bone, qb.setFromUnitVectors(from.normalize(), to.normalize())); }
-function spin(bone, axis, angle) { turnWorld(bone, qb.setFromAxisAngle(axis, angle)); }
-// Gives a bone a world orientation outright.
-function face(bone, q) { bone.parent.getWorldQuaternion(qa); bone.quaternion.copy(qa.invert()).multiply(q); bone.updateMatrixWorld(true); }
-// Orientation whose +y is `y` and whose +z is as near `z` as that allows; basisZ keeps +z and bends +y.
-function basis(y, z, out) { y0.copy(y).normalize(); z0.copy(z).addScaledVector(y0, -z.dot(y0)).normalize(); x0.crossVectors(y0, z0); return out.setFromRotationMatrix(m4.makeBasis(x0, y0, z0)); }
-function basisZ(z, y, out) { z0.copy(z).normalize(); y0.copy(y).addScaledVector(z0, -y.dot(z0)).normalize(); x0.crossVectors(y0, z0); return out.setFromRotationMatrix(m4.makeBasis(x0, y0, z0)); }
-// Two-bone solve: the end joint goes to `target` (as far as the limb reaches), the middle joint bends toward `pole`.
-function reach(upper, lower, end, target, pole) {
-    at(upper, s0); at(lower, e0); at(end, w0);
-    const a = s0.distanceTo(e0), b = e0.distanceTo(w0);
-    dir0.copy(target).sub(s0); const d = THREE.MathUtils.clamp(dir0.length(), Math.abs(a - b) + .01, a + b - .004); dir0.normalize();
-    const along = (a * a - b * b + d * d) / (2 * d), out = Math.sqrt(Math.max(0, a * a - along * along));
-    bend0.copy(pole).addScaledVector(dir0, -pole.dot(dir0)).normalize();
-    k0.copy(dir0).multiplyScalar(along).addScaledVector(bend0, out);
-    swing(upper, e0.sub(s0), k0);
-    at(lower, e0); at(end, w0); k0.copy(s0).addScaledVector(dir0, d).sub(e0);
-    swing(lower, w0.sub(e0), k0);
-}
-// Moves a share of the hand's twist about the forearm into the forearm, so the wrist does not wring.
-function shareTwist(fore, hand, bind, share) {
-    const axis = x0.copy(hand.position).normalize(), turn = qb.copy(hand.quaternion).multiply(qc.copy(bind).invert());
-    const along = turn.x * axis.x + turn.y * axis.y + turn.z * axis.z, length = Math.hypot(along, turn.w);
-    if (length < 1e-5) return;
-    const sign = turn.w < 0 ? -1 : 1; qc.set(axis.x * along * sign / length, axis.y * along * sign / length, axis.z * along * sign / length, turn.w * sign / length);
-    qb.identity().slerp(qc, share); fore.quaternion.multiply(qb); hand.quaternion.premultiply(qb.invert()); fore.updateMatrixWorld(true);
-}
-
-function actor(name, look, home) {
-    const person = lab.addCrew(name, look, home), bones = person.userData.boneList, bind = person.userData.bind, model = [];
-    bones.forEach((bone, i) => { const parent = bones.indexOf(bone.parent); model[i] = parent < 0 ? bind[i].clone() : model[parent].clone().multiply(bind[i]); });
-    const flex = bones.map(bone => lab.axes.flex[bone.name] ? new THREE.Vector3(...lab.axes.flex[bone.name]) : null);
-    return { person, bones, bind, model, flex, home, world: Q(), homeWorld: Q() };
-}
-// Back to the bind pose, hips at the given place of the home frame.
-function begin(a, position, quaternion) {
-    a.bones.forEach((bone, i) => bone.quaternion.copy(a.bind[i])); a.bones[0].position.set(0, 0, 0);
-    a.person.position.copy(position); a.person.quaternion.copy(quaternion); a.person.updateWorldMatrix(true, true);
-    a.home.getWorldQuaternion(a.homeWorld); a.world.copy(a.homeWorld).multiply(quaternion);
-}
-const own = (a, x, y, z, out) => out.set(x, y, z).applyQuaternion(a.world);                       // direction, figure frame
-const ownPoint = (a, x, y, z, out) => out.set(x, y, z).applyMatrix4(a.person.matrixWorld);       // point, figure frame
-const homeDir = (a, x, y, z, out) => out.set(x, y, z).applyQuaternion(a.homeWorld);
-const homePoint = (a, x, y, z, out) => out.set(x, y, z).applyMatrix4(a.home.matrixWorld);
-// Hand to a palm point: `fingers` and `palm` are world directions, the palm's centre lands on `point`.
-const hq = Q(), wrist = V();
-function hold(a, S, point, fingers, palm, pole, depth = .025, along = .08) {
-    basis(fingers, palm, hq); wrist.copy(point).addScaledVector(y0, -along).addScaledVector(z0, -depth);
-    reach(a.bones[S.arm], a.bones[S.fore], a.bones[S.hand], wrist, pole);
-    face(a.bones[S.hand], hq); shareTwist(a.bones[S.fore], a.bones[S.hand], a.bind[S.hand], .5);
-}
-function curl(a, S, amount, thumb = amount * .5, index = amount) {
-    for (const [finger, first] of Object.entries(FINGER)) for (let k = 0; k < 3; k++) {
-        const i = S.fingers + first + k, axis = a.flex[i]; if (!axis) continue;
-        const angle = finger === 'Thumb' ? (k ? [0, .5, .6][k] * thumb : 0) : [.8, 1, .6][k] * (finger === 'Index' ? index : amount);
-        a.bones[i].quaternion.multiply(qb.setFromAxisAngle(axis, angle));
-    }
-}
-const prop = (kit, name, parent) => { const group = new THREE.Group(); group.name = name; kit.finish(group); parent.add(group);
-    group.traverse(object => { object.userData.interior = true; if (object.isMesh) { object.castShadow = false; object.receiveShadow = false; } }); return group; };
 
 export const tune = {
     lifter: { bar: [.47, -.125], grip: .40, ankle: [.03, .112, .17], toe: .21, lean: [8, 28], depth: .27, hips: .962, fist: .105, forehead: [.125, .1] },
@@ -152,7 +78,7 @@ function updateLifter(time) {
 }
 
 // ---- The one passing through: Unity to the far hatch with a wave, back later with a cargo bag. ----
-const traveller = actor('Tranquility crew / passing through', { skin: 0xe0b592, shirt: 0xb8452f, shorts: 0xc9b68f, shoes: 0xf0f0ea, hair: 0x7a4a26 }, tube);
+const traveller = actor('Tranquility crew / passing through', { skin: 0xe0b592, shirt: 0xb8452f, shorts: 0xc9b68f, shoes: 0x34373c, hair: 0x7a4a26 }, tube);
 const bagKit = new Kit();
 bagKit.box([0, 0, 0], [.42, .32, .24], 0xeeeee8, [0, 0, 0], false);
 for (const x of [-.11, .11]) bagKit.box([x, 0, 0], [.035, .326, .246], 0x40607c, [0, 0, 0], false);
@@ -197,7 +123,7 @@ function updateTraveller(time) {
 }
 
 // ---- In the Cupola: head toward the Earth, a camera, and now and then a hand on the window frame. ----
-const watcher = actor('Tranquility crew / at the Cupola windows', { skin: 0xd9a77f, shirt: 0x27406b, shorts: 0x6e6a5b, shoes: 0xe9e9e4, hair: 0x3a2a1e }, node);
+const watcher = actor('Tranquility crew / at the Cupola windows', { skin: 0xd9a77f, shirt: 0x27406b, shorts: 0x6e6a5b, shoes: 0x9a9da0, hair: 0x3a2a1e }, node);
 const cameraKit = new Kit();
 cameraKit.box([0, 0, 0], [.14, .095, .065], 0x1b1d20, [0, 0, 0], false); cameraKit.box([0, .06, -.005], [.06, .03, .05], 0x1b1d20, [0, 0, 0], false);
 cameraKit.cylinder([0, -.005, .085], .039, .11, 0x26292d); cameraKit.cylinder([0, -.005, .142], .042, .012, 0x54595e);
@@ -242,9 +168,16 @@ function updateWatcher(time) {
     hold(a, B.L, C, D, Bv, A, .03); curl(a, B.L, mix(.3, .7, out));
 }
 
-export function updateCabinCrew(time) {
-    if (!node.visible) return;
-    updateLifter(time); updateTraveller(time); updateWatcher(time);
+// `on` says who is on shift (js/figures/crew-day.js, through js/figures/crew-story.js); the others are hidden and not
+// posed. 'hidden': on shift but not there yet (still on the way, js/figures/dragon-transfer.js): posed, not shown.
+const everyone = { lifter: true, traveller: true, watcher: true };
+export function updateCabinCrew(time, on = everyone, pose = true) {
+    const seen = role => !!on[role] && on[role] !== 'hidden';
+    lifter.person.visible = seen('lifter'); traveller.person.visible = seen('traveller'); watcher.person.visible = camera.visible = seen('watcher');
+    if (!node.visible || !pose) return;
+    if (on.lifter) updateLifter(time);
+    if (on.traveller) { updateTraveller(time); if (!seen('traveller')) traveller.person.visible = bag.visible = false; }
+    if (on.watcher) updateWatcher(time);
 }
 export const cabinCrew = { lifter, traveller, watcher, tune, bag, camera, update: updateCabinCrew };
 updateCabinCrew(0);

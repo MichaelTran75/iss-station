@@ -72,7 +72,7 @@ const pma2RingFaceZ = pma2BaseZ - pmaReferenceLength + .19;
 export const rendezvous = createRendezvous(issMeanMotion);
 export const approach = {
     port: new THREE.Vector3(0, -pmaReferenceOffset, pma2RingFaceZ), nose: new THREE.Vector3(0, 0, 0), contactGap: .003,
-    duration: rendezvous.duration, time: 0, mission: 0, range: 400, open: 1, phase: 'transfer', label: 'WAYPOINT 0', warp: 60,
+    duration: rendezvous.duration, time: 0, docked: 0, mission: 0, range: 400, open: 1, phase: 'transfer', label: 'WAYPOINT 0', warp: 60,
     offset: new THREE.Vector3(), thrust: new THREE.Vector3()
 };
 // LVLH (radial, along-track, cross-track) to the station frame: zenith is +y, the velocity -z, the orbit normal -x.
@@ -99,7 +99,7 @@ const dragonBayPanel = payloadCanvas(192, 128, g => {
     g.fillStyle = '#6f5130'; for (let x = 0; x < 6; x++) for (let y = 0; y < 4; y++) { g.beginPath(); g.ellipse(18 + x * 31, 17 + y * 31, 10, 10, 0, 0, Math.PI * 2); g.fill(); }
     g.strokeStyle = '#c29a66'; g.lineWidth = 6; g.strokeRect(3, 3, 186, 122);
 });
-export const dragon = part('dragon', 'SpaceX Crew Dragon', '17 / RENDEZVOUS & DOCKING', 'Crew Dragon flies the last hour of its rendezvous: from Waypoint 0, 400 m below the station, it coasts on a curved Clohessy-Wiltshire transfer to Waypoint 1, 220 m out on Harmony\'s forward docking axis, closes at about 0.35 m/s to Waypoint 2, holds 20 m out for the go/no-go, then closes at 7 cm/s to contact and capture. Its nose cone has been open since about 13 minutes after liftoff, so the four forward Dracos under it work the whole approach. Draco puffs show each burn. Times follow the Crew-2 docking timeline; the readout gives the time warp. The capsule, its four SuperDraco pods, four windows, side hatch, docking ring with three guide petals and the trunk with its four fins are measured from the supplied Crew Dragon model. Selected, the hull turns 75% transparent to show the four suited crew inside. Solar cells cover one half of the trunk; the other half is radiator.', [['Destination', 'Harmony forward (IDA-2)'], ['Waypoints', '400 m / 220 m / 20 m'], ['Contact speed', '5 cm/s'], ['Length / diameter', '8.1 m / 4.0 m']], [0, 1.6, -2.6], (kit, group) => {
+export const dragon = part('dragon', 'SpaceX Crew Dragon', '17 / RENDEZVOUS & DOCKING', 'Crew Dragon flies the last hour of its rendezvous: from Waypoint 0, 400 m below the station, it coasts on a curved Clohessy-Wiltshire transfer to Waypoint 1, 220 m out on Harmony\'s forward docking axis, closes at about 0.35 m/s to Waypoint 2, holds 20 m out for the go/no-go, then closes at 7 cm/s to contact and capture. Its nose cone has been open since about 13 minutes after liftoff, so the four forward Dracos under it work the whole approach. Draco puffs show each burn. Times follow the Crew-2 docking timeline; the readout gives the time warp. The capsule, its four SuperDraco pods, four windows, side hatch, docking ring with three guide petals and the trunk with its four fins are measured from the supplied Crew Dragon model. Selected, the hull turns 75% transparent to show the four suited crew inside. After docking they come aboard, in the order of the Demo-2 and Crew-1 dockings: hard capture, leak checks while the crew change out of their suits, Harmony\'s hatch opened by the station crew, then Dragon\'s; one at a time they float head first through PMA-2 into Harmony, pulling on the hatch rims, are greeted there, and gather for the welcome ceremony. The readout names each step and its time warp. Solar cells cover one half of the trunk; the other half is radiator.', [['Destination', 'Harmony forward (IDA-2)'], ['Waypoints', '400 m / 220 m / 20 m'], ['Contact speed', '5 cm/s'], ['Length / diameter', '8.1 m / 4.0 m']], [0, 1.6, -2.6], (kit, group) => {
     const noseCone = new THREE.Group(), coneKit = new Kit();
     for (const [where, surface, positions, indices] of dragonReference.parts) (where === 'n' ? coneKit : kit).add(dragonMesh(positions, indices, surface), dragonSkins[surface]);
     coneKit.finish(noseCone); noseCone.position.fromArray(dragonReference.hinge); noseCone.name = 'Docking nose cone'; group.add(noseCone);
@@ -163,6 +163,7 @@ export const dragon = part('dragon', 'SpaceX Crew Dragon', '17 / RENDEZVOUS & DO
     reaching.name = 'Crew member at the display'; reaching.frustumCulled = false; reaching.add(armBones[0]);
     reaching.updateMatrixWorld(true); reaching.bind(new THREE.Skeleton(armBones));
     let reachingSeat;
+    const seats = [];
     [-.93, -.31, .31, .93].forEach((x, index) => {
         const seat = new THREE.Group(), seatKit = new Kit();
         seat.position.set(x, -.25, -2.95 + (index === 1 || index === 2 ? .08 : 0)); seat.quaternion.copy(seatTurn); seat.name = 'Crew seat ' + (index + 1);
@@ -174,7 +175,7 @@ export const dragon = part('dragon', 'SpaceX Crew Dragon', '17 / RENDEZVOUS & DO
         seatKit.box([0, -.405, -.535], [.50, .34, .04], seatShell);
         for (const side of [-1, 1]) { seatKit.box([side * .265, .20, .38], [.03, .10, .78], 0x3b4148); seatKit.box([side * .265, -.04, -.15], [.03, .32, .08], 0x3b4148); }
         if (index === 0) { seat.add(reaching); reachingSeat = seat; } else for (const [geometry, skin] of suitParts) seatKit.add(geometry, skin, [0, 0, 0], [1, 1, 1], [0, 0, 0], false);
-        seatKit.finish(seat); fittings.add(seat); seat.updateMatrix();
+        seatKit.finish(seat); fittings.add(seat); seat.updateMatrix(); seats.push(seat);
         for (const local of [[-.2, .25, 0], [.2, .25, 0], [-.2, -.40, -.56], [.2, -.40, -.56]]) {
             const foot = new THREE.Vector3(...local).applyMatrix4(seat.matrix);
             fittingKit.rod(foot.toArray(), [foot.x, foot.y, floorZ], .026, pallet);
@@ -240,16 +241,30 @@ export const dragon = part('dragon', 'SpaceX Crew Dragon', '17 / RENDEZVOUS & DO
     fittingKit.add(new THREE.CylinderGeometry(.5, .5, .64, 40), material(0x4a4f55, .7, .3), [0, 0, -3.80], [1, 1, 1], [Math.PI / 2, 0, 0], false);
     fittingKit.finish(fittings);
     cabin.traverse(object => { object.userData.interior = true; if (object.isMesh) { object.castShadow = false; object.receiveShadow = false; } });
-    group.userData.detail = { noseCone, cabin, touch, openAngle: dragonReference.openAngle, windows: 4, superDracoPods: 4, fins: 4, integratedSolarCells: true, crew: 4 };
+    group.userData.detail = { noseCone, cabin, fittings, seats, floorZ, bulkheadZ, tunnelTop, tunnelRadius, wallRadius, touch, openAngle: dragonReference.openAngle, windows: 4, superDracoPods: 4, fins: 4, integratedSolarCells: true, crew: 4 };
 });
 const dragonCone = dragon.group.userData.detail.noseCone, dragonCabin = dragon.group.userData.detail.cabin;
 // Selected, the Dragon turns translucent so the crew show through: 75% transparent on the docking approach, 90% with
 // its line art in the cabin view. The cabin fittings stay solid. Translucent copies are kept per solid surface.
 const dragonShell = { opacity: 0, copies: new Map() };
+// Not selected, the cabin keeps only its crew (and what is marked keepShown, such as Harmony's hatch): they stay in view
+// through the hull whenever another part is selected and the station turns see-through.
+export function showCabin(full) {
+    dragonCabin.visible = true;
+    dragonCabin.traverse(child => {
+        if (!child.isMesh) return;
+        if (child.userData.cabinCrew === undefined) {
+            let crew = [].concat(child.material).some(m => m?.userData.astronaut);
+            for (let node = child; node && !crew && node !== dragonCabin; node = node.parent) crew = !!(node.userData.astronaut || node.userData.keepShown);
+            child.userData.cabinCrew = crew;
+        }
+        if (!child.userData.cabinCrew) child.visible = full;
+    });
+}
 export function setDragonShell(opacity) {
     if (dragonShell.opacity === opacity) return;
     markShadowsDirty();
-    dragonShell.opacity = opacity; dragonCabin.visible = opacity > 0;
+    dragonShell.opacity = opacity; showCabin(opacity > 0);
     dragon.group.traverse(child => {
         if (child.userData.lineArt) { child.visible = opacity === ghostOpacity; return; }
         if (!child.isMesh || child.userData.puff) return;
@@ -306,7 +321,10 @@ function updateDracos(delta) {
     dracoPlumes.update(Math.max(0, delta), firing);
 }
 export function updateApproach(delta) {
-    approach.time = Math.min(approach.duration, approach.time + Math.max(0, delta));
+    const step = Math.max(0, delta), before = approach.time;
+    approach.time = Math.min(approach.duration, before + step);
+    // Animation seconds since contact: what is left of the step once docked, nothing while still flying.
+    approach.docked = approach.time < approach.duration ? 0 : approach.docked + Math.max(0, before + step - Math.max(before, approach.duration));
     const state = rendezvous.state(rendezvous.missionAt(approach.time));
     Object.assign(approach, { mission: state.mission, range: state.range, phase: state.phase, label: state.label, warp: rendezvous.warpAt(state.mission) });
     lvlhToStation([state.position[0], Math.max(state.position[1], approach.contactGap), state.position[2]], approach.offset);

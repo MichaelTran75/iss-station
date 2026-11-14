@@ -164,7 +164,8 @@ function placeBox(mesh, [x, z], angle, height) {
     return mesh;
 }
 
-export function createComplex() {
+// `drawn` collects 39A's trench, deflector, the hangar and the rails for the pad's drawing sheet (js/launch/drawing.js).
+export function createComplex(drawn = []) {
     const group = new THREE.Group();
     const pieces = new Map();
     const add = (colour, geometry) => { if (!pieces.has(colour)) pieces.set(colour, []); pieces.get(colour).push(geometry); };
@@ -222,6 +223,11 @@ export function createComplex() {
     {
         const hif = new THREE.Group(), length = 94.6, width = 47.9, wall = 20, ridge = 3;
         hif.position.set(-5.7, groundDrop(-5.7, 459.4), 459.4); hif.rotation.y = -90 * rad; group.add(hif);
+        // Its outline for the drawing: x across (west to east), z along (north to south).
+        const outline = (x0, x1, z0, z1) => [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+        drawn.push({ k: 'prism', ring: outline(-5.7 - width / 2, -5.7 + width / 2, 459.4 - length / 2, 459.4 + length / 2), y0: 0, y1: wall, f: null },
+            { k: 'line', p: [[-5.7, wall + ridge, 459.4 - length / 2], [-5.7, wall + ridge, 459.4 + length / 2]], f: null },
+            { k: 'prism', ring: outline(-5.7 + width / 2, -5.7 + width / 2 + 12, 459.4 - length / 2 + 8, 459.4 + length / 2), y0: 0, y1: 9, f: null });
         const ribs = (w, h) => canvasTexture(w, h, (g, cw, ch) => {
             g.fillStyle = '#e4e5e1'; g.fillRect(0, 0, cw, ch);
             for (let x = 0; x < cw; x += 4) { g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(x, 0, 1, ch); g.fillStyle = 'rgba(95,102,108,.32)'; g.fillRect(x + 2, 0, 1, ch); }
@@ -266,11 +272,13 @@ export function createComplex() {
             const x = s * 4.5, y0 = Math.max(terrainHeight(x, z), 0), y1 = Math.max(terrainHeight(x, z + 6), 0);
             add(0x55595d, new THREE.BoxGeometry(.5, .3, 6.05).rotateX(Math.atan2(y0 - y1, 6)).translate(x, (y0 + y1) / 2 + .15, z + 3));
         }
+        for (const s of [-1, 1]) drawn.push({ k: 'line', p: Array.from({ length: 63 }, (_, i) => { const z = 40 + i * 6; return [s * 4.5, Math.max(terrainHeight(s * 4.5, z), 0) + .3, z]; }), f: null });
         // The horizontal tank on saddles beside the liquid oxygen sphere: [x, z, length, diameter, angle]. (The rows of
         // tanks OpenStreetMap shows east and west of the pad are the Starship tank farm, not there in the 2019 lidar.)
         const tanks = [[-365.1, -250.1, 39.7, 4, -62.5]];
         for (const [x, z, length, diameter, angle] of tanks) {
-            const r = diameter / 2, turn = -angle * rad, y = r + 1.2 + groundDrop(x, z);
+            const r = diameter / 2, turn = -angle * rad, y = r + 1.2 + groundDrop(x, z), half = (length - diameter) / 2, c = Math.cos(angle * rad), sn = Math.sin(angle * rad);
+            drawn.push({ k: 'rod', a: [x - c * half, y, z - sn * half], b: [x + c * half, y, z + sn * half], r, f: null });
             add(tank, new THREE.CapsuleGeometry(r, Math.max(.1, length - diameter), 6, 16).rotateZ(Math.PI / 2).rotateY(turn).translate(x, y, z));
             for (const f of [-.35, 0, .35]) add(concrete, new THREE.BoxGeometry(1.2, 1.4, diameter * .8).rotateY(turn).translate(x + Math.cos(angle * rad) * f * length, .7 + groundDrop(x, z), z + Math.sin(angle * rad) * f * length));
         }
@@ -320,6 +328,7 @@ export function createComplex() {
         // The flame deflector: a ramp from under the mount down to the trench floor, turning the exhaust north.
         const deflector = new THREE.Mesh(new THREE.BoxGeometry(half * 2 - .2, 1.2, Math.hypot(pad.deck - 2, 28)), lit({ map: deflectorPlates() }));
         deflector.rotation.x = -Math.atan2(pad.deck - 2, 28); deflector.position.set(pad.x, (pad.deck - 2) / 2, pad.z + south - 14); group.add(deflector);
+        if (pad === pads[0]) drawn.push({ k: 'box', c: deflector.position.toArray(), s: [half * 2 - .2, 1.2, Math.hypot(pad.deck - 2, 28)], r: [deflector.rotation.x, 0, 0], f: null, section: true });
     }
 
     for (const [colour, geometries] of pieces) group.add(new THREE.Mesh(mergeGeometries(geometries, false), lit({ color: colour, roughness: .75, metalness: .2 })));

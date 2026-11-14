@@ -3,8 +3,8 @@
 // thread. step(time, out) writes one pose into a Float32Array laid out by evaLayout(); the page only copies it.
 // Everything is computed in Z1's EVA frame, which is authored in station metres.
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
-import { createEvaRoute, createEvaTimeline, evaPath } from './eva-route.js?v=f7695c8839';
-export { evaBars, evaPath } from './eva-route.js?v=f7695c8839';
+import { createEvaRoute, createEvaTimeline, evaPath } from './eva-route.js?v=e4bd1faa9e';
+export { evaBars, evaPath } from './eva-route.js?v=e4bd1faa9e';
 
 const decode = (encoded, ArrayType) => new ArrayType(Uint8Array.from(atob(encoded), ch => ch.charCodeAt(0)).buffer);
 
@@ -467,6 +467,9 @@ export function createEvaSimulation(asset, role = 'lead', routes = createEvaRout
                 bend(bones[shin], axisX, follow * turnTo(planned(where.s, column + 2) + idle - sagittal(bones[shin], bones[foot].getWorldPosition(trailPoint))));
             }
         }
+        // At the worksite the helper's port leg (the one beside the lead's way up the ramp) is drawn in toward the
+        // other, so the lead's elbow passes clear of the boot on the way in and out.
+        if (helper && !building) bend(bones[83], axisZ, .22 * settled);
         if (building) {
             bones[5].getWorldPosition(jointPoint).add(bones[39].getWorldPosition(trailPoint)).multiplyScalar(.5);
             plan.row.push(route.near(jointPoint, where.s)); return;

@@ -7,15 +7,17 @@ import { cbmPassiveRadius, cbmReferenceRadial, cbmUnityFront, cbmUnityScale, ref
 import { hullBadge } from '../core/surfaces.js';
 import { genericEndInterface, moduleAt, placedKit, radialPortStub } from '../core/hull.js';
 import { referencePma } from '../core/pma.js';
+import { unityGalley, unityOpen } from './living.js';
 
-part('unity', 'Unity / Node 1', '06 / CONNECTING NODE', 'Unity joined Zarya in December 1998, linking the US and Russian segments. Six berthing ports connect laboratories, living space, storage and the airlock.', [['Joined station', '1998'], ['Berthing ports', '6']], [0, 2.1, 12], (kit, group) => {
-    // The interior is empty: a hollow barrel, and four radial port stubs that rise from the pressure shell to
-    // their port faces instead of tubes crossing the module. Z1 seats on the zenith stub's berthing interface.
-    moduleAt(kit, [0, 0, 12], 5.5, 2.15, 'z', { skin: 'quilted', endInterfaceSides: [1], hollow: true });
+part('unity', 'Unity / Node 1', '06 / CONNECTING NODE', 'Unity joined Zarya in December 1998, linking the US and Russian segments. Six berthing ports connect laboratories, living space, storage and the airlock. It is also the crew\'s dining room: a 75%-transparent band of the hull over the starboard-zenith side shows the galley table, with straps for food packs and foot loops, and on the port wall the potable water dispenser, the food warmer and food containers; the crew eat here at lunch and dinner. Layout and fittings are illustrative.', [['Joined station', '1998'], ['Berthing ports', '6']], [0, 2.1, 12], (kit, group) => {
+    // The barrel is see-through over the starboard-zenith side (js/parts/living.js furnishes the galley behind it); four
+    // radial port stubs rise from the pressure shell to their port faces instead of tubes crossing the module. Z1 seats
+    // on the zenith stub's berthing interface.
+    moduleAt(kit, [0, 0, 12], 5.5, 2.15, 'z', { skin: 'quilted', endInterfaceSides: [1], window: unityOpen, outwardEnds: true });
     for (const sign of [-1, 1]) radialPortStub(kit, [0, 0, 12], 2.15, 1.25, 2.3, 'x', sign);
     for (const sign of [-1, 1]) radialPortStub(kit, [0, 0, 12], 2.15, 1.25, 2.4, 'y', sign);
     placedKit(kit, [0, 0, 12], [-Math.PI / 2, 0, 0], local => genericEndInterface(local, 1, 1.25, 2.4, true));
-    hullBadge(kit, 'UNITY', [0, 0, 10.05], 2.225, [1.15, .32]);
+    hullBadge(kit, 'UNITY', [0, 0, 10.05], 2.225, [1.15, .32], 'z', 3 * Math.PI / 4);
     // The nadir port has been free since Leonardo moved to Tranquility in 2015: the GLB's covered CBM stands on
     // the port face, its inspection ring toward the aft (Russian) end.
     const nadir = new THREE.Group(), nadirKit = new Kit();
@@ -45,4 +47,5 @@ part('unity', 'Unity / Node 1', '06 / CONNECTING NODE', 'Unity joined Zarya in D
         rise: pmaReferenceOffset, segmentTranslation: russianSegmentOffset.toArray(),
         adapter, referenceSize: adapter.userData.referenceSize
     };
+    unityGalley(group, [0, 0, 12]);
 });

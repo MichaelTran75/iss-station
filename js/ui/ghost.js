@@ -10,7 +10,7 @@ import { ghostOpacity, parts } from '../core/station.js';
 import { releaseLines } from '../core/release.js';
 
 const lineArtDegrees = 50, lineArtLayer = 1;
-const lineArtMaterial = new THREE.LineBasicMaterial({ color: 0x43544e, transparent: true, opacity: .103, depthWrite: false });
+const lineArtMaterial = new THREE.LineBasicMaterial({ color: 0x43544e, transparent: true, opacity: .0824, depthWrite: false });
 const ghostMaterials = new Map(), crewMaterials = new Map(), crewOpacity = .9;
 camera.layers.enable(lineArtLayer);
 export function ghostMaterial(source) {
@@ -24,11 +24,13 @@ export function ghostMaterial(source) {
     return ghost;
 }
 // People stay in view through the ghost context: 90% opaque, not the parts' 10%. A figure is marked with
-// `userData.astronaut` on its group or on its own materials (the Dragon crew, merged into the seat kits).
+// `userData.astronaut` on its group or on its own materials (the Dragon crew, merged into the seat kits). So does what
+// the crew work with inside (`userData.crewGear`: the racks, the laptop and glovebox in Columbus, the exerciser and
+// racks in Tranquility); the hull, liner and bulkheads round them stay ghosted.
 export function isCrew(object) {
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     if (materials.some(material => material?.userData.astronaut)) return true;
-    for (let node = object; node; node = node.parent) if (node.userData.astronaut) return true;
+    for (let node = object; node; node = node.parent) if (node.userData.astronaut || node.userData.crewGear) return true;
     return false;
 }
 export function crewMaterial(source) {
@@ -38,6 +40,8 @@ export function crewMaterial(source) {
         Object.assign(crew, { transparent: true, opacity: (source.transparent ? source.opacity : 1) * crewOpacity });
         crew.needsUpdate = true; crewMaterials.set(source, crew);
     }
+    // A figure may have been dressed again since (js/parts/columbus.js dress): the copy follows its colours.
+    crew.color?.copy(source.color); if (crew.map !== source.map) { crew.map = source.map; crew.needsUpdate = true; }
     return crew;
 }
 // The material a mesh takes in the ghost context.

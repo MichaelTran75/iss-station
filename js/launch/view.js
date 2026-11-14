@@ -18,6 +18,7 @@ import { rendezvousGuide } from '../ui/rendezvous-guide.js';
 import { air, animationAt, animationDuration, boosterState, contactTime, countdown, dockingTime, dracoBurns, droneship, eventAt, events, farFlight, flightData, groundTrackEnd, issAltitude, issFrame, issPosition, launchEpoch, launchSite, merlinSpool, missionAt, padFrame, padTransform, paths, proximity, rendezvousTime, spoolUp, stageState, tailOff, thrustOf, turnBack, vehicle as vehicleModel, vehicleState, warpAt, warpStretches } from '../sim/ascent.js';
 import { toScene } from '../orbit/sky.js';
 import { createGround, mountHeight, padDeck } from './ground.js';
+import { buildSheet, showSheet } from './drawing.js';
 import { createExhaust } from './exhaust.js';
 import { attitudePulses, dracoNozzles, dracoThrust, selectDracos } from '../parts/draco.js';
 import { createDroneship } from './droneship.js';
@@ -376,6 +377,46 @@ export async function createLaunchView(sky, resume = null) {
     const xrayButton = field('launch-xray');
     function setXray(on) { xray = on; vehicle.setXray(on); xrayButton.setAttribute('aria-pressed', String(on)); }
     xrayButton.addEventListener('click', () => setXray(!xray), { signal });
+    // The pad's drawing sheet (js/launch/drawing.js): built the first time it is opened, the pad posed as at T−4:30
+    // and the rocket standing on the mount with its legs, fins and nose closed, then both put back.
+    // Line art on the structures (js/launch/line-style.js), on unless turned off here.
+    const linesButton = field('launch-lines');
+    linesButton.setAttribute('aria-pressed', String(ground.lineStyle.on));
+    linesButton.addEventListener('click', () => { ground.lineStyle.setOn(!ground.lineStyle.on); linesButton.setAttribute('aria-pressed', String(ground.lineStyle.on)); markShadowsDirty(); }, { signal });
+    const drawingButton = field('launch-drawing'), drawingPanel = field('pad-drawing');
+    let sheet = null;
+    function rocketLines() {
+        vehicle.setLegs(0, null); vehicle.setFins(0); vehicle.setNose(0);
+        const holders = [booster, upper, capsule]; for (const holder of holders) holder.updateMatrixWorld(true);
+        const onPad = new THREE.Matrix4().makeTranslation(0, standing, 0).multiply(new THREE.Matrix4().makeRotationFromQuaternion(hatchToTower));
+        const meshes = vehicle.pickable.map(mesh => {
+            let holder = mesh; while (holder && !holders.includes(holder)) holder = holder.parent;
+            const matrix = new THREE.Matrix4().copy(holder.matrixWorld).invert().multiply(mesh.matrixWorld).premultiply(onPad);
+            return { position: mesh.geometry.attributes.position.array.slice(), index: mesh.geometry.index ? mesh.geometry.index.array.slice() : null, matrix: Float64Array.from(matrix.elements) };
+        });
+        return new Promise(resolve => {
+            let worker = null;
+            try { worker = new Worker(new URL('../workers/line-art.js?v=8b3d432c47', import.meta.url), { type: 'module' }); } catch { resolve(new Float32Array(0)); return; }
+            worker.onmessage = ({ data }) => { worker.terminate(); resolve(data.points); };
+            worker.onerror = event => { event.preventDefault(); worker.terminate(); resolve(new Float32Array(0)); };
+            worker.postMessage({ meshes, degrees: 40 }, meshes.flatMap(mesh => mesh.index ? [mesh.position.buffer, mesh.index.buffer] : [mesh.position.buffer]));
+        });
+    }
+    async function openDrawing() {
+        drawingPanel.hidden = false; drawingButton.setAttribute('aria-pressed', 'true');
+        if (!sheet) {
+            drawingPanel.querySelector('.pad-drawing-sheet').textContent = 'DRAWING…';
+            const points = await rocketLines();
+            ground.updatePad(-270); ground.group.updateMatrixWorld(true);
+            sheet = buildSheet({ ground, rocketSegments: points, stack: { mount: mountHeight, height: vehicle.dragonTop } });
+            ground.updatePad(mission); ground.group.updateMatrixWorld(true);
+        }
+        if (!drawingPanel.hidden) showSheet(drawingPanel, sheet.svg, 'LC-39A-pad-structures.svg');
+    }
+    function closeDrawing() { drawingPanel.hidden = true; drawingButton.setAttribute('aria-pressed', 'false'); }
+    drawingButton.addEventListener('click', () => drawingPanel.hidden ? openDrawing() : closeDrawing(), { signal });
+    drawingPanel.querySelector('.pad-drawing-close').addEventListener('click', closeDrawing, { signal });
+    window.addEventListener('keydown', event => { if (event.key === 'Escape' && !drawingPanel.hidden) closeDrawing(); }, { signal });
     const pointer = new THREE.Vector2(), raycaster = new THREE.Raycaster(), ends = [new THREE.Vector3(), new THREE.Vector3()];
     let pressed = null;
     renderer.domElement.addEventListener('pointerdown', event => { pressed = active && event.button === 0 ? { x: event.clientX, y: event.clientY, at: performance.now() } : null; }, { signal });
@@ -483,8 +524,9 @@ export async function createLaunchView(sky, resume = null) {
     const feetDown = flightData.landing?.at ?? landing;   // the moment itself (the event is on the whole second)
     const deck = { point: new THREE.Vector3(), normal: new THREE.Vector3() }, deckUp = new THREE.Vector3(...(droneship?.up ?? [0, 1, 0]));
     const deckTurn = new THREE.Quaternion(), deckEuler = new THREE.Euler(), deckUnturn = new THREE.Quaternion();
+    let seaSince = 0, seaMission = null, frameDelta = 0, seaScale = 1;   // the sea's clock and swell (seaClock)
     function deckAt(since, normal, point) {
-        const sway = deckMotion(since);
+        const sway = deckMotion(since); sway.roll *= seaScale; sway.pitch *= seaScale; sway.heave *= seaScale;
         deckTurn.setFromEuler(deckEuler.set(sway.roll, 0, sway.pitch));
         normal.set(0, 1, 0).applyQuaternion(deckTurn).applyQuaternion(barge.quaternion);
         point?.set(...droneship.position).addScaledVector(deckUp, sway.heave);
@@ -500,6 +542,19 @@ export async function createLaunchView(sky, resume = null) {
             turning: before.sub(after).multiplyScalar(50)                              // and how fast that changes: the deck turns, the booster does not yet
         };
     })() : null;
+    // The sea keeps its own clock once the booster is down: the swell, the rocking and the legs run at the speed of the
+    // screen, not at the mission's warp (following Dragon, the mission runs at up to thousands of times; the barge
+    // would shake). Before touchdown the clock is the mission's (the deck must be where the flight lands), so there the
+    // swell is made smaller instead, by the warp (eased over about a second, so a change of warp does not jolt it).
+    // A jump or a step back starts the clock again from the mission's.
+    function seaClock(since) {
+        const step = seaMission === null ? NaN : mission - seaMission, real = frameDelta, going = step >= 0 && step <= 3600 && !leapt;
+        seaMission = mission;
+        seaSince = since <= 0 || !going ? since : Math.min(since, seaSince + Math.min(step, real));
+        const target = since <= 0 ? 1 / Math.max(1, warpAt(mission, focus)) : 1;
+        seaScale = going ? seaScale + (target - seaScale) * (1 - Math.exp(-real / .8)) : target;
+        return seaSince;
+    }
     function placeOnDeck(since) {
         const sway = deckAt(since, deck.normal, deck.point);
         bargeModel.group.position.y = sway.heave; bargeModel.group.quaternion.copy(deckTurn);
@@ -601,7 +656,7 @@ export async function createLaunchView(sky, resume = null) {
         boosterNow = mission < separation ? state : boosterState(mission);
         if (mission < separation) { booster.position.copy(upper.position); booster.quaternion.copy(upper.quaternion); }
         else place(booster, boosterNow, boosterLift(mission));
-        const sunk = touchdown && placeOnDeck(mission - feetDown);
+        const sunk = touchdown && placeOnDeck(seaClock(mission - feetDown));
         if (sunk) boosterNow.load = sunk.load;
         ground.updatePad(mission);
         vehicle.setFins(smooth(mission - separation, 10, 16));
@@ -980,6 +1035,7 @@ export async function createLaunchView(sky, resume = null) {
         countElement.style.transform = 'translate(' + (countEdge ? '-100%' : '-50%') + ', -50%) scale(' + swell.toFixed(3) + ')';
     }
     function update(delta) {
+        frameDelta = playing ? delta : 0;
         if (playing) { time = Math.min(animationDuration(focus), time + delta); if (time >= animationDuration(focus)) setPlaying(false); }
         mission = missionAt(time, focus);
         countdownOverlay();
@@ -1156,6 +1212,7 @@ export async function createLaunchView(sky, resume = null) {
         camera, controls, scene, update, render, resize,
         get mission() { return mission; },
         get progress() { return { mission, focus }; },
+        get drawing() { return sheet; }, openDrawing,
         set onStation(callback) { stationButton.onclick = callback; },
         enter() {
             active = true; controls.enabled = true; panel.hidden = false; sky.hideLabels(); startAudio();
@@ -1163,7 +1220,7 @@ export async function createLaunchView(sky, resume = null) {
             if (time >= animationDuration(focus)) jump(0);
             setPlaying(true);
         },
-        leave() { active = false; controls.enabled = false; panel.hidden = true; insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = countElement.hidden = countClock.hidden = true; partLabels.hide(); setPlaying(false); audio?.update({ thrust: 0, distance: 1e3, air: 0, angle: 0, pan: 0, impinge: 0, lights: 0, jumped: true, warp: 1, quiet: true }); shadowSun.set(9, 9, 9); markShadowsDirty(); },
+        leave() { active = false; controls.enabled = false; panel.hidden = true; closeDrawing(); insetElement.hidden = true; issLabel.hidden = vehicleLabel.hidden = countElement.hidden = countClock.hidden = true; partLabels.hide(); setPlaying(false); audio?.update({ thrust: 0, distance: 1e3, air: 0, angle: 0, pan: 0, impinge: 0, lights: 0, jumped: true, warp: 1, quiet: true }); shadowSun.set(9, 9, 9); markShadowsDirty(); },
         get active() { return active; },
         // To a mission second (negative before liftoff), as the event list does; for checks.
         seek(to) { jump(animationAt(Math.max(countdown, to), focus)); },
@@ -1171,6 +1228,7 @@ export async function createLaunchView(sky, resume = null) {
         // sound, and on the GPU its scenes' meshes, materials and textures. Textures the station's own scene uses stay:
         // this Dragon's trunk shares the station's Dragon's solar cells.
         dispose() {
+            ground.lineStyle.setOn(false); ground.lineStyle.dispose();
             this.leave(); listening.abort(); controls.dispose(); stationButton.onclick = null;
             for (const element of [issLabel, vehicleLabel, countElement, countClock, ...items]) element.remove();
             partLabels.remove();
